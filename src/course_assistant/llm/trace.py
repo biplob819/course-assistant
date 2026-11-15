@@ -33,6 +33,8 @@ _ENUMS = {
 }
 # model names: known tiers only, so a learner word cannot pose as a suffix ("gpt-5-zebrafish")
 _MODEL = re.compile(r"gpt-\d[\d.]*(-(sol|luna|terra|mini|nano|pro))?(-\d{4}-\d{2}-\d{2})?")
+MODEL_PATTERN = _MODEL  # shared with the ledger, so neither can store a free-text model
+
 _PATTERNS = {
     "learner_pid": re.compile(r"[0-9a-f]{16}"),
     "question_id": re.compile(r"q-[0-9a-f]{12,32}"),

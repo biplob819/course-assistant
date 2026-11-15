@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import math
 import random
+import re
 import threading
 import time
 import uuid
@@ -19,7 +20,7 @@ from pydantic import Field
 
 from course_assistant.llm.cost import Prices, call_cost
 from course_assistant.llm.ledger import Ledger
-from course_assistant.llm.trace import TraceSink, strip_text
+from course_assistant.llm.trace import MODEL_PATTERN, TraceSink, strip_text
 from course_assistant.schemas._base import JsonValue, Model, Name, NonBlank, NonNegInt, PosInt
 
 Effort = Literal["minimal", "low", "medium", "high"]
@@ -241,6 +242,7 @@ def _record(ledger: Ledger, attempts: int, lock_s: float, **row: Any) -> None:
 
 
 MAX_DEADLINE_S = 600.0
+RUN_ID = re.compile(r"[A-Za-z0-9._-]{0,64}")
 
 
 class _Fail(Exception):
@@ -315,12 +317,19 @@ def _respond(
     make_http = http_factory or _default_http
     request_id = f"r-{uuid.uuid4().hex[:16]}"
     kwargs = build_kwargs(request)
+    if not isinstance(run_id, str) or not RUN_ID.fullmatch(run_id):
+        raise _Fail("config", "run_id must be up to 64 letters, digits, dot, dash or underscore", 1)
     start = clock()
+    wall = time.monotonic()  # the budget also runs on the real clock (verifier N1.2 pass 7)
+
+    def used() -> float:
+        return max(clock() - start, time.monotonic() - wall)
+
     attempts = 0
     last: tuple[ErrorKind, str] = ("transport", "no attempt")
     while attempts < MAX_ATTEMPTS:
         # capped at the deadline, so a clock that runs backwards cannot lengthen the wait
-        remaining = min(deadline_s - (clock() - start), deadline_s)
+        remaining = min(deadline_s - used(), deadline_s)
         if remaining <= 0:
             last = ("transport", "deadline reached")
             break
@@ -344,25 +353,50 @@ def _respond(
         except _Overrun:
             last = ("transport", "deadline reached")
             break
-        except Exception as exc:
-            close()
+        except BaseException as exc:
+            close()  # on every failure, so no attempt's pool is left open (pass 7)
+            if not isinstance(exc, Exception):
+                raise
             kind, detail, retry = _classify(exc)
             last = (kind, detail)
             if not retry or attempts >= MAX_ATTEMPTS:
                 break
             delay = min(4.0, 0.5 * 2 ** (attempts - 1)) * (0.5 + random.random() / 2)
-            if clock() - start + delay > deadline_s:
+            if used() + delay > deadline_s:
                 break
             sleep(delay)
             continue
         close()
-        lock_s = max(0.1, deadline_s - (clock() - start))
+        lock_s = max(0.1, deadline_s - used())
         return _finish(request, resp, prices, ledger, sink, start, clock, request_id,
                        attempts, run_id, lock_s)  # fmt: skip
     if sink is not None:
         failure = {"request_id": request_id, "purpose": request.purpose, "model": request.model}
         _emit(sink, {**failure, "error": last[0], "attempts": attempts}, attempts)
     raise _Fail(last[0], last[1], attempts)
+
+
+def _usage_only(resp: Any) -> dict[str, int] | None:
+    """Token counts read straight from usage, or None if any is missing or not whole."""
+    try:
+        usage = resp.usage
+        tokens = {
+            "tokens_in": usage.input_tokens,
+            "tokens_cached": usage.input_tokens_details.cached_tokens or 0,
+            "tokens_cache_write": getattr(usage.input_tokens_details, "cache_write_tokens", 0)
+            or 0,
+            "tokens_out": usage.output_tokens,
+            "tokens_reasoning": usage.output_tokens_details.reasoning_tokens or 0,
+            "file_search_calls": 0,  # not countable without a parsed body
+        }
+    except Exception:
+        return None
+    return tokens if all(_whole(v) for v in tokens.values()) else None
+
+
+def _safe_model(model: Any) -> str:
+    """The provider's model name if it is a model name, else "unknown" (verifier N1.2 pass 7)."""
+    return model if isinstance(model, str) and MODEL_PATTERN.fullmatch(model) else "unknown"
 
 
 def _whole(value: Any) -> bool:
@@ -379,7 +413,7 @@ def _finish(request: ResponsesRequest, resp: Any, prices: Prices, ledger: Ledger
         parsed = _parse(resp)
         counts = [v for k, v in parsed.items()
                   if k.startswith("tokens_") or k == "file_search_calls"]  # fmt: skip
-        if not all(_whole(v) for v in counts):
+        if not all(_whole(v) for v in counts) or parsed["tokens_reasoning"] > parsed["tokens_out"]:
             raise _Fail("parse", "token counts must be whole numbers in range", attempts)
         try:
             cost = call_cost(
@@ -403,7 +437,8 @@ def _finish(request: ResponsesRequest, resp: Any, prices: Prices, ledger: Ledger
             # the call was made and billed: record its tokens unpriced before failing
             if ledger is not None:
                 _record(ledger, attempts, lock_s, purpose=request.purpose,
-                        model=parsed["model_snapshot"], cost_usd=0.0, run_id=run_id,
+                        model=_safe_model(parsed["model_snapshot"]), cost_usd=0.0,
+                        run_id=run_id,
                         priced=False, **usage)  # fmt: skip
             raise _Fail(unpriced or "config", "call could not be priced", attempts)
         result = ResponsesResult(**parsed, cost_usd=cost, latency_ms=int((clock() - start) * 1000),
@@ -411,12 +446,22 @@ def _finish(request: ResponsesRequest, resp: Any, prices: Prices, ledger: Ledger
     except _Fail:
         raise
     except Exception as exc:
-        raise _Fail("parse", f"unreadable response ({type(exc).__name__})", attempts) from None
-    if ledger is not None:
-        _record(ledger, attempts, lock_s, purpose=request.purpose, model=result.model_snapshot,
-                cost_usd=cost, run_id=run_id, **usage)  # fmt: skip
-    if sink is not None:
-        record = {**result.model_dump(), "purpose": request.purpose, "model": request.model}
-        record |= {"n_citations": len(result.citations), "n_hits": len(result.hits)}
-        _emit(sink, record, attempts)  # stripped inside, whatever the sink (OAI-05)
-    return result
+        unreadable = type(exc).__name__
+    else:
+        if ledger is not None:
+            _record(ledger, attempts, lock_s, purpose=request.purpose,
+                    model=result.model_snapshot, cost_usd=cost, run_id=run_id,
+                    **usage)  # fmt: skip
+        if sink is not None:
+            record = {**result.model_dump(), "purpose": request.purpose, "model": request.model}
+            record |= {"n_citations": len(result.citations), "n_hits": len(result.hits)}
+            _emit(sink, record, attempts)  # stripped inside, whatever the sink (OAI-05)
+        return result
+    # a billed call whose body would not parse: keep its tokens if they can be read on their
+    # own, so spend is never lost (verifier N1.2 pass 7)
+    tokens = _usage_only(resp)
+    if ledger is not None and tokens is not None:
+        _record(ledger, attempts, lock_s, purpose=request.purpose,
+                model=_safe_model(getattr(resp, "model", None)), cost_usd=0.0,
+                run_id=run_id, priced=False, **tokens)  # fmt: skip
+    raise _Fail("parse", f"unreadable response ({unreadable})", attempts)

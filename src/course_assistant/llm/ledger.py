@@ -6,7 +6,10 @@ import datetime as dt
 import fcntl
 import json
 import math
+import re
 from pathlib import Path
+
+from course_assistant.llm.trace import MODEL_PATTERN
 
 WARN_AT = 0.8
 
@@ -42,6 +45,12 @@ class Ledger:
                lock_timeout_s: float = 5.0) -> None:  # fmt: skip
         if not math.isfinite(cost_usd) or cost_usd < 0:
             raise ValueError("cost must be a finite non-negative number")
+        if not isinstance(model, str) or not (model == "unknown" or MODEL_PATTERN.fullmatch(model)):
+            raise ValueError("model must be a model name")  # never free text (verifier N1.2 pass 7)
+        if not isinstance(run_id, str) or not re.fullmatch(r"[A-Za-z0-9._-]{0,64}", run_id):
+            raise ValueError("run_id must be up to 64 letters, digits, dot, dash or underscore")
+        if not isinstance(purpose, str) or not re.fullmatch(r"[a-z_]{1,32}", purpose):
+            raise ValueError("purpose must be a short lowercase word")
         counts = {"tokens_in": tokens_in, "tokens_cached": tokens_cached,
                   "tokens_out": tokens_out, "file_search_calls": file_search_calls,
                   "tokens_cache_write": tokens_cache_write, "tokens_reasoning": tokens_reasoning}

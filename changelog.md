@@ -43,3 +43,5 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [E2.1] — second reader pass 3: assignment slides linked to assessments, more concept links, B8 themes, size-balanced split
 - [FIX] [N1.2] — verifier pass 6: non-Exception failures mapped, backward clock capped, token counts range-checked
 - [FIX] [E2.1] — second reader pass 4: reveal-prompt attacks grouped, s01 brief page linked
+- [FIX] [N1.2] — verifier pass 7: total budget on the real clock, pools closed on every failure, ledger fields pattern-checked
+- [FIX] [E2.1] — second reader pass 5: trust-layer metrics page linked

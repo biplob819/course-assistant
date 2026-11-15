@@ -131,6 +131,7 @@ CONCEPT_LINKS = [
     ("s03:slides:4", "s03:slides:5", "s03:slides:6", "s03:slides:7"),  # the four layers
     ("s03:slides:5", "s03:pre_read:2"),  # grounding and citations
     ("s03:slides:7", "s03:pre_read:3"),  # handover
+    ("s03:pre_read:5", "s03:slides:4"),  # one number per trust layer (pass 5)
     ("s03:slides:18", "s03:pre_read:6"),  # incidents
     ("s03:slides:16", "s03:slides:10", "s03:slides:14"),  # privacy by design, retention, pids
     ("s03:slides:12", "s03:pre_read:4"),  # data protection roles

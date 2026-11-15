@@ -331,8 +331,9 @@ def test_each_attempt_gets_only_the_time_left():
     client = Recording([status_error(503), make_response()])
     respond(req(), client=client, prices=PRICES, sleep=lambda s: None, clock=lambda: next(t),
             deadline_s=20)  # fmt: skip
-    assert seen[0] == {"max_retries": 0, "timeout": 20.0}
-    assert seen[1]["max_retries"] == 0 and seen[1]["timeout"] == 8.0
+    # the real clock also counts, so allow the few milliseconds the test itself takes
+    assert seen[0]["max_retries"] == 0 and seen[0]["timeout"] == pytest.approx(20.0, abs=0.5)
+    assert seen[1]["max_retries"] == 0 and seen[1]["timeout"] == pytest.approx(8.0, abs=0.5)
 
 
 def test_unpriced_snapshot_is_an_llm_error_and_still_ledgered(tmp_path):
@@ -700,3 +701,68 @@ def test_the_ledger_refuses_counts_that_are_not_json_whole_numbers(bad, tmp_path
         Ledger(tmp_path / "l.jsonl", 100.0).append(purpose="answer", model="m", tokens_in=bad,
                                            tokens_cached=0, tokens_out=0,
                                            file_search_calls=0, cost_usd=0.0)  # fmt: skip
+
+
+# ---------- verifier pass 7 regressions ----------
+
+
+def test_a_frozen_or_backward_clock_cannot_stretch_the_total_past_the_deadline():
+    import time as _time
+
+    class SlowFail:
+        def create(self, **kwargs):
+            _time.sleep(0.6)
+            raise connection_error()
+
+    class Client(FakeClient):
+        def __init__(self):
+            super().__init__([])
+            self.responses = SlowFail()  # type: ignore[assignment]
+
+    start = _time.monotonic()
+    with pytest.raises(LLMError):
+        respond(req(), client=Client(), prices=PRICES, sleep=lambda s: None,
+                clock=lambda: 0.0, deadline_s=1.0)  # fmt: skip
+    assert _time.monotonic() - start < 1.5
+
+
+@pytest.mark.privacy
+def test_the_unpriced_ledger_line_never_stores_a_free_text_model(tmp_path):
+    resp = make_response(model="the learner said LEARNERSECRET")
+    with pytest.raises(LLMError):
+        run([resp], ledger=Ledger(tmp_path / "l.jsonl", 100.0))
+    path = tmp_path / "l.jsonl"
+    assert "LEARNERSECRET" not in (path.read_text(encoding="utf-8") if path.exists() else "")
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("field", ["model", "run_id", "purpose"])
+def test_the_ledger_refuses_free_text_fields(field, tmp_path):
+    row = dict(purpose="answer", model="gpt-6.1-sol-2026-10-01", run_id="", tokens_in=1,
+               tokens_cached=0, tokens_out=1, file_search_calls=0, cost_usd=0.0)  # fmt: skip
+    row[field] = "the learner said Paris"
+    with pytest.raises(ValueError):
+        Ledger(tmp_path / "l.jsonl", 100.0).append(**row)  # type: ignore[arg-type]
+
+
+def test_a_free_text_run_id_is_a_config_error():
+    with pytest.raises(LLMError) as exc:
+        run([make_response()], run_id="learner Paris")
+    assert exc.value.kind == "config" and "Paris" not in str(exc.value)
+
+
+def test_reasoning_tokens_above_output_tokens_are_a_parse_error():
+    with pytest.raises(LLMError) as exc:
+        run([make_response(tokens=(4000, 1200, 100, 300))])
+    assert exc.value.kind == "parse"
+
+
+def test_a_billed_call_whose_body_will_not_parse_still_leaves_an_unpriced_line(tmp_path):
+    resp = make_response()
+    broken = resp.model_copy(update={"output": [None]})  # usage readable, body not
+    path = tmp_path / "l.jsonl"
+    with pytest.raises(LLMError) as exc:
+        run([broken], ledger=Ledger(path, 100.0))
+    assert exc.value.kind == "parse"
+    row = json.loads(path.read_text(encoding="utf-8").splitlines()[-1])
+    assert row["priced"] is False and row["tokens_in"] == 4000 and row["cost_usd"] == 0.0
