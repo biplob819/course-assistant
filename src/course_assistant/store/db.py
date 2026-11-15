@@ -360,9 +360,14 @@ class Store:
                        at: dt.datetime) -> DeletionRequest:  # fmt: skip
         """Remove the learner's questions, answers, escalations and conversations (or one
         conversation) in one transaction. Traces are deleted separately (B2.2)."""
-        request = DeletionRequest(learner_pid=pid, conversation_id=conversation_id,
-                                  requested_at=at, app_deleted_at=at)  # fmt: skip
         with self._tx():
+            if conversation_id is None:
+                covers = tuple(sorted({c.conversation_id for c in self.conversations_for(pid)}))
+            else:
+                covers = (conversation_id,)
+            request = DeletionRequest(learner_pid=pid, conversation_id=conversation_id,
+                                      covers=covers, requested_at=at,
+                                      app_deleted_at=at)  # fmt: skip
             marks = ",".join("?" * len(TEXT_KINDS))
             if conversation_id is None:
                 self._con.execute(f"delete from records where kind in ({marks}) and pid = ?",
@@ -422,7 +427,8 @@ class Store:
                     raise ValueError("stored DeletionRequest pid column does not match its record")
                 # only requests the caller saw, never one created after it read them (pass 1)
                 if d.traces_deleted_at is None and (upto is None or d.requested_at <= upto):
-                    done = d.model_copy(update={"traces_deleted_at": at})
+                    # never before the request, even if the clock went back (pass 2)
+                    done = d.model_copy(update={"traces_deleted_at": max(at, d.requested_at)})
                     self._put("deletion", key, done, pid=pid, at=d.requested_at)
             self._audit("system-1", "purge", pid, at)  # trace deletion for this learner
 

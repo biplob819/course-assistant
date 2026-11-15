@@ -502,3 +502,48 @@ def test_completing_trace_deletion_never_closes_a_request_created_after_it_was_r
     store.mark_traces_deleted(A, at=at(150), upto=at(100))
     open_ = [d for d in store.deletions() if d.learner_pid == A and d.traces_deleted_at is None]
     assert [d.requested_at for d in open_] == [at(200)]
+
+
+# ---------- verifier pass 2 regressions ----------
+
+
+@pytest.mark.privacy
+def test_a_line_cut_off_before_the_pid_goes_with_a_whole_history_delete(store, tmp_path):
+    fill(store)
+    sink = traced(tmp_path)
+    full = json.dumps({"conversation_id": "c-aaaaaaaaaaa1", "learner_pid": A, "step": "x"},
+                      sort_keys=True)  # fmt: skip
+    with sink.path.open("a", encoding="utf-8") as fh:
+        fh.write(full[: full.index(A)] + "\n")  # crashed mid-append, before the pid
+        fh.write(json.dumps({"conversation_id": "c-aaaaaaaaaaa2", "step": "y"}) + "\n")
+    delete(A, store=store, traces=[sink], at=at(100))
+    text = sink.path.read_text(encoding="utf-8")
+    assert "c-aaaaaaaaaaa" not in text and A not in text
+    assert {r["learner_pid"] for r in read(sink)} == {B}
+
+
+@pytest.mark.privacy
+def test_a_request_records_the_conversations_it_removed(store):
+    fill(store)
+    whole = store.delete_history(A, None, at=at(100))
+    assert whole.covers == ("c-aaaaaaaaaaa1", "c-aaaaaaaaaaa2")
+    one = store.delete_history(B, "c-bbbbbbbbbbb1", at=at(100))
+    assert one.covers == ("c-bbbbbbbbbbb1",)
+
+
+def test_a_clock_that_went_back_never_dates_completion_before_the_request(store):
+    fill(store)
+    store.delete_history(A, None, at=at(100))
+    store.mark_traces_deleted(A, at=at(50))
+    done = [d for d in store.deletions() if d.learner_pid == A]
+    assert done[0].traces_deleted_at == at(100)
+
+
+def test_a_planted_tmp_symlink_is_removed_not_followed(tmp_path):
+    sink = traced(tmp_path)
+    target = tmp_path / "elsewhere.txt"
+    target.write_text("keep me", encoding="utf-8")
+    (tmp_path / "trace.jsonl.tmp").symlink_to(target)
+    assert sink.delete_pid(A) > 0
+    assert target.read_text(encoding="utf-8") == "keep me"
+    assert not (tmp_path / "trace.jsonl.tmp").exists()

@@ -115,6 +115,9 @@ class Consent(Model):
 class DeletionRequest(Model):
     learner_pid: Pid
     conversation_id: ConversationId | None = None  # None deletes the whole history
+    # the conversation ids the request removed, kept so trace lines can still be found after
+    # the app rows are gone (ids only, never text; verifier B2.2 pass 2)
+    covers: tuple[ConversationId, ...] = ()
     requested_at: Timestamp
     app_deleted_at: Timestamp | None = None
     traces_deleted_at: Timestamp | None = None

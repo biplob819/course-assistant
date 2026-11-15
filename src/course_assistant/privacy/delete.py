@@ -21,6 +21,7 @@ def _delete_traces(pid: str, pending: Sequence[DeletionRequest],
     supports deletion and none failed."""
     whole = any(d.conversation_id is None for d in pending)
     cids = None if whole else {d.conversation_id for d in pending if d.conversation_id}
+    known = {c for d in pending for c in d.covers}
     done = True
     for sink in traces:
         remove = getattr(sink, "delete_pid", None)
@@ -28,7 +29,7 @@ def _delete_traces(pid: str, pending: Sequence[DeletionRequest],
             done = False
             continue
         try:
-            remove(pid, cids)
+            remove(pid, cids, known)
         except Exception:
             done = False
     return done

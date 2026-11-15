@@ -79,7 +79,16 @@ class TraceSink(Protocol):
 class DeletableSink(TraceSink, Protocol):
     """A sink that can remove a learner's lines (B2.2, US9)."""
 
-    def delete_pid(self, pid: str, conversation_ids: Collection[str] | None = None) -> int: ...
+    def delete_pid(self, pid: str, conversation_ids: Collection[str] | None = None,
+                   known: Collection[str] = ()) -> int: ...  # fmt: skip
+
+
+def _record(line: str) -> dict[str, Any] | None:
+    try:
+        rec = json.loads(line)
+    except ValueError:
+        return None
+    return rec if isinstance(rec, dict) else None
 
 
 class JsonlSink:
@@ -104,31 +113,44 @@ class JsonlSink:
         with self._locked(), self.path.open("a", encoding="utf-8") as fh:
             fh.write(line)
 
-    def delete_pid(self, pid: str, conversation_ids: Collection[str] | None = None) -> int:
+    def delete_pid(self, pid: str, conversation_ids: Collection[str] | None = None,
+                   known: Collection[str] = ()) -> int:  # fmt: skip
         """Remove the learner's lines (all of them, or those of the given conversations) and
-        return how many went. The file is rewritten to a temporary file and swapped in, so a
-        crash leaves either the old or the new file, never half of one. A line that is not
-        JSON is dropped if it names the pid or one of the conversations, kept otherwise."""
+        return how many went. A line is the learner's if it carries their pid, or carries no
+        pid but one of their conversation ids: `known` (from the deletion request) plus every
+        conversation id on an intact line of theirs. A damaged line goes if it names the pid or
+        one of those conversations as a whole id. The file is rewritten to a temporary file and
+        swapped in, so a crash leaves either the old or the new file."""
         with self._locked():
-            return self._delete(pid, conversation_ids)
+            return self._delete(pid, conversation_ids, set(known))
 
-    def _delete(self, pid: str, conversation_ids: Collection[str] | None) -> int:
+    def _delete(self, pid: str, conversation_ids: Collection[str] | None, known: set[str]) -> int:
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        if tmp.is_symlink() or tmp.exists():
+            tmp.unlink()  # a leftover from a crash, or something planted (verifier B2.2 pass 2)
         if not self.path.is_file():
             return 0
-        names = {pid} if conversation_ids is None else set(conversation_ids)
+        lines = [x for x in self.path.read_text(encoding="utf-8").splitlines() if x.strip()]
+        mine = set(known)
+        for line in lines:
+            rec = _record(line)
+            if rec is not None and rec.get("learner_pid") == pid:
+                cid = rec.get("conversation_id")
+                if isinstance(cid, str):
+                    mine.add(cid)
+        cids = mine if conversation_ids is None else set(conversation_ids)
+        names = (cids | {pid}) if conversation_ids is None else cids
         kept: list[str] = []
         dropped = 0
-        for line in self.path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            if self._doomed(line, pid, conversation_ids, names):
+        for line in lines:
+            if self._doomed(line, pid, cids, names, conversation_ids is None):
                 dropped += 1
             else:
                 kept.append(line)
         if dropped:
-            tmp = self.path.with_name(self.path.name + ".tmp")
             mode = stat.S_IMODE(self.path.stat().st_mode)
-            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+            fd = os.open(tmp, flags, mode)
             os.chmod(tmp, mode)  # keep the original permissions, never wider (pass 1)
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 fh.write("".join(f"{x}\n" for x in kept))
@@ -143,17 +165,16 @@ class JsonlSink:
         return dropped
 
     @staticmethod
-    def _doomed(line: str, pid: str, conversation_ids: Collection[str] | None,
-                names: set[str]) -> bool:  # fmt: skip
-        try:
-            rec = json.loads(line)
-        except ValueError:
-            rec = None
-        if not isinstance(rec, dict):
+    def _doomed(line: str, pid: str, cids: set[str], names: set[str], whole: bool) -> bool:
+        rec = _record(line)
+        if rec is None:
             # a damaged line: drop it only if it names one of the ids as a whole id, never as
-            # part of a longer one (verifier B2.2 pass 1)
+            # part of a longer one (verifier B2.2 passes 1 and 2)
             return any(re.search(rf"(?<![0-9A-Za-z-]){re.escape(n)}(?![0-9A-Za-z-])", line)
                        for n in names)  # fmt: skip
-        if rec.get("learner_pid") != pid:
-            return False
-        return conversation_ids is None or rec.get("conversation_id") in conversation_ids
+        owner = rec.get("learner_pid")
+        if owner is not None and owner != pid:
+            return False  # another learner's line, whatever conversation id it names
+        if whole and owner == pid:
+            return True
+        return rec.get("conversation_id") in cids
