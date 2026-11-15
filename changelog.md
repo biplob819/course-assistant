@@ -38,3 +38,8 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FEAT] [N1.5] — green after 4 verifier passes: app store with complete deletion, calendar retention, fail-closed pause
 - [FIX] [N1.2] — verifier pass 4: no escapes from the taxonomy, guarded client setup, explicit http_factory for custom clients (D-33)
 - [FIX] [E2.1] — second reader: split by merged topic groups with a cross-split leak check (D-34)
+- [FIX] [E2.1] — second reader pass 2: groups merge on units, citations and concepts; unit-level leak check (D-35)
+- [FIX] [N1.2] — verifier pass 5: single-exit respond (no chained exceptions), capped deadline, timed ledger lock (L-30)
+- [FIX] [E2.1] — second reader pass 3: assignment slides linked to assessments, more concept links, B8 themes, size-balanced split
+- [FIX] [N1.2] — verifier pass 6: non-Exception failures mapped, backward clock capped, token counts range-checked
+- [FIX] [E2.1] — second reader pass 4: reveal-prompt attacks grouped, s01 brief page linked

@@ -27,5 +27,5 @@ The 280-case golden set (Tech Spec §6.1) plus the 150-case adversarial extensio
 - `gold_units` are locators `sNN:kind:N` (D-30): `slides:N` is slide N, `pre_read:N` is page N, `agenda:1` the agenda. Every locator must exist in the sample course, and the cited unit must actually contain the answer (checked by a second reader).
 - B1 questions are answerable from the cited units alone; B2/B7 questions are not answerable from any unit (absent-topic keywords).
 - Coverage rule (C7): at least 15 B1 cases per session; at least 3 B3 probes per assessment.
-- Split (D-32): stratified by rule (and session for B1), seed 20261115, 50/50 by probe group; each paraphrase goes to its source's split, so the extension is 75 tuning and 75 held out.
+- Split (D-32, D-34, D-35): by merged groups, seed 20261115, half the groups per stratum to each side; each paraphrase goes with its source. Counts are approximate (currently 194 public, 236 held out).
 - Second reader (GLD-03): a fresh verifier checks every B1 locator and every expected status; the owner spot-checks 20% (recorded as a task, not a gate).

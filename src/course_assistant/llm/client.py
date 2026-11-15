@@ -120,7 +120,9 @@ def build_kwargs(r: ResponsesRequest) -> dict[str, Any]:
 
 def _classify(exc: BaseException) -> tuple[ErrorKind, str, bool]:
     """(kind, safe detail, retryable). Details carry types and codes only, never messages."""
-    if isinstance(exc, ValueError | openai.APIResponseValidationError):  # a body we cannot read
+    if isinstance(
+        exc, ValueError | RecursionError | openai.APIResponseValidationError
+    ):  # unreadable body
         return "parse", type(exc).__name__, False
     if isinstance(exc, openai.APITimeoutError | openai.APIConnectionError):
         return "transport", type(exc).__name__, True
@@ -164,7 +166,7 @@ def _parse(resp: Any) -> dict[str, Any]:
                             )
     usage = resp.usage
     if usage is None:
-        raise LLMError("parse", "response has no usage")
+        raise ValueError("response has no usage")
     return {
         "text": "" if refusal else text,
         "citations": () if refusal else tuple(citations),
@@ -218,20 +220,37 @@ def _emit(sink: TraceSink, record: dict[str, Any], attempts: int) -> None:
     failed: str | None = None
     try:
         sink.emit(strip_text(record))
-    except Exception as exc:
+    except KeyboardInterrupt:
+        raise
+    except BaseException as exc:  # SystemExit, CancelledError too (verifier N1.2 pass 6)
         failed = type(exc).__name__
     if failed is not None:
-        raise LLMError("config", f"trace sink failed ({failed})", attempts)
+        raise _Fail("config", f"trace sink failed ({failed})", attempts)
 
 
-def _record(ledger: Ledger, attempts: int, **row: Any) -> None:
+def _record(ledger: Ledger, attempts: int, lock_s: float, **row: Any) -> None:
     failed: str | None = None
     try:
-        ledger.append(**row)
-    except Exception as exc:  # any failure, including RecursionError on a malformed line
+        ledger.append(**row, lock_timeout_s=lock_s)
+    except KeyboardInterrupt:
+        raise
+    except BaseException as exc:  # any failure, incl. RecursionError, SystemExit, CancelledError
         failed = type(exc).__name__
     if failed is not None:
-        raise LLMError("config", f"spend ledger unusable ({failed})", attempts)
+        raise _Fail("config", f"spend ledger unusable ({failed})", attempts)
+
+
+MAX_DEADLINE_S = 600.0
+
+
+class _Fail(Exception):
+    """Internal failure carrying only a kind and a safe detail (no provider or sink text)."""
+
+    def __init__(self, kind: ErrorKind, detail: str, attempts: int) -> None:
+        super().__init__(detail)
+        self.kind: ErrorKind = kind
+        self.detail = detail
+        self.attempts = attempts
 
 
 def respond(
@@ -247,16 +266,52 @@ def respond(
     run_id: str = "",
     http_factory: Callable[[float], httpx2.Client] | None = None,
 ) -> ResponsesResult:
-    if not (isinstance(deadline_s, int | float) and math.isfinite(deadline_s) and deadline_s > 0):
-        raise LLMError("config", "deadline must be a finite positive number of seconds")
-    if (
-        isinstance(client, openai.OpenAI)
-        and http_factory is None
-        and not isinstance(client._client, SyncHttpxClientWrapper)
-    ):
+    """One OpenAI call: a `ResponsesResult`, or an `LLMError` whose kind is transport, parse
+    or config. The error is raised outside every except block, so it never chains a provider,
+    sink or ledger exception as its cause or context (verifier N1.2 pass 5)."""
+    failure: tuple[ErrorKind, str, int] | None = None
+    try:
+        return _respond(request, client, prices, ledger, sink, sleep, clock, deadline_s,
+                        run_id, http_factory)  # fmt: skip
+    except _Fail as f:
+        failure = (f.kind, f.detail, max(f.attempts, 1))
+    except KeyboardInterrupt:  # the one exception a caller must always see
+        raise
+    except BaseException as exc:  # anything else, incl. SystemExit/CancelledError (pass 6)
+        failure = ("config", f"unexpected {type(exc).__name__}", 1)
+    raise LLMError(*failure)
+
+
+def _valid_deadline(deadline_s: Any) -> float:
+    if isinstance(deadline_s, bool) or not isinstance(deadline_s, int | float):
+        raise _Fail("config", "deadline must be a number of seconds", 1)
+    try:
+        value = float(deadline_s)
+    except OverflowError:
+        raise _Fail("config", "deadline is too large", 1) from None
+    if not (math.isfinite(value) and 0 < value <= MAX_DEADLINE_S):
+        raise _Fail("config", f"deadline must be between 0 and {MAX_DEADLINE_S:.0f} s", 1)
+    return value
+
+
+def _respond(
+    request: ResponsesRequest,
+    client: Any,
+    prices: Prices,
+    ledger: Ledger | None,
+    sink: TraceSink | None,
+    sleep: Callable[[float], None],
+    clock: Callable[[], float],
+    deadline_s: float,
+    run_id: str,
+    http_factory: Callable[[float], httpx2.Client] | None,
+) -> ResponsesResult:
+    deadline_s = _valid_deadline(deadline_s)
+    real = isinstance(client, openai.OpenAI)
+    if real and http_factory is None and not isinstance(client._client, SyncHttpxClientWrapper):
         # a custom http_client (proxy, mTLS, test transport) would be silently replaced by the
         # per-attempt client; the caller must say how to build one (D-33)
-        raise LLMError("config", "client has a custom http_client: pass http_factory")
+        raise _Fail("config", "client has a custom http_client: pass http_factory", 1)
     make_http = http_factory or _default_http
     request_id = f"r-{uuid.uuid4().hex[:16]}"
     kwargs = build_kwargs(request)
@@ -264,29 +319,25 @@ def respond(
     attempts = 0
     last: tuple[ErrorKind, str] = ("transport", "no attempt")
     while attempts < MAX_ATTEMPTS:
-        remaining = deadline_s - (clock() - start)
+        # capped at the deadline, so a clock that runs backwards cannot lengthen the wait
+        remaining = min(deadline_s - (clock() - start), deadline_s)
         if remaining <= 0:
             last = ("transport", "deadline reached")
             break
         attempts += 1
-        # the SDK's own retries are off, each read may use only the time left, and the whole
-        # attempt is bounded by a wall-clock wait, so a response that trickles in slowly
-        # cannot outlast the deadline (verifier N1.2 pass 2)
-        if not hasattr(client, "with_options"):
-            raise LLMError("config", "client cannot turn off its own retries", attempts)
-        setup_failed: str | None = None
-        http: httpx2.Client | None = None
-        caller: Any = None
+        # SDK retries off, each read bounded by the time left, and the whole attempt bounded
+        # by a wall-clock wait in a daemon thread (verifier N1.2 passes 2 and 3)
         try:
-            http = make_http(remaining) if isinstance(client, openai.OpenAI) else None
+            with_options = client.with_options
+            http = make_http(remaining) if real else None
+            if real and not isinstance(http, httpx2.Client):
+                raise TypeError("http_factory did not return an httpx2.Client")
             options: dict[str, Any] = {"max_retries": 0, "timeout": remaining}
             if http is not None:
                 options["http_client"] = http  # this attempt's own pool, closed afterwards
-            caller = client.with_options(**options)
+            caller = with_options(**options)
         except Exception as exc:
-            setup_failed = type(exc).__name__
-        if setup_failed is not None:
-            raise LLMError("config", f"client setup failed ({setup_failed})", attempts)
+            raise _Fail("config", f"client setup failed ({type(exc).__name__})", attempts) from None
         close = http.close if http is not None else (lambda: None)
         try:
             resp = _within(remaining, lambda c=caller: c.responses.create(**kwargs), close)
@@ -305,12 +356,31 @@ def respond(
             sleep(delay)
             continue
         close()
-        try:
-            parsed = _parse(resp)
-        except LLMError:
-            raise LLMError("parse", "response has no usage", attempts) from None
-        except (ValueError, TypeError, AttributeError) as exc:
-            raise LLMError("parse", type(exc).__name__, attempts) from None
+        lock_s = max(0.1, deadline_s - (clock() - start))
+        return _finish(request, resp, prices, ledger, sink, start, clock, request_id,
+                       attempts, run_id, lock_s)  # fmt: skip
+    if sink is not None:
+        failure = {"request_id": request_id, "purpose": request.purpose, "model": request.model}
+        _emit(sink, {**failure, "error": last[0], "attempts": attempts}, attempts)
+    raise _Fail(last[0], last[1], attempts)
+
+
+def _whole(value: Any) -> bool:
+    """A JSON-safe token count: an int (not bool) in [0, 10**15) (verifier N1.2 pass 6)."""
+    return not isinstance(value, bool) and isinstance(value, int) and 0 <= value < 10**15
+
+
+def _finish(request: ResponsesRequest, resp: Any, prices: Prices, ledger: Ledger | None,
+            sink: TraceSink | None, start: float, clock: Callable[[], float], request_id: str,
+            attempts: int, run_id: str, lock_s: float) -> ResponsesResult:  # fmt: skip
+    """Everything after a response arrives, as one guarded step: parse, validate, price,
+    ledger, trace. Any unexpected failure here is a parse error by type name only."""
+    try:
+        parsed = _parse(resp)
+        counts = [v for k, v in parsed.items()
+                  if k.startswith("tokens_") or k == "file_search_calls"]  # fmt: skip
+        if not all(_whole(v) for v in counts):
+            raise _Fail("parse", "token counts must be whole numbers in range", attempts)
         try:
             cost = call_cost(
                 prices.for_model(parsed["model_snapshot"]),
@@ -321,38 +391,32 @@ def respond(
                 file_search_per_1k=prices.file_search_per_1k,
                 tokens_cache_write=parsed["tokens_cache_write"],
             )
-        except (KeyError, ValueError) as exc:
+        except (KeyError, ValueError, OverflowError, TypeError) as exc:
+            unpriced = "config" if isinstance(exc, KeyError) else "parse"
+            cost = None
+        else:
+            unpriced = None
+        usage = {k: parsed[k] for k in ("tokens_in", "tokens_cached", "tokens_out",
+                                         "file_search_calls", "tokens_cache_write",
+                                         "tokens_reasoning")}  # fmt: skip
+        if cost is None:
             # the call was made and billed: record its tokens unpriced before failing
             if ledger is not None:
-                _record(ledger, attempts, purpose=request.purpose, model=parsed["model_snapshot"],
-                              tokens_in=parsed["tokens_in"], tokens_cached=parsed["tokens_cached"],
-                              tokens_out=parsed["tokens_out"],
-                              file_search_calls=parsed["file_search_calls"], cost_usd=0.0,
-                              run_id=run_id, priced=False,
-                              tokens_cache_write=parsed["tokens_cache_write"],
-                              tokens_reasoning=parsed["tokens_reasoning"])  # fmt: skip
-            kind: ErrorKind = "config" if isinstance(exc, KeyError) else "parse"
-            raise LLMError(kind, "call could not be priced", attempts) from None
-        result = ResponsesResult(
-            **parsed,
-            cost_usd=cost,
-            latency_ms=int((clock() - start) * 1000),
-            request_id=request_id,
-            attempts=attempts,
-        )
-        if ledger is not None:
-            _record(ledger, attempts, purpose=request.purpose, model=result.model_snapshot,
-                          tokens_in=result.tokens_in, tokens_cached=result.tokens_cached,
-                          tokens_out=result.tokens_out,
-                          file_search_calls=result.file_search_calls, cost_usd=cost,
-                          run_id=run_id, tokens_cache_write=result.tokens_cache_write,
-                          tokens_reasoning=result.tokens_reasoning)  # fmt: skip
-        if sink is not None:
-            record = {**result.model_dump(), "purpose": request.purpose, "model": request.model}
-            record |= {"n_citations": len(result.citations), "n_hits": len(result.hits)}
-            _emit(sink, record, attempts)  # stripped inside, whatever the sink (OAI-05)
-        return result
+                _record(ledger, attempts, lock_s, purpose=request.purpose,
+                        model=parsed["model_snapshot"], cost_usd=0.0, run_id=run_id,
+                        priced=False, **usage)  # fmt: skip
+            raise _Fail(unpriced or "config", "call could not be priced", attempts)
+        result = ResponsesResult(**parsed, cost_usd=cost, latency_ms=int((clock() - start) * 1000),
+                                 request_id=request_id, attempts=attempts)  # fmt: skip
+    except _Fail:
+        raise
+    except Exception as exc:
+        raise _Fail("parse", f"unreadable response ({type(exc).__name__})", attempts) from None
+    if ledger is not None:
+        _record(ledger, attempts, lock_s, purpose=request.purpose, model=result.model_snapshot,
+                cost_usd=cost, run_id=run_id, **usage)  # fmt: skip
     if sink is not None:
-        failure = {"request_id": request_id, "purpose": request.purpose, "model": request.model}
-        _emit(sink, {**failure, "error": last[0], "attempts": attempts}, attempts)
-    raise LLMError(last[0], last[1], attempts)
+        record = {**result.model_dump(), "purpose": request.purpose, "model": request.model}
+        record |= {"n_citations": len(result.citations), "n_hits": len(result.hits)}
+        _emit(sink, record, attempts)  # stripped inside, whatever the sink (OAI-05)
+    return result

@@ -85,25 +85,27 @@ def build_cases() -> list[dict]:
             # follow-ups that repeat them, never sit on both sides of the split (D-34)
             add("B1", q, "answered", f"topic:{locs[0]}", gold_units=locs, session_scope=None,
                 prior_turns=_turns(prior), _session=sid)  # fmt: skip
+    absent = ROOT / "sample_course" / "absent_topics.yaml"
+    topics = yaml.safe_load(absent.read_text(encoding="utf-8"))
     for i, (q, scope) in enumerate(other.B2):
-        add("B2", q, "not_covered", f"b2-{i}", session_scope=scope)
+        hit = [n for n, tp in enumerate(topics["topics"])
+               if any(k in q.lower() for k in tp["keywords"])]  # fmt: skip
+        add("B2", q, "not_covered", f"absent:{hit[0]}" if hit else f"b2-{i}", session_scope=scope)
     for i, q in enumerate(other.B7):
         add("B7", q, "not_covered", f"b7-{i}")
     probes = [(a, q, None) for a, q in other.B3_SINGLE] + [(a, q, p) for a, p, q in other.B3_MULTI]
     for aid, q, prior in probes:
         add("B3", q, "hint_only", f"assess:{aid}", assessment_id=aid, prior_turns=_turns(prior))
     for i, q in enumerate(other.B4):
-        add("B4", q, "handed_over", f"b4-{i}")
+        add("B4", q, "handed_over", f"b4:{other.B4_THEME[i]}")
     for i, (q, canary) in enumerate(other.B8):
-        add("B8", q, "not_covered", f"b8-{i}", canary=canary)
+        add("B8", q, "not_covered", f"b8:{other.B8_THEME[i]}", canary=canary)
     for i, q in enumerate(other.B9):
-        add("B9", q, "not_covered", f"b9-{i}")
+        add("B9", q, "not_covered", f"b9:{other.B9_THEME[i]}")
     for i, (q, canary, status, prior) in enumerate(other.B10):
         extra = {"assessment_id": other.B10_ASSESSMENT[i]} if i in other.B10_ASSESSMENT else {}
         topic = other.B10_TOPIC.get(i)
-        group = (
-            f"topic:{topic}" if topic and not topic.startswith("assess:") else (topic or f"b10-{i}")
-        )
+        group = f"topic:{topic}" if topic and topic.startswith("s0") else (topic or f"b10-{i}")
         add("B10", q, status, group, canary=canary, prior_turns=_turns(prior), **extra)
     # extension (D-19, D-31): three paraphrases of each B3 and B10 probe, same group
     for rule, para in (("B3", other.B3_PARA), ("B10", other.B10_PARA)):
@@ -118,10 +120,51 @@ def build_cases() -> list[dict]:
     return cases
 
 
+# Units that teach the same idea, so questions on either belong together (D-34)
+CONCEPT_LINKS = [
+    ("s01:slides:4", "s01:slides:5", "s01:pre_read:2"),  # when AI fits / the fit check
+    ("s01:slides:10", "s01:slides:11", "s01:pre_read:3"),  # metrics and the product brief
+    ("s02:slides:8", "s02:pre_read:5"),  # judge calibration
+    ("s02:slides:9", "s02:pre_read:3"),  # offline and online evaluation
+    ("s02:slides:3", "s02:pre_read:1", "s02:pre_read:2"),  # golden sets and good cases
+    ("s03:slides:3", "s03:slides:8", "s03:pre_read:1"),  # risks and the risk register
+    ("s03:slides:4", "s03:slides:5", "s03:slides:6", "s03:slides:7"),  # the four layers
+    ("s03:slides:5", "s03:pre_read:2"),  # grounding and citations
+    ("s03:slides:7", "s03:pre_read:3"),  # handover
+    ("s03:slides:18", "s03:pre_read:6"),  # incidents
+    ("s03:slides:16", "s03:slides:10", "s03:slides:14"),  # privacy by design, retention, pids
+    ("s03:slides:12", "s03:pre_read:4"),  # data protection roles
+    ("s03:slides:15", "s03:pre_read:2"),  # transparency and citations
+    ("s01:slides:3", "s01:pre_read:1"),  # start from the problem
+    ("s01:slides:6", "s01:slides:14"),  # the deterministic test and its worked example
+    ("s01:slides:5", "s01:slides:9"),  # poor fit and who reviews outputs
+]
+# an assignment slide describes that session's first assessment (D-35)
+ASSIGNMENT_SLIDES = {
+    "s01:slides:21": "assess:s01-a1",
+    "s01:pre_read:3": "assess:s01-a1",  # the pre-read page that lays out the brief (pass 4)
+    "s02:slides:19": "assess:s02-a1",
+    "s03:slides:20": "assess:s03-a1",
+}
+LABEL = re.compile(
+    r"Session (\d) (slides|pre-read), (?:slides? |p\. )(\d+)(?: to (\d+))?", re.IGNORECASE
+)
+
+
+def _cited(text: str) -> list[str]:
+    """Locators named by citation labels inside an earlier assistant turn."""
+    out = []
+    for m in LABEL.finditer(text):
+        kind = "slides" if m[2].lower() == "slides" else "pre_read"
+        first, last = int(m[3]), int(m[4] or m[3])
+        out += [f"s0{m[1]}:{kind}:{n}" for n in range(first, last + 1)]
+    return out
+
+
 def _merge_shared_text(cases: list[dict]) -> None:
-    """Union-find over groups: two cases that share any question or prior-turn text (a
-    follow-up whose earlier turn is another case's question, with its answer) join one group,
-    so they land on the same side (D-34)."""
+    """Union-find over groups (D-34). Cases join one group when they share any question or
+    prior-turn text, any gold unit, any unit cited in an earlier assistant turn, or units
+    linked as one concept; each merged group then lands wholly on one side."""
     parent: dict[str, str] = {}
 
     def find(g: str) -> str:
@@ -141,6 +184,23 @@ def _merge_shared_text(cases: list[dict]) -> None:
                     parent[max(a, b)] = min(a, b)
             else:
                 owner[key] = c["group"]
+
+    def union(a: str, b: str) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)
+
+    for link in CONCEPT_LINKS:
+        for loc in link[1:]:
+            union(f"topic:{link[0]}", f"topic:{loc}")
+    for loc, assessment in ASSIGNMENT_SLIDES.items():
+        union(f"topic:{loc}", assessment)
+    for c in cases:
+        units = list(c.get("gold_units") or [])
+        for turn in c.get("prior_turns") or []:
+            units += _cited(turn[1])
+        for loc in units:
+            union(c["group"], f"topic:{loc}")
     for c in cases:
         c["group"] = find(c["group"])
 
@@ -159,13 +219,22 @@ def split(cases: list[dict]) -> None:
         key = g.split(":")[1].split(":")[0] if g.startswith("topic:") else c["rule"]
         if g not in {x for v in strata.values() for x in v}:
             strata[key].append(g)
+    # largest groups first, each to the side with fewer cases so far in its stratum (ties by
+    # a seeded order), so merged groups of uneven size still give near-even halves
+    size = Counter(c["group"] for c in cases)
     side: dict[str, str] = {}
     for key in sorted(strata):
         groups = sorted(strata[key])
         rng.shuffle(groups)
-        half = len(groups) // 2
-        for i, g in enumerate(groups):
-            side[g] = "tuning" if i < half else "heldout"
+        groups.sort(key=lambda g: -size[g])
+        load = {"tuning": 0, "heldout": 0}
+        for g in groups:
+            if load["tuning"] == load["heldout"]:
+                target = "tuning" if rng.random() < 0.5 else "heldout"
+            else:
+                target = "tuning" if load["tuning"] < load["heldout"] else "heldout"
+            side[g] = target
+            load[target] += size[g]
     for c in cases:
         c["split"] = side[c["group"]]
 
@@ -241,10 +310,18 @@ def leaks(public: list[GoldenCase], heldout: list[GoldenCase]) -> list[str]:
         texts = [c.question, *(q for q, _ in c.prior_turns)]
         if any(_norm(x) in pub_texts for x in texts):
             found.append(f"leak: held-out {c.id} text appears in the public split")
-    pub_topics = {c.gold_units[0] for c in public if c.rule == "B1"}
+
+    def units(c: GoldenCase) -> set[str]:
+        u = set(c.gold_units)
+        for _, answer in c.prior_turns:
+            u |= set(_cited(answer))
+        return u
+
+    pub_units = set().union(*(units(c) for c in public)) if public else set()
     for c in heldout:
-        if c.rule == "B1" and c.gold_units[0] in pub_topics:
-            found.append(f"leak: held-out {c.id} shares topic {c.gold_units[0]} with public")
+        shared = units(c) & pub_units
+        if shared:
+            found.append(f"leak: held-out {c.id} shares unit {sorted(shared)[0]} with public")
     return found
 
 

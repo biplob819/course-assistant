@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 from typing import Any
@@ -558,3 +559,144 @@ def test_the_deadline_must_be_finite_and_positive(deadline):
 def test_trace_patterns_refuse_words_posing_as_ids():
     rec = {"model": "gpt-5-zebrafish", "version": "decade", "at": "2026-11-15T9876543210"}
     assert strip_text(rec) == {}
+
+
+# ---------- verifier pass 5 regressions ----------
+
+
+@pytest.mark.privacy
+def test_no_error_ever_chains_provider_text():
+    from openai.types.responses import Response
+
+    spaced = make_response().model_dump()
+    spaced["output"][0]["results"][0]["file_id"] = "file with PROVIDERTEXT spaces"
+    with pytest.raises(LLMError) as exc:
+        run([make_response(model="gpt-9-PROVIDERTEXT")])
+    assert exc.value.__context__ is None and exc.value.__cause__ is None
+    assert "PROVIDERTEXT" not in str(exc.value)
+    result, _ = run([Response.model_validate(spaced)])  # an odd but valid id simply passes
+    assert result.hits[0].file_id.startswith("file with")
+
+
+def test_negative_token_counts_are_a_parse_error():
+    from openai.types.responses import Response
+
+    data = make_response().model_dump()
+    data["usage"]["output_tokens_details"]["reasoning_tokens"] = -1
+    with pytest.raises(LLMError) as exc:
+        run([Response.model_construct(**data)])
+    assert exc.value.kind == "parse"
+
+
+@pytest.mark.parametrize("deadline", [10**400, True, 1e300, "20"])
+def test_absurd_deadlines_are_config_errors(deadline):
+    with pytest.raises(LLMError) as exc:
+        client = FakeClient([make_response()])
+        respond(req(), client=client, prices=PRICES, deadline_s=deadline)  # type: ignore[arg-type]
+    assert exc.value.kind == "config"
+
+
+def test_a_held_ledger_lock_cannot_hold_the_call_past_its_deadline(tmp_path):
+    import fcntl
+    import time as _time
+
+    path = tmp_path / "l.jsonl"
+    path.write_text("", encoding="utf-8")
+    holder = path.open("a", encoding="utf-8")
+    fcntl.flock(holder, fcntl.LOCK_EX)
+    started = _time.monotonic()
+    with pytest.raises(LLMError) as exc:
+        run([make_response()], ledger=Ledger(path, monthly_budget_usd=10), deadline_s=1.0)
+    assert exc.value.kind == "config" and _time.monotonic() - started < 3.0
+    holder.close()
+
+
+def test_client_setup_oddities_are_config_errors():
+    import openai
+
+    class RaisingProperty(FakeClient):
+        @property
+        def with_options(self):  # type: ignore[override]
+            raise RuntimeError("PROVIDERTEXT")
+
+    with pytest.raises(LLMError) as exc:
+        respond(req(), client=RaisingProperty([make_response()]), prices=PRICES)
+    assert exc.value.kind == "config" and "PROVIDERTEXT" not in str(exc.value)
+    real = openai.OpenAI(api_key="t", base_url="https://example.invalid/v1")
+    with pytest.raises(LLMError) as exc:
+        respond(req(), client=real, prices=PRICES, http_factory=lambda t: None)  # type: ignore[arg-type,return-value]
+    assert exc.value.kind == "config"
+
+
+# ---------- verifier pass 6 regressions ----------
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("make", [lambda: SystemExit("Paris"), lambda: GeneratorExit("Paris"),
+                                  lambda: asyncio.CancelledError("Paris")])  # fmt: skip
+def test_non_exception_failures_still_leave_as_text_free_llm_errors(make, tmp_path):
+    class BrokenSink:
+        def emit(self, record):
+            raise make()
+
+    class BrokenLedger(Ledger):
+        def append(self, **row):
+            raise make()
+
+    ledger = BrokenLedger(tmp_path / "l.jsonl", 100.0)
+    cases = [dict(outcomes=[make()]), dict(outcomes=[make_response()], sink=BrokenSink()),
+             dict(outcomes=[make_response()], ledger=ledger)]  # fmt: skip
+    for case in cases:
+        outcomes = case.pop("outcomes")
+        with pytest.raises(LLMError) as exc:
+            run(outcomes, **case)
+        assert "Paris" not in str(exc.value)
+        assert exc.value.__context__ is None and exc.value.__cause__ is None
+
+
+def test_keyboard_interrupt_is_never_swallowed():
+    with pytest.raises(KeyboardInterrupt):
+        run([KeyboardInterrupt()])
+
+
+def test_a_clock_running_backwards_cannot_lengthen_the_wait():
+    import time as _time
+
+    class SlowResponses:
+        def create(self, **kwargs):
+            _time.sleep(3)
+            return make_response()
+
+    class SlowClient(FakeClient):
+        def __init__(self):
+            super().__init__([])
+            self.responses = SlowResponses()  # type: ignore[assignment]
+
+    ticks = iter([100.0])
+    start = _time.monotonic()
+    with pytest.raises(LLMError):
+        respond(req(), client=SlowClient(), prices=PRICES, sleep=lambda s: None,
+                clock=lambda: next(ticks, 50.0), deadline_s=0.3)  # fmt: skip
+    assert _time.monotonic() - start < 2.0
+
+
+@pytest.mark.parametrize("bad", [float("nan"), 10**400, -1, True, 1.5])
+def test_out_of_range_token_counts_are_parse_errors_and_never_reach_the_ledger(bad, tmp_path):
+    resp = make_response()
+    assert resp.usage is not None
+    usage = resp.usage.model_copy(update={"input_tokens": bad})
+    resp = resp.model_copy(update={"usage": usage})
+    ledger = Ledger(tmp_path / "l.jsonl", 100.0)
+    with pytest.raises(LLMError) as exc:
+        run([resp], ledger=ledger)
+    assert exc.value.kind == "parse"
+    path = tmp_path / "l.jsonl"
+    assert not path.exists() or path.read_text(encoding="utf-8") == ""
+
+
+@pytest.mark.parametrize("bad", [float("nan"), 10**400, -1, True])
+def test_the_ledger_refuses_counts_that_are_not_json_whole_numbers(bad, tmp_path):
+    with pytest.raises(ValueError):
+        Ledger(tmp_path / "l.jsonl", 100.0).append(purpose="answer", model="m", tokens_in=bad,
+                                           tokens_cached=0, tokens_out=0,
+                                           file_search_calls=0, cost_usd=0.0)  # fmt: skip
