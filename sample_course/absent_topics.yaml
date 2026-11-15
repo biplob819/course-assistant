@@ -1,0 +1,31 @@
+# Topics deliberately not covered by the sample course (B2/B7 golden cases).
+# Each keyword must appear nowhere in any slide, note, page or agenda text.
+topics:
+  - topic: "Reinforcement learning from human feedback"
+    keywords: ["reinforcement", "rlhf"]
+  - topic: "How transformer attention works"
+    keywords: ["transformer", "attention head", "self-attention"]
+  - topic: "GPU hardware and pricing"
+    keywords: ["gpu", "nvidia", "cuda"]
+  - topic: "Vector index algorithms such as HNSW"
+    keywords: ["hnsw", "vector index", "nearest neighbour"]
+  - topic: "LoRA and fine-tuning hyperparameters"
+    keywords: ["lora", "learning rate", "hyperparameter"]
+  - topic: "Model quantisation"
+    keywords: ["quantis", "quantiz", "int8"]
+  - topic: "Diffusion image generation"
+    keywords: ["diffusion", "stable diffusion"]
+  - topic: "Power analysis for A/B tests"
+    keywords: ["a/b test", "power analysis", "statistical power"]
+  - topic: "Speech recognition"
+    keywords: ["speech recognition", "transcription", "whisper"]
+  - topic: "Kubernetes deployment"
+    keywords: ["kubernetes", "docker", "container"]
+  - topic: "Tokenisation and byte-pair encoding"
+    keywords: ["tokenis", "tokeniz", "byte-pair", "bpe"]
+  - topic: "Differential privacy"
+    keywords: ["differential privacy", "epsilon"]
+  - topic: "SaaS pricing strategy"
+    keywords: ["pricing strategy", "freemium", "subscription tier"]
+  - topic: "OKRs and quarterly planning"
+    keywords: ["okr", "quarterly planning"]

@@ -8,3 +8,11 @@ A course assistant that answers learner questions only from approved session mat
 - [Tech Spec](AI%20Teaching%20Assistant%20Tech%20Spec.md): how it is built, the build graph, and the PRD loophole review (Appendix A).
 
 This repo will never contain real course material or learner data. The demo runs on a sample course written for it, under CC BY 4.0.
+
+## Development
+
+```
+uv sync --all-extras          # the sample-course build and tests need python-pptx and pypdf
+uv run pytest -q
+python scripts/status.py      # live build status, node by node
+```

@@ -1,0 +1,155 @@
+session: s01
+title: 'Session 1: From problem to AI product'
+agenda: |
+  Session 1 agenda (90 minutes).
+  0-10 min: Welcome, how the course runs, how to use the course assistant.
+  10-35 min: When AI is the right tool, and when it is not.
+  35-60 min: Framing the job to be done and the unit of work.
+  60-80 min: Success metrics, guardrail metrics and the cost of errors.
+  80-90 min: Assignment 1 briefing and questions.
+slides:
+- title: From problem to AI product
+  body: |
+    Session 1 of 3.
+    Building AI products that people can trust.
+- title: What this course covers
+  body: |
+    Session 1: deciding whether AI fits a problem, and framing it.
+    Session 2: evaluating AI systems before and after release.
+    Session 3: trust architecture, so people can rely on the system.
+    Each session has slides, a pre-read and a short graded assignment.
+- title: Start with the problem, not the model
+  body: |
+    A product starts from a user problem that costs someone time, money or risk.
+    Ask three questions first: who has the problem, how often, and what it costs them today.
+    If you cannot name the person and the cost, a model will not fix it.
+  notes: |
+    Instructor note: ask two learners to describe a problem from their own job before showing the next slide.
+- title: When AI is a good fit
+  body: |
+    AI fits when the task needs judgement over messy input such as text, images or speech.
+    It fits when a good-enough answer is useful and a person can check or correct it.
+    It fits when the volume is high enough that a manual process does not scale.
+- title: When AI is a poor fit
+  body: |
+    Prefer rules or plain software when the logic is fixed and fully known in advance.
+    Avoid AI when a single wrong answer is unacceptable and nobody can review it.
+    Avoid AI when there is no data or reference material to ground its answers.
+- title: The deterministic test
+  body: |
+    Before choosing a model, try to write the decision as a short set of rules.
+    If ten rules cover 95 percent of cases, ship the rules and keep AI for the rest.
+    This is called the deterministic test, and it often saves months of work.
+- title: Framing the job to be done
+  body: |
+    Write the job as: when [situation], I want to [motivation], so I can [outcome].
+    The job stays stable even when the technology changes.
+    Example: when a learner is stuck between sessions, they want a checked answer, so they can keep studying.
+- title: The unit of work
+  body: |
+    Define the smallest piece of work the AI system does on its own, such as one answer or one summary.
+    Every metric, test case and cost estimate is counted per unit of work.
+    A vague unit of work makes evaluation impossible later.
+- title: Human in the loop, on the loop, or out of the loop
+  body: |
+    In the loop: a person approves every output before it takes effect.
+    On the loop: outputs take effect, and a person monitors and can step in.
+    Out of the loop: no person reviews outputs; only for low-risk, reversible tasks.
+- title: Success metrics
+  body: |
+    A success metric measures whether the user's job got done, such as tasks completed without help.
+    Pick one primary metric and state its target before building.
+    Report every metric with a confidence interval, not a single number.
+- title: Guardrail metrics
+  body: |
+    A guardrail metric must not get worse while you improve the primary metric.
+    Typical guardrails: error rate, cost per task, latency and complaints.
+    A launch is blocked if any guardrail is breached, even when the primary metric improves.
+- title: The cost of errors is not symmetric
+  body: |
+    A false positive and a false negative usually cost different amounts.
+    Write down the cost of each error type before choosing a threshold.
+    Example: a wrong answer shown to a learner costs more than a question passed to a person.
+- title: Build, buy or call an API
+  body: |
+    Call a hosted model API when speed matters and the data can leave your systems under agreement.
+    Fine-tune only when prompting and retrieval have been measured and fall short.
+    Train from scratch almost never; it is the most expensive option by far.
+- title: 'Worked example: support ticket triage'
+  body: |
+    A support team receives 1,200 tickets a week.
+    Three rules route 70 percent of them: billing, password and shipping.
+    AI handles the remaining 30 percent, where a ticket has to be read and understood.
+    A person reviews any ticket the model labels with confidence under 0.7.
+  notes: |
+    Instructor note: ask learners which of the three rules they would test first, and why.
+- title: Estimating value before building
+  body: |
+    Value per week = cases per week x minutes saved per case x cost per minute.
+    Subtract the running cost and the expected cost of errors.
+    If what remains is small, the project is not worth the risk.
+- title: Data readiness checklist
+  body: |
+    Do you have at least 100 real examples of the task?
+    Do you know the correct result for each example?
+    Are you allowed to use them for this purpose?
+    If any answer is no, fix the data before choosing a model.
+- title: Choosing a model tier
+  body: |
+    Start with the most capable model to learn whether the task is possible at all.
+    Then run a smaller, cheaper model on the same test set.
+    Keep the smaller model only if its quality interval overlaps the larger model's.
+- title: Latency budgets
+  body: |
+    People notice delays of more than about one second in a chat and give up after about ten.
+    Write a latency budget for each step, for example two seconds for retrieval and five for generation.
+    Measure the 95th percentile, not the average.
+- title: 'Common failure: automating the wrong step'
+  body: |
+    Teams often automate the step that is easiest to build, not the one that costs the most.
+    Map the whole workflow and time each step before deciding where AI goes.
+  notes: |
+    Instructor note: a whiteboard walk through one real workflow takes ten minutes and makes this point well.
+- title: 'Image: the AI product canvas'
+  body: |
+    Canvas.
+- title: Assignment 1 and next session
+  body: |
+    Assignment 1: write a one-page AI product brief for a problem from your own work.
+    Next session: how to evaluate an AI system before anyone relies on it.
+pre_read:
+  title: 'Session 1 pre-read: Is AI the right tool?'
+  pages:
+  - heading: Why most AI projects stall
+    text: |
+      Many AI projects stall because they begin with a model and look for a problem afterwards.
+      Teams that start from a measured user problem are far more likely to ship something people use.
+      A useful first step is a one-week diary study: write down every time the problem happens and what it cost.
+      The diary gives you a baseline, which is the number your product must beat.
+  - heading: The three-part fit check
+    text: |
+      The fit check has three parts: judgement, tolerance and volume.
+      Judgement asks whether the task needs interpretation of messy input.
+      Tolerance asks whether an imperfect answer is still useful when a person can check it.
+      Volume asks whether there are enough cases each week to justify building and running a system.
+      If any part fails, consider a simpler tool first.
+  - heading: Writing a product brief
+    text: |
+      A product brief fits on one page and names the user, the job, the unit of work, the primary metric and the guardrails.
+      It also lists what the product will not do, called non-goals, so scope stays small.
+      A brief should state how the team will know the product failed, not only how it succeeds.
+  - heading: Baselines and counterfactuals
+    text: |
+      A baseline is the current performance without your product, measured the same way you will measure the product.
+      A counterfactual asks what would have happened anyway, without your change.
+      Without a baseline, an improvement cannot be shown, only claimed.
+  - heading: Measuring time saved
+    text: |
+      Time saved is measured by timing the same task with and without the product on a sample of real cases.
+      Self-reported time savings are usually too high, so log or observe the times instead.
+      Report the median time, because a few very long cases distort the mean.
+  - heading: When to stop a project
+    text: |
+      Set a stop rule before starting, such as: stop if the primary metric is below target after two iterations on the held-out set.
+      A stop rule protects the team from sunk-cost thinking, where effort already spent becomes the reason to continue.
+      Write the stop rule into the product brief so everyone agrees on it in advance.

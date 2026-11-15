@@ -92,6 +92,9 @@ QuestionId = Annotated[str, StringConstraints(pattern=r"^q-[0-9a-f]{12,32}$")]
 ConversationId = Annotated[str, StringConstraints(pattern=r"^c-[0-9a-f]{12,32}$")]
 Version = Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9._-]{0,31}$")]
 
+# Free-form JSON (filters, schemas, search attributes): frozen recursively, sets rejected.
+JsonValue = Annotated[Any, AfterValidator(deep_freeze)]
+
 V = TypeVar("V")
 FrozenMap = Annotated[dict[str, V], AfterValidator(_freeze_mapping)]
 

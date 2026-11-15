@@ -1,0 +1,40 @@
+# Assessment briefs for the sample course. Briefs only: model solutions are never in the
+# repo, the manifest or any prompt (D-7); they live in the git-ignored golden/heldout/solutions/.
+schema_version: "1.0"
+assessments:
+  - assessment_id: s01-a1
+    title: "Assignment 1: AI product brief"
+    brief: "Write a one-page AI product brief for a problem from your own work: the user, the job to be done, the unit of work, one primary metric with a target, two guardrail metrics and three non-goals."
+    sessions: [s01]
+  - assessment_id: s01-a2
+    title: "Fit check exercise"
+    brief: "Apply the three-part fit check (judgement, tolerance, volume) and the deterministic test to three tasks from your organisation, and recommend AI, rules or neither for each with reasons."
+    sessions: [s01]
+  - assessment_id: s01-a3
+    title: "Error cost memo"
+    brief: "For your product, list the false positive and false negative errors, estimate the cost of each, and propose a decision threshold and a human-in-the-loop mode that follow from those costs."
+    sessions: [s01]
+  - assessment_id: s02-a1
+    title: "Assignment 2: golden set design"
+    brief: "Design a 50-case golden set for your Session 1 product: case categories and counts, five example cases with expected results, a tuning and held-out split, and the scorer for each category."
+    sessions: [s02]
+  - assessment_id: s02-a2
+    title: "Judge calibration plan"
+    brief: "Write a plan to calibrate an LLM judge for one quality of your product: the labelling sample, who labels, the agreement statistic, the threshold you will accept and what you will do if the judge falls short."
+    sessions: [s02]
+  - assessment_id: s02-a3
+    title: "Offline and online monitoring plan"
+    brief: "Describe the offline evaluation that gates each release of your product and the online evaluation that runs after release, including how you will detect drift and when you will add new golden cases."
+    sessions: [s02]
+  - assessment_id: s03-a1
+    title: "Assignment 3: trust architecture"
+    brief: "Draw a trust architecture for your Session 1 product with one layer per high-impact risk, and for each layer state the risk it handles and the evidence a reviewer could check."
+    sessions: [s03]
+  - assessment_id: s03-a2
+    title: "Risk register"
+    brief: "Build a risk register of at least eight risks for your product, rating likelihood and impact, and map each high-impact risk to a layer from Session 3."
+    sessions: [s03]
+  - assessment_id: s03-a3
+    title: "Incident runbook"
+    brief: "Write an incident runbook for your AI feature covering detection, pausing with the off switch, notification, fixing and reporting, with named roles and time limits."
+    sessions: [s03]

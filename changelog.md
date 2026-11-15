@@ -24,3 +24,6 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FEAT] [N1.1] — schemas and config: corpus, request, people and privacy models, AppConfig, GoldenCase, YAML loaders; deep-frozen and strict (D-28)
 - [FIX] [N1.1] — verifier pass 1: strict models, role ids, generated-id audit targets, frozen status table, exact export contract (D-29, L-27)
 - [FEAT] [N1.1] — green: verifier pass 2 confirmed; canonical JSON, YAML 1.2 scalars, generated ids
+- [FEAT] [N1.3] — sample course: 3 sessions (41 slides, 12 pre-read pages, agendas) built byte-stably from YAML, CC BY 4.0, manifest with hashes, 9 assessment briefs, 14 absent topics
+- [FEAT] [N1.2] — OpenAI client: Responses wrapper (store=false fixed, explicit effort, file search with results), transient-only retries, prices with cache writes, spend ledger, allowlist trace sink
+- [FEAT] [N1.3] — green: sample course expanded to 60 slides and 18 pre-read pages after verifier review

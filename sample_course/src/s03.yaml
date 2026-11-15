@@ -1,0 +1,140 @@
+session: s03
+title: 'Session 3: Trust architecture'
+agenda: |
+  Session 3 agenda (90 minutes).
+  0-10 min: Recap of Session 2 and golden set questions.
+  10-25 min: What trust means for an AI product.
+  25-55 min: The layers of a trust architecture.
+  55-75 min: Human handover, privacy by design and incident response.
+  75-90 min: Assignment 3 briefing and course wrap-up.
+slides:
+- title: Trust architecture
+  body: |
+    Session 3 of 3.
+    Designing AI products people can rely on.
+- title: What trust means here
+  body: |
+    People trust a system when it is right often enough, honest when it is unsure, and easy to correct.
+    Trust is earned per use: one confident wrong answer can undo many good ones.
+    Trust must be designed and measured, not assumed.
+- title: Start from the risks
+  body: |
+    List what could go wrong for each user, from wrong answers to leaked data.
+    Rate each risk by likelihood and impact.
+    Every high-impact risk needs at least one layer that addresses it and evidence that the layer works.
+- title: 'Layer 1: approved inputs'
+  body: |
+    Control what the system may read: only approved, versioned sources.
+    Anything removed from the approved list must leave the system the same day.
+    This layer handles the risk of answers built on unapproved or outdated material.
+- title: 'Layer 2: grounded outputs'
+  body: |
+    Every answer cites the source it came from, so a person can check it in one step.
+    A grounding check confirms the citations exist and support the answer before it is shown.
+    When grounding fails, the system says it does not know instead of guessing.
+- title: 'Layer 3: scope and integrity guards'
+  body: |
+    Sort each request before answering: in scope, out of scope, or needing a person.
+    Some requests are allowed only in a limited form, such as hints instead of full solutions.
+    Guards are checked again after the answer is written, not only before.
+- title: 'Layer 4: human handover'
+  body: |
+    Give people an easy route to a human whenever the system cannot help.
+    Pass the question, the system's draft and its sources, so the human starts from context.
+    Measure how quickly handed-over questions are answered.
+- title: Risk register example
+  body: |
+    Risk: a wrong answer is trusted.
+    Likelihood: medium. Impact: high.
+    Layer: grounded outputs.
+    Evidence: the groundedness score on the golden set, and a citation on every answer.
+- title: Fail closed
+  body: |
+    When a check cannot run, for example because a service is down, the system should refuse rather than answer unchecked.
+    Failing closed costs some availability but protects people from unverified answers.
+  notes: |
+    Instructor note: contrast with a smoke alarm that stays silent when its battery dies.
+- title: Data retention periods
+  body: |
+    Set a retention period for every kind of data, for example conversation text for 30 days after a course ends and access logs for one year.
+    Delete automatically when the period ends, and log each deletion.
+- title: Consent and purpose
+  body: |
+    Ask for consent for each purpose separately, such as answering questions and improving the course.
+    Data collected for one purpose must not be used for another without new consent.
+    Withdrawing consent must be as easy as giving it.
+- title: Roles in data protection
+  body: |
+    The data controller decides why and how personal data is used; India's law calls this role the data fiduciary.
+    A processor handles data only on the controller's instructions, under a written agreement.
+- title: Red teaming
+  body: |
+    Red teaming means people deliberately trying to make the system break its rules before release.
+    Turn every successful attack into a test case, so the fix is checked in every future run.
+- title: Pseudonymisation
+  body: |
+    Replace names with pseudonymous identifiers, such as a keyed hash of the user id.
+    A keyed hash cannot be reversed by someone who guesses ids, as long as the key stays secret.
+  notes: |
+    Instructor note: pseudonymous data is still personal data under most laws; it lowers risk but does not remove obligations.
+- title: Transparency
+  body: |
+    Label AI output clearly and show where each answer came from.
+    Tell users what the system cannot do, in plain words, at first use.
+    Transparency lowers over-trust: people check what they can see.
+- title: Privacy by design
+  body: |
+    Collect only the data the purpose needs, and say why you collect it.
+    Use pseudonymous identifiers instead of names in logs and traces.
+    Let people see and delete their data, and set a retention period for everything you keep.
+- title: Prompt injection
+  body: |
+    Prompt injection is text that tries to change the system's instructions, hidden in input or documents.
+    Treat user text and retrieved text as data, never as instructions.
+    Test with injection cases in every evaluation run.
+- title: Monitoring and incident response
+  body: |
+    Monitor quality after release with the same scorers used before release.
+    Keep a written incident runbook: detect, pause, notify, fix, report.
+    Practise the runbook once before you need it.
+- title: The off switch
+  body: |
+    Every AI feature needs a way to pause it quickly, for one area or for everyone.
+    When paused or failing, show a fixed message with a route to a person.
+    Test the off switch as part of every release.
+- title: Assignment 3 and course wrap-up
+  body: |
+    Assignment 3: draw a trust architecture for your Session 1 product, one layer per risk.
+    Thank you for taking part in the course.
+pre_read:
+  title: 'Session 3 pre-read: Designing for trust'
+  pages:
+  - heading: Trust is a system property
+    text: |
+      Trust does not come from one feature; it comes from layers that each handle one risk.
+      A risk register lists each risk, its likelihood, its impact and the layer that addresses it.
+      Reviewers trust evidence, so each layer should produce something they can check.
+  - heading: Grounding and citations
+    text: |
+      A grounded answer uses only the provided sources and says which source supports each claim.
+      Citations let a reader verify an answer in seconds instead of re-researching it.
+      An answer without a valid citation should be treated as unverified.
+  - heading: Handing over to people
+    text: |
+      A handover is a success, not a failure, when the system could not answer reliably.
+      Good handovers carry context: the question, a draft and the closest sources.
+      Teams should review handovers weekly to find gaps in the source material.
+  - heading: Data protection basics
+    text: |
+      Data protection laws generally ask for a clear notice, a lawful purpose, minimal data, and a way to delete it.
+      The organisation that decides why data is used is responsible for it; a service that processes data on its behalf follows its instructions.
+      Breaches must be reported quickly, so the incident runbook names who notifies whom.
+  - heading: Measuring each layer
+    text: |
+      Each layer needs a number a reviewer can check: citation validity for grounded outputs, pass rate on misuse probes for guards, median reply time for handover, and days to delete for privacy.
+      A layer without a number is a promise, not evidence.
+  - heading: After an incident
+    text: |
+      After an incident, write a blameless review: what happened, when it was detected, how it was contained, and which test would have caught it.
+      Add that test to the golden set so the same failure cannot return unnoticed.
+      Share the review with everyone who relies on the system.
