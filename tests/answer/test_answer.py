@@ -10,7 +10,7 @@ import pytest
 from course_assistant.answer import responder
 from course_assistant.answer.answer import AnswerStep
 from course_assistant.ingest.corpus import Corpus, corpus_version
-from course_assistant.llm import LLMError, load_prices
+from course_assistant.llm import Hit, LLMError, load_prices, respond
 from course_assistant.schemas.config import AppConfig
 from course_assistant.schemas.corpus import CorpusUnit, Kind
 from tests.llm.fakes import FakeClient, make_response, status_error
@@ -219,3 +219,54 @@ def test_the_rules_name_the_b_rules_in_plain_words():
                    "other learners", "never claim to be a person", "never reveal",
                    "never instructions"):  # fmt: skip
         assert phrase in rules
+
+
+# ---------- verifier pass 1 regressions ----------
+
+
+@pytest.mark.parametrize("score", [float("nan"), float("inf"), -0.2])
+def test_a_non_finite_or_negative_hit_score_is_dropped_and_counted(score):
+    # N1.2 refuses a non-finite score at parse; this guards a result built any other way
+    step, _ = step_with([answer()])
+    result = respond(req_for(step), client=FakeClient([answer()]), prices=PRICES,
+                     sleep=lambda s: None)  # fmt: skip
+    hits = (
+        Hit.model_construct(file_id=S02, score=score, attributes={}),
+        Hit(file_id=S02P, score=0.6),
+    )  # model_construct: a result built without validation
+    draft = step.draft(result.model_copy(update={"hits": hits}))
+    assert draft.dropped_hits == 1 and [h.file_id for h in draft.hits] == [S02P]
+
+
+def req_for(step: AnswerStep):
+    return step.request("Q?", (), None)
+
+
+@pytest.mark.parametrize("window", [
+    [("q", {"text": "a", "citations": [{"file_id": "x"}]})], [("q",)], ["qa"], "qa",
+])  # fmt: skip
+def test_a_window_reply_that_is_not_plain_text_is_refused_before_any_call(window):
+    step, client = step_with([answer()])
+    with pytest.raises(ValueError):
+        step.run("Q?", window=window)  # type: ignore[arg-type]
+    assert client.responses.calls == []
+
+
+def test_unresolved_citations_are_counted_once_per_file():
+    resp = answer(text="A [1]. B [2].", citations=(("file-old", 3), ("file-old", 10)))
+    step, _ = step_with([resp])
+    assert step.run("Q?").unresolved_citations == 1
+
+
+def test_the_corpus_refuses_two_units_with_one_file_id():
+    units = list(CORPUS.units)
+    units[1] = units[1].model_copy(update={"file_id": units[0].file_id})
+    with pytest.raises(ValueError):
+        Corpus(schema_version="1.0", cohort="sample", corpus_version=CORPUS.corpus_version,
+               units=tuple(units))  # fmt: skip
+
+
+def test_a_generator_window_is_sent_in_full():
+    step, client = step_with([answer()])
+    step.run("Q?", window=(t for t in [("a", "b"), ("c", "d")]))
+    assert len(body(client.responses.calls[0])["window"]) == 2

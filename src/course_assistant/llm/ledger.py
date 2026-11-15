@@ -51,9 +51,14 @@ class Ledger:
             raise ValueError("run_id must be up to 64 letters, digits, dot, dash or underscore")
         if not isinstance(purpose, str) or not re.fullmatch(r"[a-z_]{1,32}", purpose):
             raise ValueError("purpose must be a short lowercase word")
-        counts = {"tokens_in": tokens_in, "tokens_cached": tokens_cached,
-                  "tokens_out": tokens_out, "file_search_calls": file_search_calls,
-                  "tokens_cache_write": tokens_cache_write, "tokens_reasoning": tokens_reasoning}
+        counts = {
+            "tokens_in": tokens_in,
+            "tokens_cached": tokens_cached,
+            "tokens_out": tokens_out,
+            "file_search_calls": file_search_calls,
+            "tokens_cache_write": tokens_cache_write,
+            "tokens_reasoning": tokens_reasoning,
+        }
         for name, value in counts.items():  # JSON-safe whole numbers only (verifier N1.2 pass 6)
             if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value < 10**15:
                 raise ValueError(f"{name} must be a whole number between 0 and 10**15")

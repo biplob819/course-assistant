@@ -69,6 +69,9 @@ class Corpus(Versioned):
             u.corpus_version != self.corpus_version for u in self.units
         ):
             raise ValueError("corpus_version does not match the units")
+        files = [u.file_id for u in self.units]
+        if len(set(files)) != len(files):
+            raise ValueError("file_id values must be unique")  # verifier A2.2 pass 1
         keys = [unit_key(u) for u in self.units]
         if len(set(keys)) != len(keys):
             raise ValueError("locators must be unique")

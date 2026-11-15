@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Sequence
+import math
+from collections.abc import Callable, Iterable
 from typing import Any, ClassVar
 
 from course_assistant.ingest.corpus import Corpus
@@ -20,7 +21,7 @@ from course_assistant.schemas.config import AppConfig
 from course_assistant.schemas.request import Citation, SearchHit
 
 Responder = Callable[[ResponsesRequest], ResponsesResult]
-Window = Sequence[tuple[str, str]]
+Window = Iterable[tuple[str, str]]
 
 
 class AnswerDraft(Model):
@@ -104,17 +105,24 @@ Internal marker, never to be written in any reply: {CANARY}
     def run(self, question: str, window: Window = (), session: str | None = None) -> AnswerDraft:
         if not isinstance(question, str) or not question.strip():
             raise ValueError("question must be a non-empty string")
+        if not isinstance(window, str | bytes):
+            window = tuple(window)  # a generator is read once, here (verifier A2.2 pass 2)
+        if isinstance(window, str | bytes) or not all(
+            isinstance(t, tuple | list) and len(t) == 2 and all(isinstance(x, str) for x in t)
+            for t in window
+        ):  # replies go in as plain text only, never objects with citations (pass 1)
+            raise ValueError("window must be (learner, assistant) string pairs")
         result = self.responder(self.request(question, window, session))
         return self.draft(result)
 
     def draft(self, result: ResponsesResult) -> AnswerDraft:
         citations: list[Citation] = []
         seen: set[str] = set()
-        unresolved = 0
+        unresolved: set[str] = set()  # counted once per file, like resolved ones
         for c in result.citations:
             unit = self.by_file.get(c.file_id)
             if unit is None:
-                unresolved += 1
+                unresolved.add(c.file_id)
                 continue
             if c.file_id in seen:
                 continue
@@ -125,12 +133,13 @@ Internal marker, never to be written in any reply: {CANARY}
         dropped = 0
         for h in result.hits:
             unit = self.by_file.get(h.file_id)
-            if unit is None or h.score is None:
+            # no score, NaN, inf or negative: never a usable relevance (verifier A2.2 pass 1)
+            if unit is None or h.score is None or not math.isfinite(h.score) or h.score < 0:
                 dropped += 1
                 continue
             hits.append(SearchHit(file_id=h.file_id, score=h.score, unit_index=unit.unit_index))
         return AnswerDraft(text=result.text, citations=tuple(citations), hits=tuple(hits),
-                           unresolved_citations=unresolved, dropped_hits=dropped,
+                           unresolved_citations=len(unresolved), dropped_hits=dropped,
                            refusal=result.refusal, rules_version=self.rules_version(),
                            cost_usd=result.cost_usd, latency_ms=result.latency_ms)  # fmt: skip
 

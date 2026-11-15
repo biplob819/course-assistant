@@ -425,3 +425,80 @@ def test_jsonl_delete_keeps_unrelated_and_drops_unreadable_lines_naming_the_lear
 def test_jsonl_delete_on_a_missing_file_deletes_nothing(tmp_path):
     assert JsonlSink(tmp_path / "none.jsonl").delete_pid(A) == 0
     assert not (tmp_path / "none.jsonl").exists()
+
+
+# ---------- verifier pass 1 regressions ----------
+
+
+@pytest.mark.privacy
+def test_a_damaged_line_of_another_learner_is_kept_when_one_conversation_is_deleted(tmp_path):
+    sink = JsonlSink(tmp_path / "t.jsonl")
+    sink.emit({"learner_pid": A, "conversation_id": "c-111111111111", "step": "answer"})
+    with sink.path.open("a", encoding="utf-8") as fh:
+        fh.write('{"learner_pid": "' + B + '", "conversation_id": "c-1111111111112222", "st\n')
+    assert sink.delete_pid(A, {"c-111111111111"}) == 1
+    assert "c-1111111111112222" in sink.path.read_text(encoding="utf-8")
+
+
+@pytest.mark.privacy
+def test_a_rewrite_keeps_the_file_permissions(tmp_path):
+    import os
+    import stat
+
+    sink = traced(tmp_path)
+    os.chmod(sink.path, 0o600)
+    assert sink.delete_pid(A) > 0
+    assert stat.S_IMODE(os.stat(sink.path).st_mode) == 0o600
+
+
+def test_no_line_appended_during_a_rewrite_is_lost(tmp_path):
+    import threading
+
+    sink = JsonlSink(tmp_path / "t.jsonl")
+    for i in range(3000):
+        sink.emit({"learner_pid": A if i % 2 else B, "step": "answer", "tokens_in": i})
+    stop = threading.Event()
+    written = []
+
+    def writer():
+        i = 0
+        while not stop.is_set():
+            sink.emit({"learner_pid": B, "step": "route", "tokens_in": i})
+            written.append(i)
+            i += 1
+
+    t = threading.Thread(target=writer)
+    t.start()
+    sink.delete_pid(A)
+    stop.set()
+    t.join()
+    lines = read(sink)
+    assert all(r["learner_pid"] == B for r in lines)
+    assert len([r for r in lines if r["step"] == "route"]) == len(written)
+    assert len([r for r in lines if r["step"] == "answer"]) == 1500
+
+
+@pytest.mark.privacy
+def test_the_consent_recorded_last_wins_even_if_dated_earlier(store):
+    give(A, ["answer_questions", "improve_course"], store, at=at(10))
+    give(A, ["answer_questions"], store, at=at(5))  # narrower, recorded later, dated earlier
+    assert allowed(A, "answer_questions", store) and not allowed(A, "improve_course", store)
+
+
+@pytest.mark.privacy
+def test_history_shows_only_what_the_learner_saw(store):
+    fill(store)
+    first = history(A, store)[0].turns[0]
+    assert first.answer is not None
+    assert first.answer.status == "handed_over" and first.answer.text is None
+    assert set(type(first.answer).model_fields) == {"question_id", "status", "text", "citations"}
+
+
+@pytest.mark.privacy
+def test_completing_trace_deletion_never_closes_a_request_created_after_it_was_read(store):
+    fill(store)
+    store.delete_history(A, None, at=at(100))
+    store.delete_history(A, None, at=at(200))  # a later request, not yet traced
+    store.mark_traces_deleted(A, at=at(150), upto=at(100))
+    open_ = [d for d in store.deletions() if d.learner_pid == A and d.traces_deleted_at is None]
+    assert [d.requested_at for d in open_] == [at(200)]

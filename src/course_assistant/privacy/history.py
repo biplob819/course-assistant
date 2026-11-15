@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Literal
 
 from course_assistant.privacy._errors import boundary, check_pid
-from course_assistant.schemas import Answer, Conversation, Question
+from course_assistant.schemas import Answer, Citation, Conversation, Question
 from course_assistant.schemas._base import Model, NonBlank, RoleId, Timestamp
 from course_assistant.store import Store
 
@@ -19,9 +19,26 @@ class Reply(Model):
     replied_at: Timestamp
 
 
+class ShownAnswer(Model):
+    """Only what the learner saw (verifier B2.2 pass 1): the status, the text when it was
+    shown (an answer or a hint; a not-covered or handed-over reply showed fixed text, not the
+    kept draft) and its citations. Hits, grounding, cost and model details stay out."""
+
+    question_id: str
+    status: str
+    text: str | None
+    citations: tuple[Citation, ...]
+
+    @classmethod
+    def of(cls, a: Answer) -> ShownAnswer:
+        shown = a.status in ("answered", "hint_only")
+        return cls(question_id=a.question_id, status=a.status, text=a.text if shown else None,
+                   citations=a.citations if shown else ())  # fmt: skip
+
+
 class Turn(Model):
     question: Question
-    answer: Answer | None = None
+    answer: ShownAnswer | None = None
     handover: Handover | None = None  # set when the question went to the teaching team
     reply: Reply | None = None
 
@@ -41,7 +58,12 @@ def _turn(q: Question, store: Store) -> Turn:
     reply = None
     if e is not None and e.reply_text and e.replied_by and e.replied_at:
         reply = Reply(text=e.reply_text, replied_by=e.replied_by, replied_at=e.replied_at)
-    return Turn(question=q, answer=a, handover=None if e is None else e.status, reply=reply)
+    return Turn(
+        question=q,
+        answer=None if a is None else ShownAnswer.of(a),
+        handover=None if e is None else e.status,
+        reply=reply,
+    )
 
 
 @boundary

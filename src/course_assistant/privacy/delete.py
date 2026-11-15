@@ -55,8 +55,9 @@ def delete(
         check_cid(conversation_id)
     when = now_or(at)
     request = store.delete_history(pid, conversation_id, at=when)
-    if _delete_traces(pid, _pending(store, pid), traces):
-        store.mark_traces_deleted(pid, at=when)
+    pending = _pending(store, pid)
+    if _delete_traces(pid, pending, traces):
+        store.mark_traces_deleted(pid, at=when, upto=max(d.requested_at for d in pending))
         return request.model_copy(update={"traces_deleted_at": when})
     return request
 
@@ -70,7 +71,8 @@ def retry_trace_deletion(store: Store, traces: Sequence[TraceSink], *,
     pids = sorted({d.learner_pid for d in store.deletions() if d.traces_deleted_at is None})
     completed = 0
     for pid in pids:
-        if _delete_traces(pid, _pending(store, pid), traces):
-            store.mark_traces_deleted(pid, at=when)
+        pending = _pending(store, pid)
+        if pending and _delete_traces(pid, pending, traces):
+            store.mark_traces_deleted(pid, at=when, upto=max(d.requested_at for d in pending))
             completed += 1
     return completed

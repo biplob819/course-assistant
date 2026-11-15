@@ -383,8 +383,7 @@ def _usage_only(resp: Any) -> dict[str, int] | None:
         tokens = {
             "tokens_in": usage.input_tokens,
             "tokens_cached": usage.input_tokens_details.cached_tokens or 0,
-            "tokens_cache_write": getattr(usage.input_tokens_details, "cache_write_tokens", 0)
-            or 0,
+            "tokens_cache_write": getattr(usage.input_tokens_details, "cache_write_tokens", 0) or 0,
             "tokens_out": usage.output_tokens,
             "tokens_reasoning": usage.output_tokens_details.reasoning_tokens or 0,
             "file_search_calls": 0,  # not countable without a parsed body

@@ -8,6 +8,19 @@ ROOT = Path(__file__).resolve().parents[2]
 CALLS = {"read_text", "write_text", "open"}
 
 
+def is_os_open(f: ast.expr) -> bool:
+    return (isinstance(f, ast.Attribute) and f.attr == "open"
+            and isinstance(f.value, ast.Name) and f.value.id == "os")  # fmt: skip
+
+
+def test_only_os_open_is_exempt():
+    calls = {"os.open(p, 1)": True, "open(p)": False, "path.open()": False,
+             "io.open(p)": False}  # fmt: skip
+    for src, exempt in calls.items():
+        call = ast.parse(src).body[0].value  # type: ignore[attr-defined]
+        assert is_os_open(call.func) is exempt, src
+
+
 def offenders():
     found = []
     for base in ("src", "scripts", "tests"):
@@ -28,6 +41,8 @@ def offenders():
                     )
                     if isinstance(mode, ast.Constant) and "b" in str(mode.value):
                         continue  # binary
+                    if is_os_open(f):
+                        continue  # os.open returns a file descriptor: no text, no encoding
                     if (
                         isinstance(f, ast.Attribute)
                         and f.attr == "open"

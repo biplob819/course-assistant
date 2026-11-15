@@ -146,15 +146,16 @@ class Store:
         ).fetchone()
         return None if row is None else self._load(model, row[0])
 
-    def _list(self, kind: str, model: type[M], where: str = "", args: tuple = ()) -> list[M]:
-        sql = f"select json from records where kind = ? {where} order by at, key"
+    def _list(self, kind: str, model: type[M], where: str = "", args: tuple = (),
+              order: str = "at, key") -> list[M]:  # fmt: skip
+        sql = f"select json from records where kind = ? {where} order by {order}"
         return [self._load(model, r[0]) for r in self._con.execute(sql, (kind, *args))]
 
     def _for_pid(self, kind: str, model: type[M], pid: str, where: str = "",
-                 args: tuple = ()) -> list[M]:  # fmt: skip
+                 args: tuple = (), order: str = "at, key") -> list[M]:  # fmt: skip
         """Rows for a learner, checked against the pid inside each record: a row whose key
         column was edited to another learner's pid is refused, not returned."""
-        rows = self._list(kind, model, "and pid = ? " + where, (pid, *args))
+        rows = self._list(kind, model, "and pid = ? " + where, (pid, *args), order)
         for r in rows:
             if getattr(r, "learner_pid", pid) != pid:
                 raise ValueError(f"stored {model.__name__} pid column does not match its record")
@@ -312,7 +313,9 @@ class Store:
         return closed
 
     def consents_for(self, pid: str) -> list[Consent]:
-        return self._for_pid("consent", Consent, pid)
+        # in the order recorded (keys are pid:counter), so the consent recorded last wins even
+        # if its given-at time is earlier (verifier B2.2 pass 1)
+        return self._for_pid("consent", Consent, pid, order="key")
 
     # ---------- pause ----------
 
@@ -407,7 +410,8 @@ class Store:
             out.append(d)
         return out
 
-    def mark_traces_deleted(self, pid: str, *, at: dt.datetime) -> None:
+    def mark_traces_deleted(self, pid: str, *, at: dt.datetime,
+                            upto: dt.datetime | None = None) -> None:  # fmt: skip
         with self._tx():
             rows = self._con.execute(
                 "select key, json from records where kind = 'deletion' and pid = ?", (pid,)
@@ -416,7 +420,8 @@ class Store:
                 d = self._load(DeletionRequest, raw)
                 if d.learner_pid != pid:
                     raise ValueError("stored DeletionRequest pid column does not match its record")
-                if d.traces_deleted_at is None:
+                # only requests the caller saw, never one created after it read them (pass 1)
+                if d.traces_deleted_at is None and (upto is None or d.requested_at <= upto):
                     done = d.model_copy(update={"traces_deleted_at": at})
                     self._put("deletion", key, done, pid=pid, at=d.requested_at)
             self._audit("system-1", "purge", pid, at)  # trace deletion for this learner

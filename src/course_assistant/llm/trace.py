@@ -6,11 +6,14 @@ holding text can never slip into a trace by being forgotten in a denylist.
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
 import math
 import os
 import re
-from collections.abc import Collection
+import stat
+from collections.abc import Collection, Iterator
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -83,16 +86,33 @@ class JsonlSink:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
 
-    def emit(self, record: dict[str, Any]) -> None:
+    @contextlib.contextmanager
+    def _locked(self) -> Iterator[None]:
+        """One exclusive lock, on a sidecar file (the data file's inode changes on rewrite),
+        shared by emit and delete_pid, so no line is appended during a rewrite and lost
+        (verifier B2.2 pass 1)."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(strip_text(record), sort_keys=True, default=str) + "\n")
+        with open(self.path.with_name(self.path.name + ".lock"), "a", encoding="utf-8") as lk:
+            fcntl.flock(lk.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lk.fileno(), fcntl.LOCK_UN)
+
+    def emit(self, record: dict[str, Any]) -> None:
+        line = json.dumps(strip_text(record), sort_keys=True, default=str) + "\n"
+        with self._locked(), self.path.open("a", encoding="utf-8") as fh:
+            fh.write(line)
 
     def delete_pid(self, pid: str, conversation_ids: Collection[str] | None = None) -> int:
         """Remove the learner's lines (all of them, or those of the given conversations) and
         return how many went. The file is rewritten to a temporary file and swapped in, so a
         crash leaves either the old or the new file, never half of one. A line that is not
         JSON is dropped if it names the pid or one of the conversations, kept otherwise."""
+        with self._locked():
+            return self._delete(pid, conversation_ids)
+
+    def _delete(self, pid: str, conversation_ids: Collection[str] | None) -> int:
         if not self.path.is_file():
             return 0
         names = {pid} if conversation_ids is None else set(conversation_ids)
@@ -107,11 +127,19 @@ class JsonlSink:
                 kept.append(line)
         if dropped:
             tmp = self.path.with_name(self.path.name + ".tmp")
-            with tmp.open("w", encoding="utf-8") as fh:
+            mode = stat.S_IMODE(self.path.stat().st_mode)
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+            os.chmod(tmp, mode)  # keep the original permissions, never wider (pass 1)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 fh.write("".join(f"{x}\n" for x in kept))
                 fh.flush()
                 os.fsync(fh.fileno())
             os.replace(tmp, self.path)
+            dfd = os.open(self.path.parent, os.O_RDONLY)
+            try:
+                os.fsync(dfd)  # the rename itself survives a crash
+            finally:
+                os.close(dfd)
         return dropped
 
     @staticmethod
@@ -122,7 +150,10 @@ class JsonlSink:
         except ValueError:
             rec = None
         if not isinstance(rec, dict):
-            return any(n in line for n in names)
+            # a damaged line: drop it only if it names one of the ids as a whole id, never as
+            # part of a longer one (verifier B2.2 pass 1)
+            return any(re.search(rf"(?<![0-9A-Za-z-]){re.escape(n)}(?![0-9A-Za-z-])", line)
+                       for n in names)  # fmt: skip
         if rec.get("learner_pid") != pid:
             return False
         return conversation_ids is None or rec.get("conversation_id") in conversation_ids
