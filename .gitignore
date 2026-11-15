@@ -28,3 +28,6 @@ runs/
 # Claude Code local settings
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# private terms list for the corpus guard (never published)
+.private-terms

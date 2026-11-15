@@ -6,13 +6,13 @@ The PRD says what the course assistant does and why. This spec says how it is bu
 
 Before this spec was written, the PRD was reviewed for loopholes. There are 7 critical, 14 high and 12 engineering findings, and each one is closed somewhere below. Appendix A lists every finding and where it is closed.
 
-Repo: `course-assistant` (public, with no course material in it). Package and import name: `course_assistant`. Python 3.11 or later, managed with uv.
+Repo: `course-assistant`, an open-source project (MIT for code, CC BY 4.0 for the sample course, OWNER D-21) with no real course material in it. Distribution on PyPI: `course-assistant`; CLI `course-assistant`; import name `course_assistant`. Python 3.11 or later, managed with uv. Anyone can run it on their own course with their own OpenAI key.
 
 ---
 
 ## 1. Design decisions
 
-Each decision below seeds `docs/decisions.md` as D-1 to D-18, followed by owner rulings D-19 and D-20 (§13). A decision marked **OWNER?** is my recommendation, waiting for the owner's ruling (§13). Once ruled, it is recorded as `OWNER D-n`.
+Each decision below seeds `docs/decisions.md` as D-1 to D-18, followed by owner rulings D-19 to D-21 and harness decision D-22 (§13). A decision marked **OWNER?** is my recommendation, waiting for the owner's ruling (§13). Once ruled, it is recorded as `OWNER D-n`.
 
 | ID | Decision | Alternatives considered | Why |
 | --- | --- | --- | --- |
@@ -34,6 +34,8 @@ Each decision below seeds `docs/decisions.md` as D-1 to D-18, followed by owner 
 | D-16 | The demo is a page in the shared Streamlit app `portfolio-demos`. It reuses EvalKit's guard pattern: passcode, session-token rate limit, a per-request cap, and a persistent daily spend counter in the hosted KV store | A new host; an in-memory counter | One deployment, one secret store, one guard that has already been verified (EvalKit D-7, L-39) |
 | D-17 | A real-material pilot runs only after the G0.1 sign-off node is green. That node's proof is an owner attestation recorded as `OWNER D-n`, pointing to a private signed scope note | Rely on discipline | NFR1 becomes a graph edge: the harness refuses to start any P4 node while G0.1 is not green |
 | D-18 | Built with the EvalKit harness unchanged in shape: one builder plus a skeptical verifier, `node_start.py` and `node_converge.py`, five proof dimensions, gates that each ship a self-test, and `scripts/status.py` for live status | A lighter checklist; the full Kova harness | It has delivered 24 nodes with 40 recorded lessons. Reusing it keeps the method, the proof format and the habit of verifiers that try to break things |
+| D-21 | **OWNER D-21 (15 Nov): published as an open-source project.** MIT code on GitHub, the sample course under CC BY 4.0, a PyPI release `course-assistant` (name free, checked 15 Nov 2026) by trusted publishing on a tag, `course-assistant init` and `doctor` so others can point it at their own course, contributor and security docs, no telemetry. Publishing to PyPI is asked about first | A public repo only; a GitHub-only install | The owner asked for an open-source project, not just public code. A course team elsewhere should get from `pip install` to a grounded answer on their own materials without reading the build harness |
+| D-22 | Harness refinements from the W0.1 verifier: gate 12 checks records (a changelog entry, a criterion line `**CAP-ID**` for every row, RUN-STATE present), as EvalKit's harness does, instead of file modification times; gate 10's smoke commands grow node by node (`--version` now, `ingest --dry-run` from N1.4, `eval-replay` from A2.5); an external node is marked by the exact Verified-by cell `owner attest`, counts as green only when every row's proof is `attest=OWNER D-n`, and that ruling must be in `decisions.md` with a decision that opens `Attests <node>`; GitHub Actions are pinned to release tags, not commit SHAs | Modification-time freshness (as first written); SHA pinning | Modification times are rewritten by checkouts and are not evidence; tags are what EvalKit uses and are reviewed on each update. The verifier showed a loose attest marker and a substring criteria check could both pass work that was not done |
 
 ---
 
@@ -564,11 +566,12 @@ changelog.md                      # [TYPE] [NODE] — summary
 scripts/status.py                 # live one-table status (python scripts/status.py [NODE])
 ```
 
-Status vocabulary: `not-started | spec | building | green`. There is one new proof kind for nodes that are not code: `attest=OWNER D-n` (G0.1, P4.x), and the proofs gate accepts it only for nodes marked `kind: external` in `graph.md`.
+Status vocabulary: `not-started | spec | building | green`. There is one new proof kind for nodes that are not code: `attest=OWNER D-n` (G0.1, P4.x). The proofs gate accepts it only for nodes whose Verified-by cell in `graph.md` is exactly `owner attest`, and only when `OWNER D-n` is recorded in `decisions.md` (D-22).
 
-### 11.2 Build graph: 30 nodes in six waves
+### 11.2 Build graph: 31 nodes in six waves
 
-**Demo release (all Must stories on the sample course, due Fri 27 Nov): 25 nodes.** These are W0.1, N1.1 to N1.5, A2.1 to A2.5, B2.1 to B2.5, E2.1 to E2.5, D3.1, D3.2, T3.1 and T3.2. Add X1.1 if the owner accepts D-11.
+**Demo release (all Must stories on the sample course, due Fri 27 Nov): 26 nodes.** These are W0.1, X1.1, N1.1 to N1.5, A2.1 to A2.5, B2.1 to B2.5, E2.1 to E2.5, D3.1, D3.2, T3.1 and T3.2.
+**Open-source release v0.1.0: 1 more node (R3.1, OWNER D-21).**
 **Pilot (after sign-off): 4 more nodes.** These are G0.1, P4.1, P4.2 and P4.3.
 
 | Node | Title | Depends on | Deliverable (what exists when it is green) | Stories |
@@ -599,12 +602,13 @@ Status vocabulary: `not-started | spec | building | green`. There is one new pro
 | **D3.1** | Demo replay and guard | A2.5, B2.1 | `make demo-cache`, replay file, guard with persistent KV counter, demo OpenAI project with spend limit | US10 |
 | **D3.2** | Demo deploy | D3.1, B2.5, B2.3 | Both pages in `portfolio-demos`, replay default, passcodes, off switch shown working | US10 |
 | **T3.1** | Trust pack | B2.2, E2.5, D3.2 | Behavioral spec, data card, privacy notice, DPDP and UK GDPR mapping, incident runbook (72-hour report), off-switch test evidence | NFR2, NFR7 |
+| **R3.1** | Open-source packaging and v0.1.0 | T3.1, D3.2 | PyPI `course-assistant` by trusted publishing, `init` and `doctor`, docs (quickstart on the sample course, bring your own course, evaluate your course), community files, privacy statement, eval GitHub Action example, tag v0.1.0 | US7, US8, US10 |
 | **T3.2** | Project page and video | T3.1, E2.5, D3.2 | Case study under the nine architecture areas on Cloudflare Pages, 90-second video | — |
 | **P4.1** | Pilot cohort onboarding | G0.1, E2.4, D3.2 | Private manifest ingested, teaching-team cases added, pilot host, SSO, Langfuse decision, calibration relabel by the teaching team | US7, US8 |
 | **P4.2** | Pilot operations | P4.1 | Four weeks: weekly gate runs, purge job, incident drill, metrics | US5, US6, US8 |
 | **P4.3** | Pilot report and teardown | P4.2 | Pilot report to the programme owners, `make teardown` with proof that the store and files are gone | NFR4 |
 
-Waves: **W0** harness and sign-off gate → **N1** core → **A2** answer path, **B2** people and privacy, **E2** evaluation → **D3/T3** demo and trust pack → **P4** pilot.
+Waves: **W0** harness and sign-off gate → **N1** core → **A2** answer path, **B2** people and privacy, **E2** evaluation → **D3/T3/R3** demo, trust pack and open-source release → **P4** pilot.
 
 ### 11.3 Dependency diagram and build order
 
@@ -656,6 +660,8 @@ graph LR
   B22 --> T31[T3.1 Trust pack]
   E25 --> T31
   D32 --> T31
+  T31 --> R31[R3.1 OSS release v0.1.0]
+  D32 --> R31
   T31 --> T32[T3.2 Project page]
   E25 --> T32
   D32 --> T32
@@ -682,7 +688,7 @@ graph LR
 | 9 | B2.3, E2.4 |
 | 10 | D3.2, E2.5 |
 | 11 | T3.1, P4.1 |
-| 12 | T3.2, P4.2 |
+| 12 | T3.2, R3.1, P4.2 |
 | 13 | P4.3 |
 
 **Critical path to the demo (13 nodes):** W0.1 → N1.1 → N1.2 → N1.4 → A2.2 → A2.3 → A2.5 → E2.2 → E2.3 → E2.4 → E2.5 → T3.1 → T3.2. There is a second path of the same length through B2.1 → B2.4 → B2.3 → D3.2.
@@ -697,8 +703,8 @@ graph LR
 | 4 | N1.2 | 14 | B2.2 | 24 | D3.2 → **demo live** |
 | 5 | N1.5 | 15 | B2.4 | 25 | T3.1 |
 | 6 | E2.1 | 16 | B2.3 | 26 | T3.2 → **project page** |
-| 7 | N1.4 | 17 | B2.5 | — | G0.1 (whenever sign-off lands) |
-| 8 | A2.1 | 18 | X1.1 (EvalKit repo) | — | P4.1 → P4.2 → P4.3 |
+| 7 | N1.4 | 17 | B2.5 | 27 | R3.1 → **v0.1.0 on PyPI** |
+| 8 | A2.1 | 18 | X1.1 (EvalKit repo) | — | G0.1 (whenever sign-off lands); P4.1 → P4.2 → P4.3 |
 | 9 | A2.2 | 19 | E2.2 | | |
 | 10 | A2.3 | 20 | E2.3 | | |
 
@@ -961,6 +967,19 @@ Each row becomes one line in `docs/graph/catalog.tsv` with status `not-started`.
 | TRU-03 | DPDP mapping with a UK GDPR column; every control linked to its test | NFR2 |
 | TRU-04 | Incident runbook: detect, pause, notify the fiduciary, 72-hour detailed report | NFR2 |
 
+**R3.1 Open-source packaging and v0.1.0** (OWNER D-21)
+
+| Cap | Capability | Trace |
+| --- | --- | --- |
+| OSS-01 | Distribution `course-assistant` on PyPI, CLI `course-assistant`; release workflow with trusted publishing on a tag; the publish itself is asked about first | D-21 |
+| OSS-02 | `course-assistant init` writes a starter `config.yaml`, `manifest.yaml`, `assessments.yaml` and `.env.example` for a new course, refusing to overwrite files the user owns (L-3) | US7 |
+| OSS-03 | `course-assistant doctor` checks Python, the OpenAI key (never printed), the manifest and the vector store link, with exit codes | US7 |
+| OSS-04 | Docs: quickstart on the sample course (first grounded answer in under 10 minutes with your own key), bring your own course, writing a golden set and evaluating it, cost and privacy | US10 |
+| OSS-05 | CONTRIBUTING, SECURITY (key handling, reporting a vulnerability), CODE_OF_CONDUCT, issue and PR templates | D-21 |
+| OSS-06 | Privacy statement: no telemetry; learner and course data go only to the OpenAI project the operator configures | NFR3 |
+| OSS-07 | Example GitHub Action that runs the course-ta gate and fails the job when a threshold fails | FR11 |
+| OSS-08 | Tag v0.1.0, semver policy, a clean-venv install of the published package runs `--version`, `doctor` and the sample-course replay | D-21 |
+
 **T3.2 Project page and video**
 
 | Cap | Capability | Trace |
@@ -1018,9 +1037,9 @@ Every gate runs and is reported, even after an earlier one fails. Every gate shi
 7. `pytest -m golden` (golden replay, from A2.5).
 8. `pytest -m evalreg` (from E2.3).
 9. `pytest -m safety` and `-m privacy`, secret scan, corpus guard.
-10. App smoke: `make ingest DRY=1` and `make eval-replay` succeed with no API key, and both Streamlit pages load in `AppTest`.
+10. App smoke: build the wheel, install it in a clean venv and run the smoke commands with no API key. They grow node by node: `--version` (W0.1), `ingest --dry-run` (N1.4), `eval-replay` (A2.5); both Streamlit pages load in `AppTest` under gate 6 (D-22).
 11. Changed code has changed tests (a tool error is a FAIL, L-3).
-12. Docs are fresh: the node's spec and criteria were modified at or after its last code commit.
+12. Records: a changelog entry for the node, a `**CAP-ID**` criterion line for every row, and `RUN-STATE.md` present (D-22).
 
 ### 11.7 Roles
 
@@ -1086,6 +1105,7 @@ Ruled on 15 Nov 2026 (askme sitting 1):
 | OWNER D-20 | Pilot cap raised from $50 to $100 a month |
 | OWNER D-19 | Adversarial extension of 150 cases accepted |
 | OWNER D-6 | Multi-turn, with state on our side (my recommendation was single-turn) |
+| OWNER D-21 | Published as an open-source project: PyPI `course-assistant`, `init`/`doctor`, docs and community files (new node R3.1) |
 
 Still open:
 

@@ -1,0 +1,20 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.5
+    hooks:
+      - id: ruff
+      - id: ruff-format
+        args: [--check]
+  - repo: local
+    hooks:
+      - id: secret-scan
+        name: secret scan
+        entry: python scripts/secret_scan.py
+        language: system
+        pass_filenames: false
+      - id: corpus-guard
+        name: corpus guard (course material, held-out data, private terms)
+        entry: python scripts/corpus_guard.py
+        language: system
+        pass_filenames: false
+        always_run: true
