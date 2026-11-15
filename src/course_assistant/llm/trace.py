@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
+from collections.abc import Collection
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -71,6 +73,12 @@ class TraceSink(Protocol):
     def emit(self, record: dict[str, Any]) -> None: ...
 
 
+class DeletableSink(TraceSink, Protocol):
+    """A sink that can remove a learner's lines (B2.2, US9)."""
+
+    def delete_pid(self, pid: str, conversation_ids: Collection[str] | None = None) -> int: ...
+
+
 class JsonlSink:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
@@ -79,3 +87,42 @@ class JsonlSink:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(strip_text(record), sort_keys=True, default=str) + "\n")
+
+    def delete_pid(self, pid: str, conversation_ids: Collection[str] | None = None) -> int:
+        """Remove the learner's lines (all of them, or those of the given conversations) and
+        return how many went. The file is rewritten to a temporary file and swapped in, so a
+        crash leaves either the old or the new file, never half of one. A line that is not
+        JSON is dropped if it names the pid or one of the conversations, kept otherwise."""
+        if not self.path.is_file():
+            return 0
+        names = {pid} if conversation_ids is None else set(conversation_ids)
+        kept: list[str] = []
+        dropped = 0
+        for line in self.path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            if self._doomed(line, pid, conversation_ids, names):
+                dropped += 1
+            else:
+                kept.append(line)
+        if dropped:
+            tmp = self.path.with_name(self.path.name + ".tmp")
+            with tmp.open("w", encoding="utf-8") as fh:
+                fh.write("".join(f"{x}\n" for x in kept))
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, self.path)
+        return dropped
+
+    @staticmethod
+    def _doomed(line: str, pid: str, conversation_ids: Collection[str] | None,
+                names: set[str]) -> bool:  # fmt: skip
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            rec = None
+        if not isinstance(rec, dict):
+            return any(n in line for n in names)
+        if rec.get("learner_pid") != pid:
+            return False
+        return conversation_ids is None or rec.get("conversation_id") in conversation_ids

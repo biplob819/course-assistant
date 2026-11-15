@@ -50,3 +50,5 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FEAT] [A2.1] — route step: six categories, standalone rewrite, assessment match, delimited data, parse retry and fallback
 - [FEAT] [N1.4] — ingest: verified-hash splitter (slide, page, agenda units; near-empty dropped and reported), corpus store with stable unit_index and corpus version, ledger-backed vector store sync with seven attributes, wait, delete of store file and File object, reconcile (exit 2), `ingest --dry-run`
 - [GREEN] [N1.4] — ingest and vector store sync; verifier pass 1 confirmed all six criteria
+- [FEAT] [A2.2] — answer step: file search on the live corpus version (and session), citations mapped to units, ANSWER_RULES with canary
+- [FEAT] [B2.2] — privacy: versioned first-use notice, consent per purpose with audited give and withdraw (one transaction), learner history without the team draft, delete of app rows and trace lines (`JsonlSink.delete_pid`) with completion recorded and retry; open requests flagged by purge after 7 days

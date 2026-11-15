@@ -281,6 +281,36 @@ class Store:
             key = f"{c.learner_pid}:{self._next('consent'):012d}"
             self._put("consent", key, c, pid=c.learner_pid, at=c.given_at)
 
+    def give_consent(self, c: Consent) -> None:
+        """Record a consent and its audit event in one transaction (B2.2)."""
+        with self._tx():
+            key = f"{c.learner_pid}:{self._next('consent'):012d}"
+            self._put("consent", key, c, pid=c.learner_pid, at=c.given_at)
+            self._audit(c.learner_pid, "give_consent", c.learner_pid, c.given_at)
+
+    def withdraw_consent(self, pid: str, *, at: dt.datetime) -> int:
+        """Close every open consent of the learner and audit the withdrawal, in one
+        transaction. The rows stay (proof of consent, §7) with `withdrawn_at` set; a consent
+        stamped at or after `at` (a clock behind the stored time) is closed one microsecond
+        after it was given, so a withdrawal never fails to close a consent (B2.2)."""
+        _iso(at)
+        closed = 0
+        with self._tx():
+            rows = self._con.execute(
+                "select key, json from records where kind = 'consent' and pid = ?", (pid,)
+            ).fetchall()
+            for key, raw in rows:
+                c = self._load(Consent, raw)
+                if c.learner_pid != pid:
+                    raise ValueError("stored Consent pid column does not match its record")
+                if c.withdrawn_at is None:
+                    when = max(at, c.given_at + dt.timedelta(microseconds=1))
+                    done = c.model_copy(update={"withdrawn_at": when})
+                    self._put("consent", key, done, pid=pid, at=c.given_at)
+                    closed += 1
+            self._audit(pid, "withdraw_consent", pid, at)
+        return closed
+
     def consents_for(self, pid: str) -> list[Consent]:
         return self._for_pid("consent", Consent, pid)
 
