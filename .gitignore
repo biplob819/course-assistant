@@ -1,0 +1,30 @@
+.venv/
+.venv-py*/
+__pycache__/
+*.pyc
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.harness/
+.env
+.DS_Store
+
+# personal notes, not for the public repo
+Portfolio notes.md
+
+# course material and learner data never enter the public repo (NFR1, HAR-08)
+corpus/
+golden/heldout/*
+!golden/heldout/MANIFEST.json
+runs/
+*.sqlite
+*.db
+
+# Streamlit local secrets
+.streamlit/secrets.toml
+
+# Claude Code local settings
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
