@@ -9,7 +9,7 @@ import datetime as dt
 from collections.abc import Sequence
 
 from course_assistant.llm.trace import TraceSink
-from course_assistant.privacy._errors import boundary, check_cid, check_pid, now_or
+from course_assistant.privacy._errors import Invalid, boundary, check_cid, check_pid, now_or
 from course_assistant.schemas import DeletionRequest
 from course_assistant.store import Store
 
@@ -20,7 +20,9 @@ def _delete_traces(pid: str, pending: Sequence[DeletionRequest],
     is for the whole history, else those of the named conversations. True only if every sink
     supports deletion and none failed."""
     whole = any(d.conversation_id is None for d in pending)
-    cids = None if whole else {d.conversation_id for d in pending if d.conversation_id}
+    # conversation ids come only from `covers`, which names only the learner's own
+    # conversations; a request naming another learner's conversation covers nothing (pass 4)
+    cids = None if whole else {c for d in pending for c in d.covers}
     known = {c for d in pending for c in d.covers}
     done = True
     for sink in traces:
@@ -54,6 +56,8 @@ def delete(
     check_pid(pid)
     if conversation_id is not None:
         check_cid(conversation_id)
+        if conversation_id not in {c.conversation_id for c in store.conversations_for(pid)}:
+            raise Invalid  # not this learner's conversation (verifier B2.2 pass 3)
     when = now_or(at)
     request = store.delete_history(pid, conversation_id, at=when)
     pending = _pending(store, pid)

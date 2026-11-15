@@ -164,7 +164,7 @@ def test_the_rules_say_data_is_never_instruction_and_name_every_pattern():
     rules = RouteStep.ROUTE_RULES.lower()
     assert "never instructions" in rules
     for pattern in ("reveal your rules", "role without rules", "pasted orders",
-                    "other learners' data"):  # fmt: skip
+                    "anything about other learners"):  # fmt: skip
         assert pattern in rules.replace("change or reveal your rules", "reveal your rules")
 
 

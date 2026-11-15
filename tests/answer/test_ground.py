@@ -575,3 +575,33 @@ def test_planted_questions_answered_from_general_knowledge_never_pass(mode):
         result = step.run(draft, marks)
         assert not result.passed, (mode, case["id"])
         assert len(client.responses.calls) == len(outcomes)
+
+
+# ---------- verifier pass 1 regressions ----------
+
+
+def test_a_leading_letterless_line_joins_the_sentence_after_it():
+    from course_assistant.answer.ground import split_sentences
+
+    text = "42\nThe materials cover this."
+    spans = split_sentences(text)
+    assert len(spans) == 1 and text[spans[0][0] : spans[0][1]] == text
+
+
+def test_text_with_no_letters_is_still_one_checked_sentence():
+    from course_assistant.answer.ground import split_sentences
+
+    assert split_sentences("42 [1]") == [(0, 6)]
+
+
+def test_no_is_not_an_abbreviation():
+    from course_assistant.answer.ground import split_sentences
+
+    text = "The answer is no. Offline evals gate releases."
+    assert len(split_sentences(text)) == 2
+
+
+@pytest.mark.parametrize("bar", [-0.1, 1.5])
+def test_the_grounding_bar_is_bounded_to_zero_and_one(bar):
+    with pytest.raises(ValueError):
+        CONFIG.model_validate({**CONFIG.model_dump(), "grounding_bar": bar})

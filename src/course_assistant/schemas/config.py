@@ -14,6 +14,7 @@ import yaml
 from pydantic import BaseModel, StringConstraints, ValidationError, model_validator
 
 from course_assistant.schemas._base import (
+    Fraction,
     FrozenMap,
     Ident,
     Model,
@@ -21,7 +22,6 @@ from course_assistant.schemas._base import (
     NonBlank,
     NonNegFloat,
     PosInt,
-    Score,
     SessionId,
     Versioned,
 )
@@ -60,7 +60,7 @@ class AppConfig(Versioned):
     check_model: Name
     reasoning_effort: FrozenMap[Effort]  # deep-frozen (L-4)
     max_num_results: PosInt = 8
-    grounding_bar: Score
+    grounding_bar: Fraction  # bounded to [0, 1]: a negative bar would pass weak hits
     digest_k: PosInt = 5
     window_turns: PosInt = 6
     window_tokens: PosInt = 3000

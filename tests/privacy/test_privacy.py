@@ -547,3 +547,31 @@ def test_a_planted_tmp_symlink_is_removed_not_followed(tmp_path):
     assert sink.delete_pid(A) > 0
     assert target.read_text(encoding="utf-8") == "keep me"
     assert not (tmp_path / "trace.jsonl.tmp").exists()
+
+
+# ---------- verifier pass 3 regressions ----------
+
+
+@pytest.mark.privacy
+def test_a_learner_cannot_delete_another_learners_conversation_or_its_traces(store, tmp_path):
+    fill(store)
+    sink = JsonlSink(tmp_path / "t.jsonl")
+    cb = "c-bbbbbbbbbbb1"
+    sink.emit({"learner_pid": B, "conversation_id": cb, "step": "answer"})
+    sink.emit({"conversation_id": cb, "step": "route"})
+    with sink.path.open("a", encoding="utf-8") as fh:
+        fh.write('{"conversation_id": "' + cb + '", "le\n')
+    before = sink.path.read_text(encoding="utf-8")
+    with pytest.raises(PrivacyError):
+        delete(A, cb, store=store, traces=[sink], at=at(100))
+    assert sink.path.read_text(encoding="utf-8") == before
+    assert any(c.conversation_id == cb for c in store.conversations_for(B))
+    with pytest.raises(ValueError):
+        store.delete_history(A, cb, at=at(100))
+    assert not [d for d in store.deletions() if d.learner_pid == A]
+
+
+def test_an_empty_leftover_tmp_directory_does_not_block_deletion(tmp_path):
+    sink = traced(tmp_path)
+    (tmp_path / "trace.jsonl.tmp").mkdir()
+    assert sink.delete_pid(A) > 0

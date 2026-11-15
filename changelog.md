@@ -56,3 +56,8 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [B2.2] — verifier pass 1: whole-id trace matching, rewrite lock and mode, recorded-order consent, shown-only history, deletion race
 - [FIX] [B2.2] — verifier pass 2: deletion requests record covered conversations; truncated trace lines attributed by them
 - [FEAT] [A2.3] — grounding check: L1 (citations resolve in the live corpus and session, top score ≥ `grounding_bar`, no citation fails, no call on fail), L2 Luna support check per sentence on cited unit text only, connective allow-list, deterministic sentence split and mark mapping, parse retry then fail closed
+- [FIX] [A2.3] — verifier pass 1: leading letterless text checked, bar bounded
+- [FIX] [B2.2] — verifier pass 3: conversation ownership checked before deletion
+- [DOC] OWNER D-37 cap $150 and key source; D-38 moves GRD-04's live run to A2.5
+- [FEAT] [A2.1] — live route run: recall 1.000 on graded work, admin, personal, injection after tuning on the public split ($0.08)
+- [FIX] [B2.2] — verifier pass 4: store refuses another learner's conversation; trace deletion uses covers only

@@ -126,7 +126,9 @@ class JsonlSink:
 
     def _delete(self, pid: str, conversation_ids: Collection[str] | None, known: set[str]) -> int:
         tmp = self.path.with_name(self.path.name + ".tmp")
-        if tmp.is_symlink() or tmp.exists():
+        if tmp.is_dir() and not tmp.is_symlink():
+            tmp.rmdir()  # an empty leftover directory; a non-empty one fails loudly
+        elif tmp.is_symlink() or tmp.exists():
             tmp.unlink()  # a leftover from a crash, or something planted (verifier B2.2 pass 2)
         if not self.path.is_file():
             return 0

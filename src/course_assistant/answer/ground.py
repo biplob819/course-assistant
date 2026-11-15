@@ -58,9 +58,10 @@ SPLITTER = (
     "lines are blocks; leading list markers dropped; a sentence ends at .!? plus closing quotes "
     "or brackets plus text citation markers, before whitespace and an upper-case letter, digit, "
     "quote or bracket, or at line end; not after a listed abbreviation; a connective followed "
-    "by ': ' is its own sentence; a piece with no letter joins the sentence before it; v1"
+    "by ': ' is its own sentence; a piece with no letter joins the sentence before it (the "
+    "one after it at the start); 'no' is not an abbreviation; v2"
 )
-ABBREVIATIONS = frozenset({"e.g", "i.e", "etc", "vs", "p", "pp", "no", "fig", "dr", "mr", "mrs",
+ABBREVIATIONS = frozenset({"e.g", "i.e", "etc", "vs", "p", "pp", "fig", "dr", "mr", "mrs",
                            "ms"})  # fmt: skip
 _MARKER = r"(?:\[\d+(?:\s*[,;]\s*\d+)*\]|【[^】\n]*】)"
 _LIST_MARKER = re.compile(r"[ \t]*(?:[-*•]|\d{1,3}[.)])[ \t]+")
@@ -327,6 +328,7 @@ def split_sentences(text: str, connectives: Sequence[str] = CONNECTIVES) -> list
             cur = m.end()
         pieces.append((cur, stop))
     spans: list[Span] = []
+    orphan: int | None = None  # start of letterless text before the first sentence (pass 1)
     for a, b in pieces:
         while a < b and text[a].isspace():
             a += 1
@@ -344,8 +346,15 @@ def split_sentences(text: str, connectives: Sequence[str] = CONNECTIVES) -> list
             if not _LETTER.search(_MARKERS.sub("", text[pa:pb])):
                 if spans:  # a marker or number alone belongs to the sentence before it
                     spans[-1] = (spans[-1][0], pb)
+                elif orphan is None:  # or, at the very start, to the sentence after it
+                    orphan = pa
                 continue
-            spans.append((pa, pb))
+            spans.append((pa if orphan is None else orphan, pb))
+            orphan = None
+    if orphan is not None:  # only letterless text: one checked sentence, unless only markers
+        end = len(text.rstrip())
+        if _MARKERS.sub("", text[orphan:end]).strip():
+            spans.append((orphan, end))
     return spans
 
 

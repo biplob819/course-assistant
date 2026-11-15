@@ -364,6 +364,9 @@ class Store:
             if conversation_id is None:
                 covers = tuple(sorted({c.conversation_id for c in self.conversations_for(pid)}))
             else:
+                owned = {c.conversation_id for c in self.conversations_for(pid)}
+                if conversation_id not in owned:  # never another learner's (passes 3 and 4)
+                    raise ValueError("conversation is not this learner's")
                 covers = (conversation_id,)
             request = DeletionRequest(learner_pid=pid, conversation_id=conversation_id,
                                       covers=covers, requested_at=at,
