@@ -46,3 +46,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [N1.2] — verifier pass 7: total budget on the real clock, pools closed on every failure, ledger fields pattern-checked
 - [FIX] [E2.1] — second reader pass 5: trust-layer metrics page linked
 - [GREEN] [N1.2] — OpenAI client, cost, ledger and trace; verifier pass 8 confirmed all six criteria
+- [GREEN] [E2.1] — golden set (430 cases, 214 public / 216 held out); second reader pass 6 confirmed all six criteria
