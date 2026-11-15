@@ -273,3 +273,41 @@ def test_an_llm_parse_error_counts_as_a_parse_failure():
 
     route = RouteStep(CONFIG, fake).run("Q?", (), ASSESSMENTS, question_id=QID)
     assert len(calls) == 2 and route.category == "course" and route.confidence == 0.0
+
+
+# ---------- verifier pass 1 regressions ----------
+
+
+@pytest.mark.parametrize("window", [
+    [{"learner": "a", "assistant": "b"}], ["ab"], [("a",)], [("a", 1)], "ab", {"a": "b"},
+])  # fmt: skip
+def test_a_malformed_window_is_refused_before_any_call(window):
+    step, client = step_with([reply()])
+    with pytest.raises(TypeError):
+        step.run("q", window, ASSESSMENTS, question_id=QID)
+    assert client.responses.calls == []
+
+
+@pytest.mark.parametrize("question", [123, None, b"bytes", ["q"]])
+def test_a_non_string_question_is_refused_before_any_call(question):
+    step, client = step_with([reply()])
+    with pytest.raises(TypeError):
+        step.run(question, (), ASSESSMENTS, question_id=QID)  # type: ignore[arg-type]
+    assert client.responses.calls == []
+
+
+def test_an_oversized_question_is_refused_and_the_window_is_trimmed_from_the_oldest():
+    step, client = step_with([reply()])
+    with pytest.raises(ValueError):
+        step.run("x" * (RouteStep.MAX_QUESTION_CHARS + 1), (), ASSESSMENTS, question_id=QID)
+    assert client.responses.calls == []
+    budget = CONFIG.window_tokens * RouteStep.CHARS_PER_TOKEN
+    old, new = ("old " * budget, "a"), ("newest question", "newest reply")
+    _, client = run([reply()], "q", [old, new])
+    content = client.responses.calls[0]["input"][0]["content"]
+    doc = json.loads(content.removeprefix("<data>\n").removesuffix("\n</data>"))
+    assert doc["window"] == [{"learner": "newest question", "assistant": "newest reply"}]
+
+
+def test_pretending_to_be_staff_is_identity_in_the_rules():
+    assert "pretend to be a person" in RouteStep.ROUTE_RULES
