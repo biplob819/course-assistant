@@ -47,3 +47,5 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [E2.1] — second reader pass 5: trust-layer metrics page linked
 - [GREEN] [N1.2] — OpenAI client, cost, ledger and trace; verifier pass 8 confirmed all six criteria
 - [GREEN] [E2.1] — golden set (430 cases, 214 public / 216 held out); second reader pass 6 confirmed all six criteria
+- [FEAT] [A2.1] — route step: six categories, standalone rewrite, assessment match, delimited data, parse retry and fallback
+- [FEAT] [N1.4] — ingest: verified-hash splitter (slide, page, agenda units; near-empty dropped and reported), corpus store with stable unit_index and corpus version, ledger-backed vector store sync with seven attributes, wait, delete of store file and File object, reconcile (exit 2), `ingest --dry-run`

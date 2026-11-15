@@ -1,6 +1,8 @@
 # run state
 
-**Now:** spec
+**Now:** build (converge pending verifier)
 
 ## History
 - 2026-11-15 — spec and criteria written.
+- 2026-11-15 — built tests-first (41 tests, fakes from SDK models). Rulings on spec gaps: locator numbers are deck/page positions, so a dropped slide keeps later numbers (s01:slides:20 dropped, 21 stays 21); two entries of one session and kind number on in manifest order; the `locator` attribute is the D-30 key (`s02:slides:9`), the human form stays in CorpusUnit.locator; unit version = sha256(key + text); a ledger (`corpus_store/<cohort>/ledger.json`) of files ingest created, saved after every write, drives the diff so a part-way failure is finished by the next run and only ingest's own files are deleted; units whose unit_index or corpus_version moved are relabelled with `vector_stores.files.update` instead of re-uploaded; deletions run before uploads (compliance first); the reconcile list call is the only call on a no-change run (zero writes). CLI adds `--manifest`, `--root`, `--store` (defaults beside the config), since AppConfig has no manifest path. Live run against the sample course still deferred (no network in this session).
+- 2026-11-15 — node_converge N1.4: 11 of 12 gates pass (pytest 372, pyright, safety, smoke, records, proofs); gate 4 ruff fails only on two findings in A2.1 code being built in parallel (`answer/route.py:142` RUF028, `tests/answer/test_route.py:247` RUF059), not N1.4 files, which are ruff and format clean. Converge-twice (task 5) waits for that fix. Not yet added: `ingest --dry-run` to gate 10 SMOKE_COMMANDS (the clean venv has no ingest extra and no sample course).

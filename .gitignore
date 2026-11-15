@@ -31,3 +31,6 @@ runs/
 
 # private terms list for the corpus guard (never published)
 .private-terms
+
+# ingest corpus stores hold course text (N1.4); the sample one is rebuilt, never committed
+corpus_store/
