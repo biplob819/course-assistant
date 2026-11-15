@@ -354,7 +354,7 @@ class GoldenCase(BaseModel):
     question: str                    # the turn being scored
     session_scope: str | None
     expected_status: Literal["answered", "not_covered", "hint_only", "handed_over"]
-    gold_units: tuple[int, ...]      # B1: units that support a correct answer
+    gold_units: tuple[str, ...]      # B1: locators "s02:slides:9" that support the answer (D-30)
     assessment_id: str | None        # B3
     canary: str | None               # B8, B10
     split: Literal["tuning", "heldout"]

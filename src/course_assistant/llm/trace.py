@@ -7,6 +7,8 @@ holding text can never slip into a trace by being forgotten in a denylist.
 from __future__ import annotations
 
 import json
+import math
+import re
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -20,8 +22,47 @@ TRACE_KEYS = frozenset({
 })  # fmt: skip
 
 
+# String-valued keys and the exact shapes they may take: an enum, a generated id or a model
+# name. Anything else (a one-word answer in "status", "Paris" as a pid) is dropped.
+_ENUMS = {
+    "purpose": {"answer", "route", "support", "integrity", "hint", "digest", "eval", "ingest"},
+    "route": {"course", "graded_work", "admin", "personal", "off_topic", "injection"},
+    "status": {"answered", "not_covered", "hint_only", "handed_over", "error"},
+    "error": {"transport", "parse", "config"},
+    "step": {"route", "answer", "ground", "integrity", "hint", "finalize", "pause", "window"},
+}
+# model names: known tiers only, so a learner word cannot pose as a suffix ("gpt-5-zebrafish")
+_MODEL = re.compile(r"gpt-\d[\d.]*(-(sol|luna|terra|mini|nano|pro))?(-\d{4}-\d{2}-\d{2})?")
+_PATTERNS = {
+    "learner_pid": re.compile(r"[0-9a-f]{16}"),
+    "question_id": re.compile(r"q-[0-9a-f]{12,32}"),
+    "conversation_id": re.compile(r"c-[0-9a-f]{12,32}"),
+    "request_id": re.compile(r"r-[0-9a-f]{16}"),
+    "model": _MODEL,
+    "model_snapshot": _MODEL,
+    "version": re.compile(r"v?\d{1,4}(\.\d{1,4}){0,2}|(?=[0-9a-f]*\d)[0-9a-f]{8,64}"),
+    "prompt_hash": re.compile(r"[0-9a-f]{12,64}"),
+    "rules_hash": re.compile(r"[0-9a-f]{12,64}"),
+    "at": re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(\+00:00|Z)?"),
+}
+
+
+def _safe(key: str, value: Any) -> bool:
+    if value is None or (isinstance(value, bool | int | float) and key not in _ENUMS):
+        if isinstance(value, float) and not math.isfinite(value):
+            return False
+        return key not in _PATTERNS or value is None
+    if not isinstance(value, str):
+        return False
+    if key in _ENUMS:
+        return value in _ENUMS[key]
+    pattern = _PATTERNS.get(key)
+    return pattern is not None and pattern.fullmatch(value) is not None
+
+
 def strip_text(record: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in record.items() if k in TRACE_KEYS}
+    """Allowlisted keys whose values have the exact shape allowed for that key."""
+    return {k: v for k, v in record.items() if k in TRACE_KEYS and _safe(k, v)}
 
 
 class TraceSink(Protocol):

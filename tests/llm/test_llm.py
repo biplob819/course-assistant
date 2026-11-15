@@ -229,9 +229,10 @@ def test_learner_text_never_reaches_the_trace(tmp_path):
 
 @pytest.mark.privacy
 def test_strip_text_is_an_allowlist():
-    rec = {"request_id": "r", "question": "secret", "output": "secret", "anything_new": "secret",
+    rid = "r-0123456789abcdef"
+    rec = {"request_id": rid, "question": "secret", "output": "secret", "anything_new": "secret",
            "tokens_in": 1, "cost_usd": 0.1}  # fmt: skip
-    assert strip_text(rec) == {"request_id": "r", "tokens_in": 1, "cost_usd": 0.1}
+    assert strip_text(rec) == {"request_id": rid, "tokens_in": 1, "cost_usd": 0.1}
 
 
 # ---------- OAI-06 ----------
@@ -255,3 +256,305 @@ def test_cache_writes_are_priced_separately():
     cost = call_cost(p, tokens_in=1000, tokens_cached=200, tokens_out=0, file_search_calls=0,
                      file_search_per_1k=2.5, tokens_cache_write=300)  # fmt: skip
     assert math.isclose(cost, (500 * 2.00 + 200 * 0.10 + 300 * 2.00) / 1e6)
+
+
+# ---------- verifier pass 1 regressions ----------
+
+
+def _commentary_response():
+    from openai.types.responses import Response
+
+    base = make_response(text="Evals run offline.", citations=(("file-x", 18),))
+    data = base.model_dump()
+    commentary = {
+        "id": "msg_0", "type": "message", "role": "assistant", "status": "completed",
+        "phase": "commentary",
+        "content": [{"type": "output_text", "text": "Let me search the slides.",
+                     "annotations": [{"type": "file_citation", "file_id": "file-x",
+                                      "filename": "x", "index": 25}]}],
+    }  # fmt: skip
+    data["output"].insert(0, commentary)
+    two = data["output"][-1]["content"][0]
+    shifted = [{**two["annotations"][0], "index": 5}]
+    data["output"][-1]["content"].append({**two, "text": " Then online.", "annotations": shifted})
+    return Response.model_validate(data)
+
+
+def test_commentary_is_dropped_and_citation_indices_are_shifted():
+    result, _ = run([_commentary_response()])
+    assert result.text == "Evals run offline. Then online."
+    assert [c.index for c in result.citations] == [18, 18 + 5]
+    assert result.text[23:] == " online."  # same place as index 5 in its own part
+
+
+def test_refusal_carries_no_citations():
+    resp = make_response()
+    data = resp.model_dump()
+    data["output"][-1]["content"].append({"type": "refusal", "refusal": "no"})
+    from openai.types.responses import Response
+
+    result, _ = run([Response.model_validate(data)])
+    assert result.refusal and result.text == "" and result.citations == ()
+
+
+def test_sdk_retries_are_off_so_three_attempts_mean_three_requests():
+    import httpx2
+    import openai
+
+    count = {"n": 0}
+
+    def handler(request):
+        count["n"] += 1
+        return httpx2.Response(429, json={"error": {"message": "slow down"}})
+
+    http = httpx2.Client(transport=httpx2.MockTransport(handler))
+    client = openai.OpenAI(api_key="test", base_url="https://example.invalid/v1", http_client=http)
+
+    def per_attempt(timeout):
+        return httpx2.Client(transport=httpx2.MockTransport(handler), timeout=timeout)
+
+    with pytest.raises(LLMError) as exc:
+        respond(req(), client=client, prices=PRICES, sleep=lambda s: None, http_factory=per_attempt)
+    assert exc.value.attempts == 3 and count["n"] == 3
+
+
+def test_each_attempt_gets_only_the_time_left():
+    seen = []
+
+    class Recording(FakeClient):
+        def with_options(self, **kw):
+            seen.append(kw)
+            return self
+
+    t = iter([0.0, 0.0, 12.0, 12.0, 12.0, 12.0])
+    client = Recording([status_error(503), make_response()])
+    respond(req(), client=client, prices=PRICES, sleep=lambda s: None, clock=lambda: next(t),
+            deadline_s=20)  # fmt: skip
+    assert seen[0] == {"max_retries": 0, "timeout": 20.0}
+    assert seen[1]["max_retries"] == 0 and seen[1]["timeout"] == 8.0
+
+
+def test_unpriced_snapshot_is_an_llm_error_and_still_ledgered(tmp_path):
+    ledger = Ledger(tmp_path / "l.jsonl", monthly_budget_usd=100)
+    with pytest.raises(LLMError) as exc:
+        run([make_response(model="gpt-6.1-sol-mini")], ledger=ledger)
+    assert exc.value.kind == "config"
+    row = json.loads((tmp_path / "l.jsonl").read_text(encoding="utf-8"))
+    assert row["priced"] is False and row["tokens_in"] == 4000
+
+
+@pytest.mark.privacy
+def test_any_sink_receives_only_stripped_records():
+    got = []
+
+    class Custom:
+        def emit(self, record):
+            got.append(record)
+
+    secret = "my father is in hospital"
+    run([make_response(text=secret)], sink=Custom())
+    assert got and secret not in json.dumps(got) and set(got[0]) <= TRACE_KEYS
+
+
+@pytest.mark.privacy
+def test_allowlisted_keys_cannot_carry_sentences():
+    rec = {"status": "my father is ill", "route": "course", "error": "transport",
+           "request_id": "r-0123456789abcdef", "cost_usd": 0.1}  # fmt: skip
+    assert strip_text(rec) == {"route": "course", "error": "transport",
+                               "request_id": "r-0123456789abcdef", "cost_usd": 0.1}  # fmt: skip
+
+
+@pytest.mark.parametrize("model", ["gpt-6.1-sol-2", "gpt-6.1-sol-9-turbo", "gpt-6.1-sol-mini"])
+def test_only_dated_snapshots_share_a_price(model):
+    with pytest.raises(KeyError):
+        PRICES.for_model(model)
+    assert PRICES.for_model("gpt-6.1-sol-2026-10-01") is PRICES.models["gpt-6.1-sol"]
+
+
+def test_hits_without_scores_are_kept_not_dropped():
+    from openai.types.responses import Response
+
+    data = make_response().model_dump()
+    data["output"][0]["results"][1]["score"] = None
+    result, _ = run([Response.model_validate(data)])
+    assert [h.score for h in result.hits] == [0.82, None]
+
+
+@pytest.mark.privacy
+def test_request_repr_hides_learner_text():
+    r = req(input=(InputItem(role="user", content="my exam results were bad"),))
+    assert "exam" not in repr(r) and "Answer only" not in repr(r)
+
+
+def test_ledger_records_cache_writes_and_reasoning(tmp_path):
+    ledger = Ledger(tmp_path / "l.jsonl", monthly_budget_usd=100)
+    run([make_response()], ledger=ledger)
+    row = json.loads((tmp_path / "l.jsonl").read_text(encoding="utf-8"))
+    assert row["tokens_reasoning"] == 300 and row["tokens_cache_write"] == 0 and row["priced"]
+
+
+# ---------- verifier pass 2 regressions ----------
+
+
+def test_a_slow_attempt_cannot_outlast_the_deadline():
+    import time as _time
+
+    class Slow(FakeClient):
+        def __init__(self):
+            super().__init__([])
+
+        def with_options(self, **kw):
+            return self
+
+    slow = Slow()
+    slow.responses.create = lambda **kw: _time.sleep(2.0) or make_response()  # type: ignore[method-assign]
+    started = _time.monotonic()
+    with pytest.raises(LLMError) as exc:
+        respond(req(), client=slow, prices=PRICES, sleep=lambda s: None, deadline_s=0.3)
+    assert exc.value.kind == "transport" and _time.monotonic() - started < 1.0
+
+
+def test_a_corrupt_ledger_is_a_config_error(tmp_path):
+    path = tmp_path / "l.jsonl"
+    path.write_text('{"at": "2026-11-1', encoding="utf-8")
+    with pytest.raises(LLMError) as exc:
+        run([make_response()], ledger=Ledger(path, monthly_budget_usd=100))
+    assert exc.value.kind == "config"
+
+
+def test_an_unreadable_body_is_a_parse_error_not_retried():
+    client = FakeClient([ValueError("Expecting value"), make_response()])
+    with pytest.raises(LLMError) as exc:
+        respond(req(), client=client, prices=PRICES, sleep=lambda s: None)
+    assert exc.value.kind == "parse" and len(client.responses.calls) == 1
+
+
+@pytest.mark.privacy
+def test_one_word_answers_cannot_ride_in_enum_or_id_fields():
+    rec = {"learner_pid": "Paris", "route": "photosynthesis", "status": "mitochondria",
+           "error": "Napoleon", "model": "Napoleon", "tokens_in": 3}  # fmt: skip
+    assert strip_text(rec) == {"tokens_in": 3}
+
+
+def test_a_client_that_cannot_turn_off_retries_is_refused():
+    class Bare:
+        def __init__(self):
+            self.responses = FakeClient([make_response()]).responses
+
+    with pytest.raises(LLMError) as exc:
+        respond(req(), client=Bare(), prices=PRICES, sleep=lambda s: None)
+    assert exc.value.kind == "config"
+
+
+def test_unpriced_ledger_line_keeps_reasoning_and_cache_writes(tmp_path):
+    ledger = Ledger(tmp_path / "l.jsonl", monthly_budget_usd=100)
+    with pytest.raises(LLMError):
+        run([make_response(model="gpt-6.1-sol-mini")], ledger=ledger)
+    row = json.loads((tmp_path / "l.jsonl").read_text(encoding="utf-8"))
+    assert row["tokens_reasoning"] == 300 and "tokens_cache_write" in row
+
+
+# ---------- verifier pass 3 regressions ----------
+
+
+def test_unpriced_call_with_a_corrupt_ledger_is_still_an_llm_error(tmp_path):
+    path = tmp_path / "l.jsonl"
+    path.write_text("not json\n", encoding="utf-8")
+    with pytest.raises(LLMError):
+        run([make_response(model="gpt-6.1-sol-mini")], ledger=Ledger(path, monthly_budget_usd=1))
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("err", [OSError("disk Paris"), TypeError("Paris")])
+def test_sink_failures_on_any_path_never_carry_their_text(err):
+    class Broken:
+        def emit(self, record):
+            raise err
+
+    for outcomes in ([make_response()], [status_error(503)] * 3):
+        with pytest.raises(LLMError) as exc:
+            run(outcomes, sink=Broken())
+        assert "Paris" not in str(exc.value) and exc.value.kind == "config"
+
+
+def test_abandoned_attempts_close_their_connection_and_do_not_pile_up():
+    import threading
+    import time as _time
+
+    import httpx2
+    import openai
+
+    closed = []
+
+    def slow(request):
+        _time.sleep(5)
+        return httpx2.Response(200, json={})
+
+    class Tracking(httpx2.Client):
+        def close(self):
+            closed.append(True)
+            super().close()
+
+    client = openai.OpenAI(api_key="test", base_url="https://example.invalid/v1")
+    before = threading.active_count()
+    for _ in range(3):
+        with pytest.raises(LLMError):
+            respond(req(), client=client, prices=PRICES, sleep=lambda s: None, deadline_s=0.2,
+                    http_factory=lambda t: Tracking(transport=httpx2.MockTransport(slow),
+                                                    timeout=t))  # fmt: skip
+    assert len(closed) == 3
+    assert all(t.daemon for t in threading.enumerate() if t.name == "llm-attempt")
+    assert threading.active_count() - before <= 3
+
+
+@pytest.mark.privacy
+def test_version_and_model_cannot_carry_words():
+    rec = {"version": "paris", "model": "gpt-the-answer-is-paris", "cost_usd": float("nan"),
+           "model_snapshot": "gpt-6.1-sol-2026-10-01"}  # fmt: skip
+    assert strip_text(rec) == {"model_snapshot": "gpt-6.1-sol-2026-10-01"}
+
+
+# ---------- verifier pass 4 regressions ----------
+
+
+def test_a_deeply_nested_ledger_line_is_still_an_llm_error(tmp_path):
+    path = tmp_path / "l.jsonl"
+    path.write_text("[" * 100000 + "\n", encoding="utf-8")
+    with pytest.raises(LLMError) as exc:
+        run([make_response()], ledger=Ledger(path, monthly_budget_usd=10))
+    assert exc.value.kind == "config"
+
+
+@pytest.mark.privacy
+def test_client_setup_failures_never_carry_their_text():
+    class Bad(FakeClient):
+        def with_options(self, **kw):
+            raise TypeError("SINKTEXT")
+
+    with pytest.raises(LLMError) as exc:
+        respond(req(), client=Bad([make_response()]), prices=PRICES, sleep=lambda s: None)
+    assert "SINKTEXT" not in str(exc.value) and exc.value.__context__ is None
+
+
+def test_a_custom_http_client_needs_an_explicit_factory():
+    import httpx2
+    import openai
+
+    custom = httpx2.Client(transport=httpx2.MockTransport(lambda r: httpx2.Response(500)))
+    client = openai.OpenAI(api_key="t", base_url="https://example.invalid/v1", http_client=custom)
+    with pytest.raises(LLMError) as exc:
+        respond(req(), client=client, prices=PRICES, sleep=lambda s: None)
+    assert exc.value.kind == "config" and "http_factory" in str(exc.value)
+
+
+@pytest.mark.parametrize("deadline", [float("nan"), float("inf"), 0, -1])
+def test_the_deadline_must_be_finite_and_positive(deadline):
+    with pytest.raises(LLMError) as exc:
+        respond(req(), client=FakeClient([make_response()]), prices=PRICES, deadline_s=deadline)
+    assert exc.value.kind == "config"
+
+
+@pytest.mark.privacy
+def test_trace_patterns_refuse_words_posing_as_ids():
+    rec = {"model": "gpt-5-zebrafish", "version": "decade", "at": "2026-11-15T9876543210"}
+    assert strip_text(rec) == {}

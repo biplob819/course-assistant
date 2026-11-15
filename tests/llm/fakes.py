@@ -92,3 +92,8 @@ class FakeResponses:
 class FakeClient:
     def __init__(self, outcomes: list[Any]) -> None:
         self.responses = FakeResponses(outcomes)
+        self.options: list[dict[str, Any]] = []
+
+    def with_options(self, **kw: Any) -> FakeClient:
+        self.options.append(kw)
+        return self

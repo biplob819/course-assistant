@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from importlib import resources
 from typing import Annotated
 
@@ -33,7 +34,8 @@ class Prices(Model):
         if model in self.models:
             return self.models[model]
         for alias, price in self.models.items():
-            if model.startswith(alias + "-") and model[len(alias) + 1 :][:1].isdigit():
+            # a dated snapshot only: "-YYYY-MM-DD"; "gpt-6.1-sol-2" or "-mini" is another model
+            if re.fullmatch(re.escape(alias) + r"-\d{4}-\d{2}-\d{2}", model):
                 return price
         raise KeyError(f"no price for model {model!r}; add it to prices.yaml")
 

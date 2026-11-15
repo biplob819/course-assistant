@@ -27,3 +27,14 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FEAT] [N1.3] — sample course: 3 sessions (41 slides, 12 pre-read pages, agendas) built byte-stably from YAML, CC BY 4.0, manifest with hashes, 9 assessment briefs, 14 absent topics
 - [FEAT] [N1.2] — OpenAI client: Responses wrapper (store=false fixed, explicit effort, file search with results), transient-only retries, prices with cache writes, spend ledger, allowlist trace sink
 - [FEAT] [N1.3] — green: sample course expanded to 60 slides and 18 pre-read pages after verifier review
+- [FEAT] [N1.5] — app store: SQLite records validated on read, learner-scoped history, audited replies, pause and deletions, fail-closed pause, atomic delete_history, retention purge with the 7-day deletion check
+- [FIX] [N1.2] — verifier pass 1: final-answer parsing with shifted citations, SDK retries off with per-attempt deadline, priced-or-ledgered errors, stripping inside respond (L-28)
+- [FIX] [N1.5] — verifier pass 1: owner-required children, locked migrations, pid cross-check, monotonic keys, calendar-year retention, secure delete (L-29)
+- [FIX] [N1.2] — verifier pass 2: wall-clock deadline per attempt, typed trace values, ledger and body errors in the taxonomy
+- [FIX] [N1.5] — verifier pass 2: transactional owner check, UTC purge, checked checkpoints, conversation ownership
+- [FIX] [N1.2] — verifier pass 3: guarded ledger and sink paths, per-attempt HTTP clients closed on overrun, daemon threads
+- [FIX] [N1.5] — verifier pass 3: fixed question conversations, guarded conversations, transactional escalation updates, bounded checkpoints, per-event retention
+- [FEAT] [E2.1] — golden set: 280 core cases plus 150 paraphrases (D-31), split by probe group (D-32); public tuning split committed, held-out split private and pinned by MANIFEST.json; gold units as locators (D-30)
+- [FEAT] [N1.5] — green after 4 verifier passes: app store with complete deletion, calendar retention, fail-closed pause
+- [FIX] [N1.2] — verifier pass 4: no escapes from the taxonomy, guarded client setup, explicit http_factory for custom clients (D-33)
+- [FIX] [E2.1] — second reader: split by merged topic groups with a cross-split leak check (D-34)

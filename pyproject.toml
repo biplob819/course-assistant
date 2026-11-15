@@ -37,6 +37,10 @@ dev = [
     "ruff>=0.6",
     "pyright>=1.1.380",
     "types-pyyaml>=6.0.12.20261113",
+    # optional extras the test suite exercises, so a plain `uv sync` can run every test
+    "openai>=2",
+    "pypdf>=5",
+    "python-pptx>=1",
 ]
 
 [build-system]

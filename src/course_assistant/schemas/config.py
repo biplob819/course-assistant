@@ -8,10 +8,10 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Literal, TypeVar
+from typing import Annotated, Any, Literal, TypeVar
 
 import yaml
-from pydantic import BaseModel, ValidationError, model_validator
+from pydantic import BaseModel, StringConstraints, ValidationError, model_validator
 
 from course_assistant.schemas._base import (
     FrozenMap,
@@ -28,6 +28,11 @@ from course_assistant.schemas._base import (
 from course_assistant.schemas.corpus import AssessmentList, Manifest
 
 Effort = Literal["minimal", "low", "medium", "high"]
+# a unit of the course by place, not by index: "s02:slides:9", "s02:pre_read:3", "s01:agenda:1"
+Locator = Annotated[
+    str,
+    StringConstraints(pattern=r"^s\d\d:(slides|pre_read|agenda|post_session|faq):[1-9]\d{0,3}$"),
+]
 Rule = Literal["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10"]
 Expected = Literal["answered", "not_covered", "hint_only", "handed_over"]
 
@@ -79,7 +84,7 @@ class GoldenCase(Versioned):
     question: NonBlank
     session_scope: SessionId | None = None
     expected_status: Expected
-    gold_units: tuple[PosInt, ...] = ()
+    gold_units: tuple[Locator, ...] = ()  # "s02:slides:9" (D-30)
     assessment_id: Ident | None = None
     canary: Name | None = None
     split: Literal["tuning", "heldout"]

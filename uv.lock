@@ -258,8 +258,11 @@ openai = [
 [package.dev-dependencies]
 dev = [
     { name = "hypothesis" },
+    { name = "openai" },
+    { name = "pypdf" },
     { name = "pyright" },
     { name = "pytest" },
+    { name = "python-pptx" },
     { name = "ruff" },
     { name = "types-pyyaml" },
 ]
@@ -278,8 +281,11 @@ provides-extras = ["openai", "ingest", "app"]
 [package.metadata.requires-dev]
 dev = [
     { name = "hypothesis", specifier = ">=6" },
+    { name = "openai", specifier = ">=2" },
+    { name = "pypdf", specifier = ">=5" },
     { name = "pyright", specifier = ">=1.1.380" },
     { name = "pytest", specifier = ">=8" },
+    { name = "python-pptx", specifier = ">=1" },
     { name = "ruff", specifier = ">=0.6" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20261113" },
 ]

@@ -76,7 +76,7 @@ def golden(**kw):
         rule="B1",
         question="Why do we need both offline and online evals?",
         expected_status="answered",
-        gold_units=(9,),
+        gold_units=("s02:slides:9",),
         split="tuning",
         corpus_version=SHA,
     )

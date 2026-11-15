@@ -1,6 +1,11 @@
 # N1.5 run state
 
-**Now:** spec
+**Now:** green
 
 ## History
 - 2026-11-15 — spec and criteria written.
+- 2026-11-15 — built tests-first; one generic records table with indexed pid, conversation and time columns.
+- 2026-11-15 — verifier pass 1 confirmed DB-03; disproved DB-01 (answers and escalations stored before their question had no pid, escaped scoping and survived deletion; concurrent first opens raced migrations; an edited pid column was trusted), DB-02 (audit keys reused after purge overwrote events), DB-04 (deletion records collided at one timestamp; day-count years shortened across leap days). Fixed with regressions: owner required, migrations under one write lock with a busy timeout, record pid checked against the column, a never-decreasing counter for audit and deletion keys, calendar-year retention rounding conservatively; should-fix: secure_delete plus WAL checkpoint after deletion, naive times refused, each purge audited, pilot end read as the close of its last day (L-29).
+- 2026-11-15 — verifier pass 2 confirmed DB-01, DB-02, DB-03; disproved DB-04 (a deletion between owner lookup and write left an answer with its text; audit retention computed the year before converting to UTC). Fixed: lookup and write in one transaction; purge works in UTC. Should-fix: checkpoint retried and checked, also after purge; deletion records cross-checked; questions only join their learner's conversation and never replace another learner's; audited escalation status changes; idempotent DDL for partial migrations.
+- 2026-11-15 — verifier pass 3 confirmed DB-01..03; disproved DB-04 narrowly (a question moved to another conversation left its answer behind on deletion). Fixed: questions cannot change conversation; conversations cannot be taken over; escalation reads inside their transaction; checkpoint with a 50 ms busy timeout reports completion (PurgeReport.wal_cleared); audit retention per event anniversary; purge checks deletions before commit.
+- 2026-11-15 — verifier pass 4 confirmed DB-01..04 (300 fuzzed sequences with no orphan; exact leap-day anniversaries; purge rollback; no lost reply under 3-process concurrency). Should-fix done: pause row scope cross-checked (fail closed), consent keys from the monotonic counter. Ruled: retention anniversaries are computed in UTC, the legal clock for this store (stated in RUN-STATE; IST callers keep data a few hours longer at most); a deletion during an open reader reports last_checkpoint_complete=False and is cleared at the next purge. Converge passed twice; rows flipped green.
