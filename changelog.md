@@ -55,3 +55,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [GREEN] [A2.2] — answer step; verifier passes 1 and 2 confirmed all four criteria
 - [FIX] [B2.2] — verifier pass 1: whole-id trace matching, rewrite lock and mode, recorded-order consent, shown-only history, deletion race
 - [FIX] [B2.2] — verifier pass 2: deletion requests record covered conversations; truncated trace lines attributed by them
+- [FEAT] [A2.3] — grounding check: L1 (citations resolve in the live corpus and session, top score ≥ `grounding_bar`, no citation fails, no call on fail), L2 Luna support check per sentence on cited unit text only, connective allow-list, deterministic sentence split and mark mapping, parse retry then fail closed
