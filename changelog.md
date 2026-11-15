@@ -21,3 +21,6 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [W0.1] — verifier pass 14: binary needs control bytes and valid font/movie headers; CR-terminated PDF streams
 - [FIX] [W0.1] — verifier pass 15: binaries only in sample_course/ and docs/assets/ with suffix and magic agreeing; PDF streams read as UTF-8; nested encodings (D-27, L-26)
 - [HARNESS] [W0.1] — green after 16 verifier passes: harness, CI, records, secret scan and corpus guard (D-22 to D-27, L-16 to L-26)
+- [FEAT] [N1.1] — schemas and config: corpus, request, people and privacy models, AppConfig, GoldenCase, YAML loaders; deep-frozen and strict (D-28)
+- [FIX] [N1.1] — verifier pass 1: strict models, role ids, generated-id audit targets, frozen status table, exact export contract (D-29, L-27)
+- [FEAT] [N1.1] — green: verifier pass 2 confirmed; canonical JSON, YAML 1.2 scalars, generated ids

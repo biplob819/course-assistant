@@ -200,11 +200,16 @@ class CorpusUnit(BaseModel):         # one slide or one page
     corpus_version: str
 
 
-class Assessment(BaseModel):         # briefs only (D-7)
+class Assessment(BaseModel):         # briefs only (D-7); refuses any other field
     assessment_id: str
     title: str
     brief: str
     sessions: tuple[str, ...]
+
+
+class AssessmentList(BaseModel):     # the assessments.yaml file
+    schema_version: str
+    assessments: tuple[Assessment, ...]
 
 
 class Conversation(BaseModel):      # OWNER D-6
@@ -273,10 +278,16 @@ class Answer(BaseModel):
     created_at: datetime
 
 
+class Draft(BaseModel):              # the assistant's draft for a handed-over question (D-28)
+    text: str
+    citations: tuple[Citation, ...]  # sources for the teaching team, even when not covered
+    hits: tuple[SearchHit, ...]
+
+
 class Escalation(BaseModel):
     question_id: str
     reason: Literal["not_covered", "graded_work", "admin", "personal", "learner_request"]
-    draft: Answer | None             # never shown to the learner unless an instructor sends it
+    draft: Draft | None              # never shown to the learner unless an instructor sends it
     status: Literal["open", "replied", "material_gap", "closed"]
     reply_text: str | None
     replied_by: str | None           # instructor role id, not a name
