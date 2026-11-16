@@ -6,6 +6,7 @@ file-backed spend counter, an in-memory KV and an injected REST transport. Publi
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import hmac
 import io
@@ -885,3 +886,15 @@ def test_rotating_sessions_with_no_ip_hit_the_global_cap():
         except GuardRefused as exc:
             wrong += str(exc) == passkey.WRONG
     assert wrong <= 10
+
+
+# ---------- verifier pass 2 regressions ----------
+
+
+@pytest.mark.safety
+def test_a_flood_without_ip_never_locks_out_a_visitor_with_an_ip():
+    gate = passkey.PasskeyGate(Secret(), clock=Tick(), global_max_failures=10)
+    for i in range(40):
+        with contextlib.suppress(GuardRefused):
+            gate.unlock("000000", session=f"flood{i}", ip=None)
+    assert not gate.locked("owner", "10.0.0.7")

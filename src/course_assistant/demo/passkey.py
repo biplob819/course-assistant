@@ -172,7 +172,7 @@ class PasskeyGate:
     def locked(self, session: str, ip: str | None = None) -> bool:
         with self._lock:
             now = self._clock()
-            keys = [*self._keys(session, ip), ("global", "*")]
+            keys = self._all_keys(session, ip)
             return any(len(self._recent(k, now)) >= self._limit(k) for k in keys)
 
     def unlock(self, code: str, *, session: str, ip: str | None = None) -> None:
@@ -183,7 +183,7 @@ class PasskeyGate:
         if not isinstance(session, str) or not session:
             raise GuardRefused(NEEDED)
         stored = self._stored()
-        keys = [*self._keys(session, ip), ("global", "*")]
+        keys = self._all_keys(session, ip)
         with self._lock:
             now = self._clock()
             if any(len(self._recent(k, now)) >= self._limit(k) for k in keys):
@@ -204,6 +204,12 @@ class PasskeyGate:
                 self._bound(self._unlocked)
             return
         raise GuardRefused(WRONG)
+
+    def _all_keys(self, session: str, ip: str | None) -> list[tuple[str, str]]:
+        """Per session and per IP; the global cap counts only attempts with no IP, so a flood of
+        wrong guesses can never lock out the owner or visitors with a known IP (pass 2)."""
+        keys = self._keys(session, ip)
+        return keys if ip else [*keys, ("global", "*")]
 
     def _limit(self, key: tuple[str, str]) -> int:
         return self.global_max_failures if key[0] == "global" else self.max_failures

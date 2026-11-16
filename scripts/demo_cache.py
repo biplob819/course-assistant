@@ -99,7 +99,11 @@ def main(argv: list[str] | None = None) -> int:
             print("demo_cache: OPENAI_API_KEY is not set (the demo project's key, "
                   "uv run --env-file .env ...)", file=sys.stderr)  # fmt: skip
             return 2
-    config = load_app_config(args.config)
+    try:
+        config = load_app_config(args.config)
+    except Exception:
+        print(f"demo_cache: cannot read config {args.config}", file=sys.stderr)
+        return 2
     if args.dry_run:
         return 0
     corpus = CorpusStore(args.store or args.config.parent / "corpus_store", config.cohort).current()
