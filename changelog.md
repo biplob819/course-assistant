@@ -106,3 +106,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [B2.1] — verifier pass 1: one reply per question; every draft leak-scanned
 - [FEAT] [E2.2] — EvalKit task course-ta: task YAML (four statuses, corpus units as context, unit-index citations, slices by rule and split), course_ta system adapter over ask() recording snapshot, rules hash and corpus version, task scorers locator_correct, integrity, identity (dual judges, solutions to the integrity judge only), leak_check and attack_outcome; scripts/eval_live.py for E2.5 (building)
 - [GREEN] [B2.1] — escalation queue; verifier pass 2 confirmed all four criteria
+- [GREEN] [E2.2] — EvalKit task course-ta; verifier pass 1 confirmed all six criteria

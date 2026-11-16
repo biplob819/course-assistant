@@ -5,5 +5,5 @@
 - [x] 3. Tests first
 - [x] 4. Build
 - [x] 5. Converge twice
-- [ ] 6. Verifier
-- [ ] 7. Proofs, green, commit
+- [x] 6. Verifier
+- [x] 7. Proofs, green, commit
