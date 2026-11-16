@@ -209,6 +209,16 @@ ground version checked against the tuning log (refuses an unlogged change unless
 - `--allow-unlogged` never applies to held-out runs; replayed held-out runs log
   `heldout_scored`; `heldout_refreshed` names a decision opening with "Refreshes held-out".
 
+## Verifier pass 3 changes
+- Guarded per case, not per set: each `calibration_scored` line records the held-out case
+  ids (public, as in the held-out MANIFEST) with the rubric hash, and scoring refuses when
+  any held-out case of the new sample was scored for that calibration under another rubric,
+  for groundedness and integrity alike, whatever seed or record set drew the sample.
+- CI checks out full history (`fetch-depth: 0`) and passes `LOG_BASE_SHA` (the push's previous
+  head, or the PR base). The build test requires the log to start with the version at that
+  base, else at HEAD^; with neither it fails in CI and skips only locally without git. D-55
+  sets the scope: accidental and unreviewed edits, not a deliberate history rewrite.
+
 ## Rules
 - No network or API call in any test; tests read only `golden/public/`; fake judges and
   scripted model outputs only.

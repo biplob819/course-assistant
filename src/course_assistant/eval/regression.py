@@ -317,5 +317,7 @@ def _kappa_problems(fixture_dir: Path, tap: SupportTap, meta: Mapping[str, Any],
     if not baseline:
         return [*out, "fixture has no baseline_kappa"]
     # EvalKit's rule (an exact drop of the tolerance passes); the wording names what this is
-    return out + [p.replace("held-out kappa", "public support kappa")
-                  for p in kappa_regressions(baseline, current, tolerance)]
+    return out + [
+        p.replace("held-out kappa", "public support kappa")
+        for p in kappa_regressions(baseline, current, tolerance)
+    ]

@@ -141,8 +141,10 @@ def export_groundedness(run_dir: Path, *, force: bool = False, n: int = 100,
     cal = run_dir / "calibration"
     sheet = cal / "sheet.json"
     if sheet.is_file() and any(cal.glob("labels-*.json")):
-        raise CalibrationError(f"{sheet} already has labels; a held-out set is scored once per "
-                               "rubric, so a new export needs a fresh held-out set")
+        raise CalibrationError(
+            f"{sheet} already has labels; a held-out set is scored once per "
+            "rubric, so a new export needs a fresh held-out set"
+        )
     if sheet.is_file() and not force:
         raise CalibrationError(f"{sheet} exists (force to replace it; no labels yet)")
     records, cases = R.read_records(run_dir), R.read_cases(run_dir)
@@ -161,22 +163,28 @@ def score_groundedness(run_dir: Path, *, log: Path) -> Any:
     from evalkit.pipeline.calibrate import import_labels
     from evalkit.pipeline.labeller import load_labels
 
-    from course_assistant.eval.tuning import log_calibration_scored, read_log, scored_rubrics
+    from course_assistant.eval.tuning import (
+        cases_scored_elsewhere,
+        log_calibration_scored,
+        read_log,
+    )
 
     rows = R._load_sheet(run_dir)  # pyright: ignore[reportPrivateUsage]
     first = load_labels(run_dir / "calibration" / "labels-first.json")
     if first is None:
         raise CalibrationError("no first-round groundedness labels yet")
     relabel = load_labels(run_dir / "calibration" / "labels-relabel.json")
-    digest = ek_digest(import_labels(rows, first, relabel))
-    other = scored_rubrics(read_log(log), "groundedness", digest) - {JUDGE_PROMPT_HASH}
-    if other:
-        raise CalibrationError(f"this held-out set was already scored under another rubric "
-                               f"({sorted(other)[0]}, tuning log); a changed rubric needs a "
-                               "fresh held-out set (Tech Spec §5.7)")  # fmt: skip
+    labels = import_labels(rows, first, relabel)
+    held = {lab.claim_id.split(":", 1)[0] for lab in labels if lab.split == "heldout"}
+    clash = cases_scored_elsewhere(read_log(log), "groundedness", held, JUDGE_PROMPT_HASH)
+    if clash:
+        raise CalibrationError(f"{len(clash)} held-out case(s) were already scored under another "
+                               "rubric (tuning log); a changed rubric needs a fresh held-out set "
+                               "(Tech Spec §5.7)")  # fmt: skip
     report = R.cal_score(run_dir)
-    log_calibration_scored(log, calibration="groundedness", digest=report.heldout_digest,
-                           rubric_hash=JUDGE_PROMPT_HASH, run=run_dir.name)  # fmt: skip
+    log_calibration_scored(log, calibration="groundedness", digest=ek_digest(labels),
+                           rubric_hash=JUDGE_PROMPT_HASH, run=run_dir.name,
+                           heldout_cases=held)  # fmt: skip
     return report
 
 
@@ -385,13 +393,14 @@ def probe_report(rows: Sequence[ProbeRow], first: ProbeLabelFile, relabel: Probe
     if relabel is not None and any(not by_key[k].relabel for k in relabel.labels):
         raise CalibrationError("relabel-round labels outside the relabel set")
     digest = heldout_digest(rows)
-    from course_assistant.eval.tuning import scored_rubrics
+    from course_assistant.eval.tuning import cases_scored_elsewhere
 
-    other = scored_rubrics(logged, kind, digest) - {RUBRIC_HASH}
-    if other:
-        raise CalibrationError(f"this held-out set was already scored under another rubric "
-                               f"({sorted(other)[0]}, tuning log); a changed rubric needs a "
-                               "fresh held-out set (Tech Spec §5.4)")  # fmt: skip
+    clash = cases_scored_elsewhere(logged, kind, {r.case_id for r in rows if r.split == "heldout"},
+                                   RUBRIC_HASH)  # fmt: skip
+    if clash:
+        raise CalibrationError(f"{len(clash)} held-out case(s) were already scored under another "
+                               "rubric (tuning log); a changed rubric needs a fresh held-out set "
+                               "(Tech Spec §5.4)")  # fmt: skip
     for old in previous:
         if old.heldout_digest == digest and old.rubric_hash != RUBRIC_HASH:
             raise CalibrationError("this held-out set was already scored under another rubric; "
@@ -458,8 +467,10 @@ def export_probe(run_dir: Path, *, kind: str = "integrity", force: bool = False,
         raise CalibrationError("judging is still pending: finish the run before calibrating")
     d = probe_dir(run_dir, kind)
     if (d / "sheet.json").is_file() and any(d.glob("labels-*.json")):
-        raise CalibrationError(f"the {kind} sheet already has labels; a held-out set is scored "
-                               "once per rubric, so a new export needs a fresh held-out set")
+        raise CalibrationError(
+            f"the {kind} sheet already has labels; a held-out set is scored "
+            "once per rubric, so a new export needs a fresh held-out set"
+        )
     if (d / "sheet.json").is_file() and not force:
         raise CalibrationError(f"the {kind} sheet exists (force to replace it; no labels yet)")
     records, cases = R.read_records(run_dir), R.read_cases(run_dir)
@@ -507,8 +518,14 @@ def score_probe(run_dir: Path, *, log: Path, kind: str = "integrity",
                           seed=R.read_manifest(run_dir).seed,
                           scored_at=now or dt.datetime.now(dt.UTC), previous=previous,
                           logged=read_log(log))  # fmt: skip
-    log_calibration_scored(log, calibration=kind, digest=report.heldout_digest,
-                           rubric_hash=report.rubric_hash, run=run_dir.name)
+    log_calibration_scored(
+        log,
+        calibration=kind,
+        digest=report.heldout_digest,
+        rubric_hash=report.rubric_hash,
+        run=run_dir.name,
+        heldout_cases=[r.case_id for r in rows if r.split == "heldout"],
+    )
     entry = json.loads(report.model_dump_json())
     kept = [*history.get("history", []), entry]
     _write(hist_path, json.dumps({"current": entry, "history": kept}, indent=1) + "\n")

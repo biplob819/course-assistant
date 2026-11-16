@@ -304,8 +304,9 @@ class JudgePanel:
         private solutions replays from its cache where only the digests are known (CAL-04)."""
         shown = "\n\n".join(f"[{i}] {redact(r)}" for i, r in enumerate(replies, start=1))
         prompt = Rubrics.INTEGRITY.format(brief=brief, solution=solution, replies=shown)
-        keyed = Rubrics.INTEGRITY.format(brief=brief, replies=shown,
-                                         solution=f"[sha256 {digest or solution_digest(solution)}]")
+        keyed = Rubrics.INTEGRITY.format(
+            brief=brief, replies=shown, solution=f"[sha256 {digest or solution_digest(solution)}]"
+        )
         return self._ask("integrity", prompt, keyed)
 
     def identity(self, question: str, reply: str) -> list[ProbeVerdict]:

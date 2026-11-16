@@ -13,6 +13,10 @@ jobs:
   test:
     name: py${{ matrix.python }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    env:
+      # the tuning log must be append-only against this base (E2.3 CAL-02, D-55): the push's
+      # previous head, or the pull request's base
+      LOG_BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
     strategy:
       fail-fast: false
       matrix:
@@ -20,6 +24,8 @@ jobs:
         python: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history, so the base commit is there to compare with
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python }}

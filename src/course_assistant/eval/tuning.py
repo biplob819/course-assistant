@@ -19,7 +19,7 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -32,8 +32,13 @@ from course_assistant.schemas._base import FrozenMap, Model, NonNegInt
 TARGET_GROUNDED = 0.90  # §6.4 grounded answer rate (point)
 TARGET_HANDOVER = 0.95  # §6.4 correct handover
 HANDOVER_RULES = frozenset({"B2", "B4", "B7"})
-KINDS = ("grounding_bar", "support_rules", "heldout_scored", "heldout_refreshed",
-         "calibration_scored")
+KINDS = (
+    "grounding_bar",
+    "support_rules",
+    "heldout_scored",
+    "heldout_refreshed",
+    "calibration_scored",
+)
 REFRESH_OPENING = "Refreshes held-out"  # a heldout_refreshed decision must open with this
 _DECISION = re.compile(r"^D-\d+$")
 
@@ -263,12 +268,26 @@ def log_change(path: Path, entry: Mapping[str, Any], decisions_text: str) -> dic
 
 
 def log_calibration_scored(path: Path, *, calibration: str, digest: str, rubric_hash: str,
-                           run: str) -> dict[str, Any]:  # fmt: skip
-    """One held-out calibration scoring: which held-out set (digest) under which rubric. The
-    committed log is the one place this history lives, across run folders (CAL-01)."""
+                           run: str, heldout_cases: Iterable[str]) -> dict[str, Any]:  # fmt: skip
+    """One held-out calibration scoring: which held-out cases (their public ids, as in the
+    held-out MANIFEST) under which rubric. The committed log is the one place this history
+    lives, across run folders and samples (CAL-01)."""
     return _append(path, {"kind": "calibration_scored", "calibration": calibration,
                           "digest": digest, "rubric_hash": rubric_hash, "run": run,
+                          "heldout_cases": sorted(set(heldout_cases)),
                           "at": dt.date.today().isoformat()})  # fmt: skip
+
+
+def cases_scored_elsewhere(log: Sequence[Mapping[str, Any]], calibration: str,
+                           cases: set[str], rubric_hash: str) -> list[str]:  # fmt: skip
+    """Held-out cases of `cases` already scored for this calibration under another rubric:
+    any one of them refuses the scoring, whatever sample or seed drew it."""
+    hit: set[str] = set()
+    for e in log:
+        if e["kind"] == "calibration_scored" and e.get("calibration") == calibration \
+                and e.get("rubric_hash") != rubric_hash:  # fmt: skip
+            hit |= cases & set(e.get("heldout_cases", ()))
+    return sorted(hit)
 
 
 def scored_rubrics(log: Sequence[Mapping[str, Any]], calibration: str, digest: str) -> set[str]:
