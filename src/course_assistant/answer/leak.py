@@ -40,6 +40,17 @@ _LONGER_IDS = re.compile(
 )
 
 
+def _blank_longer(m: re.Match[str]) -> str:
+    """Blank a known longer identifier, but never anything pid-shaped: exactly 16 hex, or a
+    colon-grouped run too short to be a full IPv6 address (under 20 hex and no '::'), which a
+    split pid can leave behind (verifier A2.5 pass 15)."""
+    found = m.group(0)
+    hexes = sum(c in _HEX for c in found)
+    if hexes == 16 or (":" in found and "::" not in found and hexes < 20):
+        return found
+    return " "
+
+
 _TOKEN = re.compile(r"[0-9a-z]+")
 _HEX = frozenset("0123456789abcdef")
 
@@ -51,9 +62,7 @@ def _pid_like(folded: str) -> bool:
     front never hides one; single letters, month names and list items break the chain with
     their commas or uneven separators (verifier A2.5 passes 1-8). Known longer identifiers
     (UUIDs, hex runs of 17+, IPv6) are blanked first, unless they hold exactly 16 hex."""
-    text = _LONGER_IDS.sub(
-        lambda m: m.group(0) if sum(c in _HEX for c in m.group(0)) == 16 else " ", folded
-    )
+    text = _LONGER_IDS.sub(_blank_longer, folded)
     tokens = list(_TOKEN.finditer(text))
     for i, first in enumerate(tokens):
         if not set(first.group(0)) <= _HEX:
@@ -91,7 +100,7 @@ def _pid_like(folded: str) -> bool:
 # citation markers in every form the app or a model writes; removed (not spaced) so one inside
 # a word cannot split it
 _CITE = re.compile(
-    r"\[[0-9]{1,3}(?:\s*[,;]\s*[0-9]{1,3})*\]|【[^】]{0,40}】"
+    r"\[[0-9]{1,3}(?:\s*[,;]\s*[0-9]{1,3})*\]|【[^】]{0,40}】|】[^【]{0,40}【"
     r"|\((?:unit|session|slide|p\.)\s?[0-9][^)]{0,27}\)"
     # the same markers as they read in reversed text (verifier A2.5 pass 11)
     r"|\][0-9]{1,3}(?:\s*[,;]\s*[0-9]{1,3})*\["

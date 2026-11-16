@@ -1484,3 +1484,29 @@ def test_a_reversed_canary_with_a_reversed_citation_is_still_the_canary():
     disguised = c[:6] + " (unit 4) " + c[6:]
     shown = disguised[::-1]  # brackets kept as stored: ")4 tinu("
     assert "canary" in scan("‮" + shown + "‬")
+
+
+# ---------- verifier pass 15 regressions ----------
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Your id is f2: [3] a7:4d:e4:52:e6:b4:38 ok.",
+        "Your id is f2:a7: (unit 4) 4d:e4:52:e6:b4:38 ok.",
+    ],
+)
+def test_a_marker_in_a_colon_paired_pid_never_hides_it(text):
+    from course_assistant.answer.leak import scan
+
+    assert "pid" in scan(text)
+
+
+@pytest.mark.safety
+def test_a_reversed_canary_with_a_reversed_bracket_marker_is_the_canary():
+    from course_assistant.answer.leak import scan
+
+    c = AnswerStep.CANARY
+    shown = (c[:6] + "【4:0†src】" + c[6:])[::-1]
+    assert "canary" in scan("‮" + shown + "‬")
