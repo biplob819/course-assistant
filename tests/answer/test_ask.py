@@ -1396,3 +1396,18 @@ def test_disguise_pairs_with_separators_are_caught(disguise):
     from course_assistant.answer.leak import scan
 
     assert "rules" in scan(disguise(_nine_rule_words()))
+
+
+# ---------- verifier pass 11 regressions ----------
+
+
+@pytest.mark.safety
+def test_a_reversed_text_with_a_citation_inside_is_caught():
+    from course_assistant.answer.leak import scan
+
+    words_ = _nine_rule_words().split()
+    fragment = " ".join([*words_[:5], "(unit 4)", *words_[5:]])
+    shown = fragment[::-1].replace(")", "\0").replace("(", ")").replace("\0", "(")
+    assert "rules" in scan("‮" + shown + "‬")
+    pid = "3f9a0c(unit 4)7e12b4d856"[::-1].replace(")", "\0").replace("(", ")").replace("\0", "(")
+    assert "pid" in scan("id ‮" + pid + "‬")

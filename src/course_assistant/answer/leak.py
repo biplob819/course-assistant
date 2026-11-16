@@ -33,6 +33,7 @@ FRAGMENT_WORDS = 9  # "more than 8 words" (§5 point 7)
 # turns an answer into not_covered, which fails safe) (verifier A2.5 passes 1-7)
 _LONGER_IDS = re.compile(
     r"(?<![0-9a-z])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![0-9a-z])"
+    r"|(?<![0-9a-z])[0-9a-f]{12}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{8}(?![0-9a-z])"
     r"|(?<![0-9a-z])[0-9a-f]{17,}(?![0-9a-z])"
     r"|(?<![0-9a-z:])(?:[0-9a-f]{1,4}:){5,7}[0-9a-f]{1,4}(?![0-9a-z:])"
     r"|(?<![0-9a-z:])[0-9a-f:]*::[0-9a-f:]*[0-9a-f](?![0-9a-z:])"
@@ -87,6 +88,9 @@ def _pid_like(folded: str) -> bool:
 _CITE = re.compile(
     r"\[[0-9]{1,3}(?:\s*[,;]\s*[0-9]{1,3})*\]|【[^】]{0,40}】"
     r"|\((?:unit|session|slide|p\.)[^)]{0,30}\)"
+    # the same markers as they read in reversed text (verifier A2.5 pass 11)
+    r"|\][0-9]{1,3}(?:\s*[,;]\s*[0-9]{1,3})*\["
+    r"|\([^()]{0,30}(?:tinu|noisses|edils|\.p)\)|\)[^()]{0,30}(?:tinu|noisses|edils|\.p)\("
 )
 # letters that render as nothing (Hangul fillers, braille blank) and control characters
 _BLANKS = dict.fromkeys(map(ord, "\u115f\u1160\u3164\uffa0\u2800"), None)
@@ -165,6 +169,11 @@ _CONFUSABLES = str.maketrans(
         "ϲ": "c",
         "Ϲ": "c",
         "ϳ": "j",
+        "χ": "x",
+        "η": "n",
+        "ү": "y",
+        "ѵ": "v",
+        "Ꭱ": "r",
     }
 )
 
@@ -306,7 +315,7 @@ def scan(text: str) -> tuple[Finding, ...]:
     if _contains_like(flat, canary) or _contains_like(flat[::-1], canary):
         found.append("canary")  # reversed too (right-to-left override)
     folded = normalise(text)
-    if _pid_like(folded):
+    if _pid_like(folded) or _pid_like(normalise(folded[::-1])):
         found.append("pid")
     w = words(text)
     reversed_words = words(normalise(text)[::-1])

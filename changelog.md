@@ -96,3 +96,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [GREEN] [B2.2] — notice, consent, history, delete; verifier pass 18 confirmed all four criteria
 - [FIX] [A2.5] — verifier pass 9: separator-blind rules comparison; D-50
 - [FIX] [A2.5] — verifier pass 10: stream check reversed and wildcard-anchored
+- [FIX] [A2.5] — verifier pass 11: reversed citations and pids; D-51 sets the leak scan's final scope
