@@ -64,7 +64,9 @@ def _pid_like(folded: str) -> bool:
             if not set(word) <= _HEX:
                 break
             if j > i:
-                gap = text[tokens[j - 1].end() : tokens[j].start()]
+                # runs of spaces count as one, so a removed citation marker or a double space
+                # never breaks a grouping (verifier A2.5 pass 12)
+                gap = re.sub(r"[ \t]+", " ", text[tokens[j - 1].end() : tokens[j].start()])
                 if not (1 <= len(gap) <= 3) or any(c in ",;\n" for c in gap):
                     break
                 if sep is None:

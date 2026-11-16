@@ -1411,3 +1411,21 @@ def test_a_reversed_text_with_a_citation_inside_is_caught():
     assert "rules" in scan("‮" + shown + "‬")
     pid = "3f9a0c(unit 4)7e12b4d856"[::-1].replace(")", "\0").replace("(", ")").replace("\0", "(")
     assert "pid" in scan("id ‮" + pid + "‬")
+
+
+# ---------- verifier pass 12 regressions ----------
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Your id is 91b7 584a [2] 2265 b1f5.",
+        "Your id is 91b7 584a (unit 4) 2265 b1f5.",
+        "Id 91b7 584a  2265 b1f5",
+    ],
+)
+def test_a_citation_or_double_space_inside_a_grouped_pid_never_hides_it(text):
+    from course_assistant.answer.leak import scan
+
+    assert "pid" in scan(text)
