@@ -121,3 +121,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [GREEN] [B2.5] — learner chat page; verifier pass 2 confirmed all six criteria
 - [FIX] [E2.3] — verifier pass 4: only scripts/calibrate.py score certifies; an EvalKit-certified bypass reads as uncalibrated; held-out ids from the MANIFEST; merge-base for new-branch pushes
 - [FIX] [W0.1] — CI green again: sample course build committed (build/ ignore rule), core-only job without the dev group, import order; L-31
+- [GREEN] [E2.3] — calibration and bar tuning; verifier pass 5 confirmed all four criteria

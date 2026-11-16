@@ -5,6 +5,6 @@
 - [x] 3. Tests first (E2.2 should-fix items first, each with a test)
 - [x] 4. Build
 - [x] 5. Converge twice
-- [ ] 6. Verifier
-- [ ] 7. Proofs, green, commit
+- [x] 6. Verifier
+- [x] 7. Proofs, green, commit
 - [ ] Live (owner, pending): calibration run `eval_live.py --split both`; groundedness labels (EvalKit page) and integrity labels (CSV), each with the blind relabel; `calibrate.py score`; tuning run at the floor bar and `calibrate.py tune-bar`; live regression fixture via `calibrate.py record-evalreg`
