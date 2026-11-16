@@ -243,6 +243,32 @@ def _fragments(texts: tuple[str, ...]) -> dict[tuple[int, ...], list[tuple[str, 
     return grams
 
 
+@functools.cache
+def _gram_streams(texts: tuple[str, ...]) -> dict[str, list[str]]:
+    """Every 9-word run of the rules as one letter stream (no spaces), indexed by its first 8
+    characters, for the separator-blind comparison."""
+    out: dict[str, list[str]] = {}
+    for text in texts:
+        w = words(text)
+        for i in range(len(w) - FRAGMENT_WORDS + 1):
+            stream = "".join(w[i : i + FRAGMENT_WORDS])
+            out.setdefault(stream[:8], []).append(stream)
+    return out
+
+
+def _copies_rules_stream(text: str) -> bool:
+    """A copied fragment with separators inside or between its words removed or added (a
+    hyphen or a full stop inside a word, letters spaced apart, spaces dropped, camel case):
+    compared as one run of letters and digits (verifier A2.5 pass 9)."""
+    flat = "".join(w for w in words(text))
+    index = _gram_streams(rules_texts())
+    for i in range(len(flat) - 7):
+        for stream in index.get(flat[i : i + 8], ()):
+            if flat.startswith(stream, i):
+                return True
+    return False
+
+
 def _copies_rules(w: list[str]) -> bool:
     grams = _fragments(rules_texts())
     for i in range(len(w) - FRAGMENT_WORDS + 1):
@@ -266,6 +292,6 @@ def scan(text: str) -> tuple[Finding, ...]:
         found.append("pid")
     w = words(text)
     reversed_words = words(normalise(text)[::-1])
-    if _copies_rules(w) or _copies_rules(reversed_words):
+    if _copies_rules(w) or _copies_rules(reversed_words) or _copies_rules_stream(text):
         found.append("rules")
     return tuple(found)

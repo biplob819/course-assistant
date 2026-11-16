@@ -1354,3 +1354,28 @@ def test_a_grouped_pid_after_a_year_is_caught(text):
     from course_assistant.answer.leak import scan
 
     assert "pid" in scan(text)
+
+
+# ---------- verifier pass 9 regressions ----------
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("disguise", [
+    lambda t: t.replace("questions", "ques-tions"),
+    lambda t: t.replace("questions", "ques.tions"),
+    lambda t: t.replace("course", "c o u r s e", 1),
+    lambda t: t.replace(" ", ""),
+    lambda t: "".join(w.capitalize() for w in t.split()),
+])  # fmt: skip
+def test_separators_inside_or_between_words_never_hide_a_rules_fragment(disguise):
+    from course_assistant.answer.leak import scan
+
+    assert "rules" in scan(disguise(_nine_rule_words()))
+
+
+def test_ordinary_long_answers_do_not_trip_the_stream_check():
+    from course_assistant.answer.leak import scan
+
+    text = ("Offline evaluation runs a fixed golden set before every release, and online "
+            "evaluation samples live traffic after it, so drift is noticed early.")  # fmt: skip
+    assert "rules" not in scan(text)
