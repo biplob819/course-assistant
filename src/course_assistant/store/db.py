@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -308,6 +308,33 @@ class Store:
             if current is None:
                 raise KeyError(f"no escalation for {question_id}")
             updated = current.model_copy(update={"status": status})
+            self._put_escalation(updated)
+            self._audit(actor, action, question_id, at)
+        return updated
+
+    def add_escalation(self, e: Escalation) -> Escalation:
+        """Queue an escalation unless the question already has one; returns the stored one.
+        Check and write in one transaction, so a second tap never replaces a reply (B2.1)."""
+        with self._tx():
+            current = self.get_escalation(e.question_id)
+            if current is not None:
+                return current
+            self._put_escalation(e)
+        return e
+
+    def update_escalation(self, question_id: str, change: Callable[[Escalation], Escalation],
+                          actor: str, action: str, *, at: dt.datetime) -> Escalation:  # fmt: skip
+        """Compare-and-set for a teaching-team change (B2.1): read the escalation, let `change`
+        check the transition and build the new record (it raises to refuse), validate it,
+        write it and audit the action, all in one transaction, so a concurrent change is
+        never overwritten."""
+        with self._tx():
+            current = self.get_escalation(question_id)
+            if current is None:
+                raise KeyError(f"no escalation for {question_id}")
+            updated = Escalation.model_validate(change(current).model_dump())
+            if updated.question_id != question_id:
+                raise ValueError("an escalation cannot move to another question")
             self._put_escalation(updated)
             self._audit(actor, action, question_id, at)
         return updated

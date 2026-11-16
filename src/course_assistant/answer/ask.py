@@ -93,6 +93,9 @@ class Turn(Model):
     leak: tuple[Finding, ...]  # what the leak scan found (empty when clean)
     draft: AnswerDraft | None  # a course draft not shown (not covered or leaked): for the queue
     steps: tuple[StepTiming, ...]
+    # the route category, so B2.1's queue can tell admin from personal; None when paused, when
+    # the route call failed, or when the turn was deleted while it ran (B2.1 addition)
+    route: Category | None = None
 
 
 def decide(route: str | None, ground_passed: bool | None, integrity_passed: bool | None,
@@ -360,7 +363,7 @@ class Assistant:
                         handover=answer.status == "handed_over",
                         injection=result.get("route") == "injection" and answer.status != "error",
                         leak=result["leak"], draft=result["kept_draft"],
-                        steps=calls.timings())  # fmt: skip
+                        steps=calls.timings(), route=result.get("route"))  # fmt: skip
         finally:
             self._settle(learner_pid, touched[0], before)
 

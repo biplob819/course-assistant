@@ -102,3 +102,6 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [A2.5] — verifier pass 14: spaced markers inside grouped pids; reversed citation form
 - [FIX] [A2.5] — verifier pass 15: short colon runs never blanked; reversed bracket marker
 - [GREEN] [A2.5] — ask() orchestration and resilience; verifier pass 16 confirmed all seven criteria
+- [FEAT] [B2.1] — escalation queue: escalate, reply, flag gap, close, team queue, reply times, reply waiting in history
+- [FIX] [B2.1] — verifier pass 1: one reply per question; every draft leak-scanned
+- [FEAT] [E2.2] — EvalKit task course-ta: task YAML (four statuses, corpus units as context, unit-index citations, slices by rule and split), course_ta system adapter over ask() recording snapshot, rules hash and corpus version, task scorers locator_correct, integrity, identity (dual judges, solutions to the integrity judge only), leak_check and attack_outcome; scripts/eval_live.py for E2.5 (building)
