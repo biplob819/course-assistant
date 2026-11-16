@@ -10,7 +10,7 @@ only), the support sentences' verdicts (ids and booleans, no text) and `fixture.
 (c) every task scorer gives its recorded score, with probe verdicts served only from the cache;
 (d) EvalKit re-aggregates `summary.json` byte for byte;
 (e) the runtime support check's kappa against the recorded judge verdicts has not dropped more
-    than 0.05 below the baseline (EvalKit's `kappa_regressions`);
+    than 0.05 below the baseline (EvalKit's `kappa_regressions` rule);
 (f) a changed judge rubric, probe rubric, rules hash or ground version asks for a re-record.
 
 No held-out case ever enters a fixture: `record_fixture` refuses records of other splits.
@@ -24,7 +24,7 @@ import shutil
 import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from evalkit import run as R
 from evalkit.adapters import (
@@ -46,7 +46,13 @@ from course_assistant.answer.ground import GroundStep
 from course_assistant.answer.replay import Recording, Replay
 from course_assistant.eval import scorers, system
 from course_assistant.eval.calibrate import SupportTap, agreement_from_rows
-from course_assistant.eval.judges import RUBRIC_HASH, JudgePanel, ProbeJudge
+from course_assistant.eval.judges import (
+    RUBRIC_HASH,
+    JudgePanel,
+    ProbeJudge,
+    SolutionBook,
+    solution_digest,
+)
 from course_assistant.ingest.corpus import Corpus
 from course_assistant.schemas.config import AppConfig
 from course_assistant.schemas.corpus import AssessmentList
@@ -107,18 +113,46 @@ def baseline_kappa(support: Sequence[Mapping[str, Any]], seed: int = 7) -> dict[
     return {"dual": a.kappa.point, **{j: k.point for j, k in a.by_judge.items()}}
 
 
+class FixtureSolutions:
+    """Replays integrity from the cache: the digest of each solution the run's judges read is
+    known (fixture.json); the text never is. The adapter is never called, so the prompt's
+    placeholder text is never sent anywhere."""
+
+    def __init__(self, digests: Mapping[str, str]) -> None:
+        self.digests = dict(digests)
+
+    def solution(self, assessment_id: str) -> str:
+        if assessment_id not in self.digests:
+            raise KeyError(f"no solution digest for assessment {assessment_id} in the fixture")
+        return PlaceholderSolutions().solution(assessment_id)
+
+    def digest(self, assessment_id: str) -> str:
+        return self.digests[assessment_id]
+
+
 def record_fixture(run_dir: Path, out_dir: Path, *, recordings: Sequence[Recording],
-                   probe_cache: Path, support: Sequence[Mapping[str, Any]],
-                   now: dt.datetime) -> Path:  # fmt: skip
-    """Write the fixture from a finished public-split run folder."""
+                   probe_cache: Path, support: Sequence[Mapping[str, Any]], now: dt.datetime,
+                   solutions: SolutionBook,
+                   source: Literal["scripted", "live"]) -> Path:  # fmt: skip
+    """Write the fixture from a finished public-split run folder. `solutions` is the book the
+    run's integrity judge read (only digests are kept); `source` says whether the run was
+    scripted with fake judges or live."""
     records = R.read_records(run_dir)
     cases = R.read_cases(run_dir)
     held = [c.id for c in cases.values() if c.meta.get("split") != "tuning"]
     if held:
         raise ValueError(f"{len(held)} non-public case(s) in the run: a fixture is public only")
     out_dir.mkdir(parents=True, exist_ok=True)
-    for name in ("run.json", "records.jsonl", "summary.json"):
+    for name in ("records.jsonl", "summary.json"):
         shutil.copyfile(run_dir / name, out_dir / name)
+    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    run["task_ref"] = Path(str(run.get("task_ref") or "course-ta.yaml")).name  # no local path
+    if source == "scripted":  # fake judges: nothing was live and nothing was spent
+        run["live_judges"], run["spent_usd"] = False, 0.0
+    (out_dir / "run.json").write_text(json.dumps(run, indent=2) + "\n", encoding="utf-8")
+    aids = sorted({str(c.meta["assessment_id"]) for c in cases.values()
+                   if isinstance(c.meta.get("assessment_id"), str)})  # fmt: skip
+    digests = {a: solution_digest(solutions.solution(a)) for a in aids}
     (out_dir / "recordings.jsonl").write_text(
         "".join(r.model_dump_json() + "\n" for r in recordings), encoding="utf-8"
     )
@@ -130,7 +164,8 @@ def record_fixture(run_dir: Path, out_dir: Path, *, recordings: Sequence[Recordi
     )
     meta = {**fixture_meta(), "case_ids": sorted(r.case_id for r in records),
             "now": now.isoformat(), "baseline_kappa": baseline_kappa(support),
-            "kappa_drop_tolerance": KAPPA_DROP_TOLERANCE}  # fmt: skip
+            "kappa_drop_tolerance": KAPPA_DROP_TOLERANCE, "source": source,
+            "solution_digests": digests}  # fmt: skip
     (out_dir / "fixture.json").write_text(json.dumps(meta, indent=1, sort_keys=True) + "\n",
                                           encoding="utf-8")  # fmt: skip
     return out_dir
@@ -209,7 +244,9 @@ def _scorer_problems(fixture_dir: Path, cases: Mapping[str, Case], records: Sequ
                         ProbeJudge(PROBE_JUDGES[1], PROBE_JUDGES[1], CacheOnly())],
                        cache=cache_copy, retry_sleep=_no_sleep)  # fmt: skip
     before = (scorers._Judges.panel, scorers._Judges.solutions, scorers._Judges.briefs)  # pyright: ignore[reportPrivateUsage]
-    scorers.configure_judges(panel, PlaceholderSolutions(), assessments)
+    meta = json.loads((fixture_dir / "fixture.json").read_text(encoding="utf-8"))
+    scorers.configure_judges(panel, FixtureSolutions(meta.get("solution_digests", {})),
+                             assessments)  # fmt: skip
     out: list[str] = []
     try:
         for rec in records:
@@ -279,4 +316,6 @@ def _kappa_problems(fixture_dir: Path, tap: SupportTap, meta: Mapping[str, Any],
     baseline = {str(k): float(v) for k, v in dict(meta.get("baseline_kappa", {})).items()}
     if not baseline:
         return [*out, "fixture has no baseline_kappa"]
-    return out + kappa_regressions(baseline, current, tolerance)
+    # EvalKit's rule (an exact drop of the tolerance passes); the wording names what this is
+    return out + [p.replace("held-out kappa", "public support kappa")
+                  for p in kappa_regressions(baseline, current, tolerance)]

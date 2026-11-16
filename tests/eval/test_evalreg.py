@@ -15,7 +15,12 @@ from typing import Any
 import pytest
 
 from course_assistant.eval import dataset
-from course_assistant.eval.regression import FILES, record_fixture, regression_problems
+from course_assistant.eval.regression import (
+    FILES,
+    PlaceholderSolutions,
+    record_fixture,
+    regression_problems,
+)
 from tests.eval import offline_run as O
 from tests.eval import scripted_eval as E
 
@@ -93,7 +98,8 @@ def test_support_kappa_drop_over_005_fails_and_exactly_005_passes(tmp_path):
     fx = copy(tmp_path / "over")
     _set_baseline(fx, 0.06)  # the current kappa now sits 0.06 below the baseline
     found = problems(fx)
-    assert len(found) == 3 and all("held-out kappa fell" in p for p in found)
+    assert len(found) == 3 and all("public support kappa fell" in p for p in found)
+    assert not any("held-out" in p for p in found)
     fx = copy(tmp_path / "exact")
     _set_baseline(fx, 0.05)
     assert problems(fx) == []
@@ -136,4 +142,42 @@ def test_fixture_is_public_only_and_holds_no_solution_or_rationale(tmp_path):
     O.mark_heldout(run.run_dir, {case.id})
     with pytest.raises(ValueError, match="public only"):
         record_fixture(run.run_dir, tmp_path / "fx", recordings=run.recorder.recordings,
-                       probe_cache=tmp_path / "none.jsonl", support=[], now=O.NOW)  # fmt: skip
+                       probe_cache=tmp_path / "none.jsonl", support=[], now=O.NOW,
+                       solutions=PlaceholderSolutions(), source="scripted")  # fmt: skip
+
+
+def test_committed_fixture_is_marked_scripted_and_holds_no_local_path():
+    meta = json.loads((FIXTURE / "fixture.json").read_text(encoding="utf-8"))
+    assert meta["source"] == "scripted"
+    run = json.loads((FIXTURE / "run.json").read_text(encoding="utf-8"))
+    assert run["task_ref"] == "course-ta.yaml"  # never a temporary or local path
+    assert run["live_judges"] is False and run["spent_usd"] == 0.0  # fake judges cost nothing
+    assert set(meta["solution_digests"]) == {E.BY_ID[i].assessment_id for i in meta["case_ids"]
+                                             if E.BY_ID[i].assessment_id}  # fmt: skip
+
+
+class RealishSolutions:
+    """Stands in for the private solutions a live run's integrity judge reads."""
+
+    def solution(self, assessment_id: str) -> str:
+        return f"private solution text for {assessment_id}, never in the fixture"
+
+
+def test_a_fixture_judged_with_real_solutions_replays_from_digests(tmp_path, monkeypatch):
+    """Verifier E2.3 pass 1: the live fixture must replay although CI never has the private
+    solutions; the integrity cache key holds a digest of the solution, not its text."""
+    import build_evalreg_fixture as B
+    from course_assistant.eval.calibrate import judge_support, support_rows
+
+    monkeypatch.setattr(O, "PlaceholderSolutions", RealishSolutions)
+    cases, scripts = B.cases_and_scripts()
+    cache = tmp_path / "pv.jsonl"
+    run = O.offline_run(tmp_path / "run", cases, scripts, cache=cache)
+    rows = support_rows(run.tap.sentences, judge_support(run.tap.sentences, run.panel, E.CORPUS))
+    out = record_fixture(run.run_dir, tmp_path / "fx", recordings=run.recorder.recordings,
+                         probe_cache=cache, support=rows, now=O.NOW,
+                         solutions=RealishSolutions(), source="live")  # fmt: skip
+    assert problems(out) == []
+    text = "\n".join((out / f).read_text(encoding="utf-8") for f in FILES)
+    assert "private solution text" not in text
+    assert json.loads((out / "fixture.json").read_text("utf-8"))["source"] == "live"

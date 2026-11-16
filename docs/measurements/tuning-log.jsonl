@@ -1,2 +1,2 @@
-{"at": "2026-11-17", "decision": "D-52", "from": null, "ground_version": "ground-c92d42799fb3", "kind": "grounding_bar", "to": 0.5}
-{"at": "2026-11-17", "decision": "D-52", "from": null, "ground_version": "ground-c92d42799fb3", "kind": "support_rules", "to": "ground-c92d42799fb3"}
+{"at": "2026-11-17", "decision": "D-52", "from": null, "ground_version": "ground-c92d42799fb3", "kind": "grounding_bar", "prev": "0000000000000000000000000000000000000000000000000000000000000000", "to": 0.5}
+{"at": "2026-11-17", "decision": "D-52", "from": null, "ground_version": "ground-c92d42799fb3", "kind": "support_rules", "prev": "d65f8283df58ef49a3ab03c58a893aa540a1ca52d54fce443a6de33832cfdd0d", "to": "ground-c92d42799fb3"}

@@ -37,6 +37,7 @@ ASSESSMENTS = ROOT / "sample_course" / "assessments.yaml"
 DECISIONS = ROOT / "docs" / "decisions.md"
 TUNING_LOG = ROOT / "docs" / "measurements" / "tuning-log.jsonl"
 EVALREG = ROOT / "tests" / "eval" / "evalreg"
+SOLUTIONS = ROOT / "golden" / "heldout" / "solutions"  # private; only digests reach a fixture
 JUDGES = ("claude-opus-5-5", "gpt-6.1-sol")
 
 
@@ -204,6 +205,7 @@ def cmd_tune_bar(args: argparse.Namespace) -> int:
 def cmd_record_evalreg(args: argparse.Namespace) -> int:
     from evalkit import run as R
 
+    from course_assistant.eval.judges import DirSolutionBook
     from course_assistant.eval.regression import record_fixture, regression_problems
 
     run = evalkit_dir(args.run)
@@ -212,7 +214,8 @@ def cmd_record_evalreg(args: argparse.Namespace) -> int:
                if x.strip()]  # fmt: skip
     out = record_fixture(run, args.out, recordings=_recordings(args.run),
                          probe_cache=folder / "probe-verdicts.jsonl", support=support,
-                         now=R.read_manifest(run).started_at)  # fmt: skip
+                         now=R.read_manifest(run).started_at,
+                         solutions=DirSolutionBook(SOLUTIONS), source="live")  # fmt: skip
     rt = _runtime(args)
     rows = [{"id": c.id, "question": c.question, "context": list(c.context),
              "label": c.reference_label, "meta": dict(c.meta)}

@@ -180,6 +180,23 @@ golden version; `SupportTap` around the source and support judging at the end; t
 ground version checked against the tuning log (refuses an unlogged change unless
 `--allow-unlogged`, which is for the tuning run itself).
 
+## Verifier pass 1 changes
+- The integrity held-out digest hashes the sorted held-out **case ids** (stable across
+  exports), not the random sheet keys, so a forced re-export cannot rescore the same held-out
+  set under a changed rubric. Every judged probe score records `rubric_hash` in its details
+  (integrity and identity scorer version 2, leak_check 3); `probe_report` refuses verdicts made
+  under another rubric than the current one.
+- The integrity judge's cache key holds the solution's sha256, not its text. A fixture records
+  `solution_digests` per assessment and replays integrity with `FixtureSolutions`, so a live
+  fixture judged with the private solutions replays in CI. `record_fixture` takes the run's
+  solution book and a `source` (`scripted` or `live`), writes `task_ref` as a bare file name,
+  and for scripted runs writes `live_judges: false`, `spent_usd: 0`.
+- The tuning log is a hash chain (`prev` = sha256 of the line before); `chain_problems` reports
+  an edited, dropped or reordered line, the build test checks it and reads the bar from the
+  log. A live held-out or both-split run appends `heldout_scored`, and `eval_live` refuses a
+  held-out run while `fresh_heldout_required` holds.
+- The regression gate reports "public support kappa fell", never "held-out".
+
 ## Rules
 - No network or API call in any test; tests read only `golden/public/`; fake judges and
   scripted model outputs only.

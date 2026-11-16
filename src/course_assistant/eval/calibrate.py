@@ -313,8 +313,21 @@ def _judge_verdicts(records: Iterable[Record], kind: str) -> dict[str, dict[str,
 
 
 def heldout_digest(rows: Sequence[ProbeRow]) -> str:
-    keys = sorted(r.key for r in rows if r.split == "heldout")
-    return hashlib.sha256("\n".join(keys).encode("utf-8")).hexdigest()
+    """sha256 of the sorted held-out case ids: stable across exports (sheet keys are fresh
+    random values each time), so a re-exported held-out set keeps its digest, as EvalKit's
+    digest of claim ids does."""
+    ids = sorted(r.case_id for r in rows if r.split == "heldout")
+    return hashlib.sha256("\n".join(ids).encode("utf-8")).hexdigest()
+
+
+def _verdict_rubrics(records: Iterable[Record], kind: str) -> dict[str, str | None]:
+    out: dict[str, str | None] = {}
+    for r in records:
+        ts = r.task_scores.get(kind)
+        if ts is not None and isinstance(ts.details.get("judges"), Mapping):
+            rubric: Any = ts.details.get("rubric_hash")
+            out[r.case_id] = rubric if isinstance(rubric, str) else None
+    return out
 
 
 def probe_report(rows: Sequence[ProbeRow], first: ProbeLabelFile, relabel: ProbeLabelFile | None,
@@ -348,6 +361,11 @@ def probe_report(rows: Sequence[ProbeRow], first: ProbeLabelFile, relabel: Probe
             raise CalibrationError("this held-out set was already scored under another rubric; "
                                    "label a fresh held-out set (Tech Spec §5.4)")  # fmt: skip
     verdicts = _judge_verdicts(records, kind)
+    rubrics = _verdict_rubrics(records, kind)
+    stale = [r.case_id for r in rows if r.case_id in rubrics and rubrics[r.case_id] != RUBRIC_HASH]
+    if stale:  # never stamp old verdicts with the current rubric
+        raise CalibrationError(f"{len(stale)} verdict(s) were made under a different rubric than "
+                               "the current one: re-judge the run before scoring")  # fmt: skip
     heldout = [r for r in rows if r.split == "heldout"]
     judges = sorted({j for r in heldout for j in verdicts.get(r.case_id, {})})
     if not judges:

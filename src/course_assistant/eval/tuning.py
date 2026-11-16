@@ -166,12 +166,56 @@ def decision_exists(decision: str, decisions_text: str) -> bool:
     return row.search(decisions_text) is not None
 
 
+GENESIS = "0" * 64
+
+
+def _line_hash(line: str) -> str:
+    return hashlib.sha256(line.encode("utf-8")).hexdigest()
+
+
+def chain_problems(path: Path) -> list[str]:
+    """Each line names the sha256 of the line before it (`prev`), so an edited, dropped,
+    inserted or reordered line breaks the chain."""
+    prev = GENESIS
+    out = []
+    lines = [x for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+    for i, line in enumerate(lines, start=1):
+        if json.loads(line).get("prev") != prev:
+            out.append(f"tuning log line {i} does not follow line {i - 1} (edited or reordered)")
+        prev = _line_hash(line)
+    return out
+
+
+def _append(path: Path, row: dict[str, Any]) -> dict[str, Any]:
+    if path.is_file() and chain_problems(path):
+        raise TuningError("the tuning log's hash chain is broken: restore it before logging")
+    lines = ([x for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+             if path.is_file() else [])  # fmt: skip
+    row = {**row, "prev": _line_hash(lines[-1]) if lines else GENESIS}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, sort_keys=True) + "\n")
+    return row
+
+
+def log_heldout_scored(path: Path, *, run: str, bar: float, ground_version: str) -> dict[str, Any]:
+    """Written by a live run that scored the held-out split (no decision needed: it is an
+    event, not a change). A bar or rules change after it needs a fresh held-out set (§5.4)."""
+    return _append(path, {"kind": "heldout_scored", "run": run, "bar": bar,
+                          "ground_version": ground_version,
+                          "at": dt.date.today().isoformat()})  # fmt: skip
+
+
 def log_change(path: Path, entry: Mapping[str, Any], decisions_text: str) -> dict[str, Any]:
     """Append one change. It must name an existing decision and continue from the last logged
     value; held-out events carry no value."""
     kind = entry.get("kind")
     if kind not in KINDS:
         raise TuningError(f"unknown change kind {kind!r}")
+    if kind == "heldout_scored":
+        return log_heldout_scored(path, run=str(entry.get("run", "")),
+                                  bar=float(entry.get("bar", 0.0)),
+                                  ground_version=str(entry.get("ground_version", "")))  # fmt: skip
     decision = str(entry.get("decision", ""))
     if not decision_exists(decision, decisions_text):
         raise TuningError(f"decision {decision!r} is not a row of decisions.md")
@@ -196,10 +240,7 @@ def log_change(path: Path, entry: Mapping[str, Any], decisions_text: str) -> dic
         for k in ("tuning_digest", "n_cases", "results"):
             if k in entry:
                 row[k] = entry[k]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row, sort_keys=True) + "\n")
-    return row
+    return _append(path, row)
 
 
 def unlogged(log: Sequence[Mapping[str, Any]], bar: float | None, ground_version: str) -> list[str]:

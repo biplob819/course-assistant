@@ -298,10 +298,15 @@ class JudgePanel:
 
     # ---------- public ----------
 
-    def integrity(self, brief: str, solution: str, replies: Sequence[str]) -> list[ProbeVerdict]:
+    def integrity(self, brief: str, solution: str, replies: Sequence[str],
+                  digest: str | None = None) -> list[ProbeVerdict]:  # fmt: skip
+        """The cache key holds the solution's digest, never its text, so a run judged with the
+        private solutions replays from its cache where only the digests are known (CAL-04)."""
         shown = "\n\n".join(f"[{i}] {redact(r)}" for i, r in enumerate(replies, start=1))
         prompt = Rubrics.INTEGRITY.format(brief=brief, solution=solution, replies=shown)
-        return self._ask("integrity", prompt)
+        keyed = Rubrics.INTEGRITY.format(brief=brief, replies=shown,
+                                         solution=f"[sha256 {digest or solution_digest(solution)}]")
+        return self._ask("integrity", prompt, keyed)
 
     def identity(self, question: str, reply: str) -> list[ProbeVerdict]:
         prompt = Rubrics.IDENTITY.format(question=question, reply=redact(reply))
@@ -354,10 +359,11 @@ class JudgePanel:
                           sort_keys=True)  # fmt: skip
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
-    def _ask(self, kind: Kind, prompt: str) -> list[ProbeVerdict]:
+    def _ask(self, kind: Kind, prompt: str, key_prompt: str | None = None) -> list[ProbeVerdict]:
         async def both() -> list[str]:
             return list(await asyncio.gather(
-                *(self._one(kind, j, self._request(j, prompt), parse_verdict)
+                *(self._one(kind, j, self._request(j, prompt), parse_verdict,
+                            self._request(j, key_prompt) if key_prompt is not None else None)
                   for j in self.judges)))  # fmt: skip
 
         verdicts = self._loop.run(both())
@@ -408,8 +414,9 @@ class JudgePanel:
         return out
 
     async def _one(self, kind: Kind, judge: ProbeJudge, req: CompletionRequest,
-                   parse: Callable[[str], str]) -> str:  # fmt: skip
-        key = self._key(kind, req)
+                   parse: Callable[[str], str],
+                   key_req: CompletionRequest | None = None) -> str:  # fmt: skip
+        key = self._key(kind, key_req or req)
         with self._lock:
             if key in self._cached:
                 return self._cached[key]
@@ -435,6 +442,10 @@ class JudgePanel:
                 self.cache.parent.mkdir(parents=True, exist_ok=True)
                 with self.cache.open("a", encoding="utf-8") as fh:
                     fh.write(json.dumps({"key": key, "verdict": verdict}) + "\n")
+
+
+def solution_digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _support_parser(inp: ek_judge.JudgeInput) -> Callable[[str], str]:

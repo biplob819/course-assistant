@@ -28,7 +28,7 @@ from course_assistant.answer.replay import Replay
 from course_assistant.eval import calibrate as C
 from course_assistant.eval import dataset, scorers, system, tuning
 from course_assistant.eval.calibrate import CalibrationError, SupportTap
-from course_assistant.eval.judges import JudgeError
+from course_assistant.eval.judges import RUBRIC_HASH, JudgeError
 from course_assistant.eval.regression import PlaceholderSolutions
 from tests.answer import scripted as s
 from tests.eval import offline_run as O
@@ -254,6 +254,58 @@ def test_integrity_report_scores_heldout_kappa_per_judge(cal_run):
                        seed=7, scored_at=at)  # fmt: skip
 
 
+def _label_all(run_dir: Path, tmp: Path, name: str) -> list[C.ProbeRow]:
+    d = C.probe_dir(run_dir)
+    rows = C._load_rows(run_dir, "integrity")  # pyright: ignore[reportPrivateUsage]
+    v = C._judge_verdicts(R.read_records(run_dir), "integrity")  # pyright: ignore[reportPrivateUsage]
+    lab = {r.key: "V" if v[r.case_id]["gpt-6.1-sol"] == "violation" else "C" for r in rows}
+    path = tmp / name
+    path.write_text(_fill(rows, (d / "sheet.csv").read_text("utf-8"), lab), encoding="utf-8")
+    C.import_probe(run_dir, path)
+    return rows
+
+
+@pytest.mark.safety
+def test_a_reexported_heldout_set_is_never_rescored_under_another_rubric(cal_run, tmp_path,
+                                                                         monkeypatch):  # fmt: skip
+    """Verifier E2.3 pass 1: the held-out digest hashes stable case ids, not sheet keys, and
+    verdicts carry the rubric they were made under."""
+    run_dir = fresh(cal_run, tmp_path)
+    C.export_probe(run_dir, n=8, n_relabel=4)
+    rows1 = _label_all(run_dir, tmp_path, "a.csv")
+    at = dt.datetime(2026, 11, 20, tzinfo=dt.UTC)
+    r1 = C.score_probe(run_dir, now=at)
+    for f in C.probe_dir(run_dir).glob("labels-*.json"):
+        f.rename(tmp_path / f.name)
+    C.export_probe(run_dir, n=8, n_relabel=4, force=True)  # fresh random keys
+    rows2 = _label_all(run_dir, tmp_path, "b.csv")
+    assert {r.key for r in rows1}.isdisjoint({r.key for r in rows2})
+    assert C.heldout_digest(rows1) == C.heldout_digest(rows2) == r1.heldout_digest
+    monkeypatch.setattr(C, "RUBRIC_HASH", "a-changed-rubric-hash")
+    with pytest.raises(CalibrationError, match="rubric"):
+        C.score_probe(run_dir, now=at)
+
+
+@pytest.mark.safety
+def test_probe_verdicts_carry_their_rubric_and_old_ones_are_never_restamped(cal_run):
+    records = R.read_records(cal_run)
+    for r in records:
+        for name in ("integrity", "identity", "leak_check"):
+            ts = r.task_scores.get(name)
+            if ts is not None and "judges" in ts.details:
+                assert ts.details["rubric_hash"] == RUBRIC_HASH
+    rows, _ = _sheet(cal_run)
+    labels = C.ProbeLabelFile(sheet_id=rows[0].sheet_id, round="first",
+                              labels={r.key: "clean" for r in rows})
+    stale = [r.model_copy(update={"task_scores": {
+        **r.task_scores, "integrity": r.task_scores["integrity"].model_copy(update={
+            "details": {**r.task_scores["integrity"].details, "rubric_hash": "old"}})}})
+        if "integrity" in r.task_scores else r for r in records]  # fmt: skip
+    with pytest.raises(CalibrationError, match="different rubric"):
+        C.probe_report(rows, labels, None, stale, seed=7,
+                       scored_at=dt.datetime(2026, 11, 20, tzinfo=dt.UTC))  # fmt: skip
+
+
 def test_integrity_files_export_import_and_score_on_a_run_folder(cal_run, tmp_path):
     run_dir = fresh(cal_run, tmp_path)
     assert C.export_probe(run_dir, n=8, n_relabel=4) == 8
@@ -383,13 +435,45 @@ def test_tuning_log_records_every_change_against_a_decision(tmp_path):
 
 
 def test_committed_ground_version_and_bar_match_the_tuning_log():
-    """An edit to SUPPORT_RULES (or the splitter) without a logged change fails here."""
+    """An edit to SUPPORT_RULES (or the splitter), or to the log itself, fails here."""
     entries = tuning.read_log(TUNING_LOG)
     assert entries, "docs/measurements/tuning-log.jsonl must hold the baseline"
-    assert tuning.unlogged(entries, 0.5, GroundStep.version()) == []
+    assert tuning.chain_problems(TUNING_LOG) == []  # no line edited, dropped or reordered
+    bar, _ = tuning.current(entries)
+    assert bar is not None  # the bar comes from the log, never a constant in this test
+    assert tuning.unlogged(entries, bar, GroundStep.version()) == []
     for e in entries:
-        assert tuning.decision_exists(e["decision"], DECISIONS), e["decision"]
+        if e["kind"] != "heldout_scored":
+            assert tuning.decision_exists(e["decision"], DECISIONS), e["decision"]
     assert not tuning.fresh_heldout_required(entries)
+
+
+def test_tuning_log_hash_chain_catches_edits_and_heldout_scoring_blocks_changes(tmp_path):
+    import eval_live
+
+    log = tmp_path / "log.jsonl"
+    text = "| D-1 | x |\n"
+    tuning.log_change(log, {"kind": "grounding_bar", "from": None, "to": 0.5,
+                            "decision": "D-1"}, text)  # fmt: skip
+    tuning.log_change(log, {"kind": "support_rules", "from": None, "to": GroundStep.version(),
+                            "decision": "D-1"}, text)  # fmt: skip
+    assert tuning.chain_problems(log) == []
+    assert eval_live.heldout_gate("heldout", log) is None
+    # a held-out score is logged by the run itself, with no decision needed
+    tuning.log_heldout_scored(log, run="course-ta-heldout-x", bar=0.5,
+                              ground_version=GroundStep.version())  # fmt: skip
+    assert tuning.read_log(log)[-1]["kind"] == "heldout_scored"
+    assert tuning.chain_problems(log) == []
+    tuning.log_change(log, {"kind": "grounding_bar", "from": 0.5, "to": 0.6,
+                            "decision": "D-1"}, text)  # fmt: skip
+    assert "fresh held-out" in str(eval_live.heldout_gate("heldout", log))
+    assert "fresh held-out" in str(eval_live.heldout_gate("both", log))
+    assert eval_live.heldout_gate("public", log) is None  # tuning runs stay allowed
+    lines = log.read_text(encoding="utf-8").splitlines()
+    log.write_text("\n".join([lines[0].replace("0.5", "0.4"), *lines[1:]]) + "\n", "utf-8")
+    assert tuning.chain_problems(log)  # an edited line breaks the chain
+    log.write_text("\n".join([lines[0], *lines[2:]]) + "\n", "utf-8")
+    assert tuning.chain_problems(log)  # so does a dropped line
 
 
 # ======================= CAL-03 runtime support check vs dual judges =======================

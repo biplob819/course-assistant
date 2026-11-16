@@ -95,6 +95,17 @@ def estimate(cases: list[Any]) -> float:
     return evalkit_estimate(cases) + panel_estimate(cases)
 
 
+def heldout_gate(split: str, log_path: Path = TUNING_LOG) -> str | None:
+    """Why a held-out run must not start, or None: after the bar or the support rules changed
+    following a held-out score, a fresh held-out set comes first (Tech Spec §5.4)."""
+    from course_assistant.eval.tuning import fresh_heldout_required, read_log
+
+    if split in ("heldout", "both") and fresh_heldout_required(read_log(log_path)):
+        return ("the bar or the support rules changed after the held-out split was scored: "
+                "write a fresh held-out set (and log heldout_refreshed) first")  # fmt: skip
+    return None
+
+
 def plan_budget(cases: list[Any], max_cost: float) -> Any:
     """One cap for the run: the judges' share sized from the probes, EvalKit the rest. Refused
     when either share would be below its estimate."""
@@ -170,6 +181,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"estimate: ${cost:.2f} (cap ${args.max_cost:.2f})")
     if args.dry_run:
         return 0
+    gate = heldout_gate(args.split)
+    if gate is not None:
+        print(f"eval_live: {gate}", file=sys.stderr)
+        return 2
     if drift and not args.allow_unlogged:
         print("eval_live: log the change first (calibrate.py tune-bar --log), or pass "
               "--allow-unlogged for a tuning run", file=sys.stderr)  # fmt: skip
@@ -179,7 +194,13 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"eval_live: {exc}", file=sys.stderr)
         return 3
-    return _run(args, config, corpus, out_dir, task, len(cases), budget)
+    code = _run(args, config, corpus, out_dir, task, len(cases), budget)
+    if args.split in ("heldout", "both") and not args.replay:
+        from course_assistant.eval.tuning import log_heldout_scored
+
+        log_heldout_scored(TUNING_LOG, run=out_dir.name, bar=config.grounding_bar,
+                           ground_version=GroundStep.version())  # fmt: skip
+    return code
 
 
 def _run(args: argparse.Namespace, config: Any, corpus: Any, out_dir: Path, task: Path,
