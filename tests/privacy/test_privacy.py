@@ -721,3 +721,17 @@ def test_a_malformed_deletion_row_does_not_stop_the_store_opening(tmp_path):
 
     _make_old(tmp_path / "old.sqlite", corrupt)
     Store(tmp_path / "old.sqlite").close()
+
+
+# ---------- verifier pass 10 regressions ----------
+
+
+@pytest.mark.privacy
+def test_a_fused_line_from_an_old_file_keeps_the_other_learners_record(tmp_path):
+    sink = JsonlSink(tmp_path / "t.jsonl")
+    frag = json.dumps({"conversation_id": "c-aaaaaaaaaaa1", "learner_pid": A}, sort_keys=True)
+    intact = json.dumps({"conversation_id": "c-bbbbbbbbbbb1", "learner_pid": B,
+                         "step": "answer"}, sort_keys=True)  # fmt: skip
+    sink.path.write_text(frag[:40] + intact + "\n", encoding="utf-8")
+    sink.delete_pid(A, known={"c-aaaaaaaaaaa1"})
+    assert read(sink) == [json.loads(intact)]

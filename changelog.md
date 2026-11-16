@@ -75,3 +75,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [B2.2] — verifier pass 7: conversation ids never reused; newline-only trace splitting
 - [FIX] [B2.2] — verifier pass 8: retired-id markers back-filled by migration; neutral marker time
 - [FIX] [B2.2] — verifier pass 9: back-fill from conversation_id too; malformed rows skipped
+- [FIX] [B2.2] — verifier pass 10: fused trace lines split into records; D-41 scopes pre-release data

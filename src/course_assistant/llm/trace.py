@@ -91,6 +91,40 @@ def _record(line: str) -> dict[str, Any] | None:
     return rec if isinstance(rec, dict) else None
 
 
+def _unfuse(line: str) -> list[str]:
+    """A line that does not parse may be a torn fragment fused with intact records (files
+    written before emit started on a fresh line). Pull out every intact JSON object so each
+    is judged on its own and another learner's record is kept; the torn remainder stays one
+    damaged piece (verifier B2.2 pass 10)."""
+    if _record(line) is not None or len(line) > 65_536:  # a trace record is far shorter
+        return [line]
+    decoder = json.JSONDecoder()
+    pieces: list[str] = []
+    rest = line
+    while True:
+        found = None
+        for i in range(1, len(rest)):
+            if rest[i] != "{":
+                continue
+            try:
+                obj, end = decoder.raw_decode(rest, i)
+            except ValueError:
+                continue
+            if isinstance(obj, dict):
+                found = (i, end)
+                break
+        if found is None:
+            break
+        i, end = found
+        pieces.append(rest[:i])
+        pieces.append(rest[i:end])
+        rest = rest[end:]
+    if not pieces:
+        return [line]
+    pieces.append(rest)
+    return [x for x in pieces if x.strip()]
+
+
 class JsonlSink:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
@@ -144,7 +178,10 @@ class JsonlSink:
         raw = self.path.read_bytes().decode("utf-8", errors="replace")  # a torn byte is kept
         # split on "\n" only: str.splitlines also breaks on \x1c-\x1e and others, which would
         # cut one learner's damaged line into fragments (verifier B2.2 pass 7)
-        lines = [x.rstrip("\r") for x in raw.split("\n") if x.strip()]
+        lines: list[str] = []
+        for x in raw.split("\n"):
+            if x.strip():
+                lines.extend(_unfuse(x.rstrip("\r")))
         mine = set(known)
         for line in lines:
             rec = _record(line)
