@@ -20,6 +20,7 @@ import json
 import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 from typing import Any
 
@@ -87,8 +88,13 @@ def _fully_grounded(record: Record | None) -> bool:
 
 
 def sweep_bar(cases: Sequence[Case], recordings: Sequence[Recording], records: Sequence[Record],
-              runtime: system.Runtime, candidates: Sequence[float]) -> list[BarResult]:  # fmt: skip
-    """Each candidate bar on the recorded tuning run, replayed through `ask()`."""
+              runtime: system.Runtime, candidates: Sequence[float], *,
+              heldout_ids: AbstractSet[str]) -> list[BarResult]:  # fmt: skip
+    """Each candidate bar on the recorded tuning run, replayed through `ask()`. A case listed
+    in the held-out MANIFEST is refused whatever its meta says (D-5)."""
+    listed = [c.id for c in cases if c.id in heldout_ids]
+    if listed:
+        raise TuningError(f"{len(listed)} case(s) in the held-out MANIFEST offered to tuning (D-5)")
     held = [c.id for c in cases if c.meta.get("split") != "tuning"]
     if held:
         raise TuningError(f"{len(held)} case(s) outside the tuning split offered to tuning (D-5)")

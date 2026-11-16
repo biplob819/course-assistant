@@ -38,6 +38,15 @@ DECISIONS = ROOT / "docs" / "decisions.md"
 TUNING_LOG = ROOT / "docs" / "measurements" / "tuning-log.jsonl"
 EVALREG = ROOT / "tests" / "eval" / "evalreg"
 SOLUTIONS = ROOT / "golden" / "heldout" / "solutions"  # private; only digests reach a fixture
+HELDOUT_MANIFEST = ROOT / "golden" / "heldout" / "MANIFEST.json"  # committed: ids and hashes
+
+
+def heldout_ids() -> frozenset[str]:
+    from course_assistant.eval.dataset import heldout_ids as read_ids
+
+    return read_ids(HELDOUT_MANIFEST)
+
+
 JUDGES = ("claude-opus-5-5", "gpt-6.1-sol")
 
 
@@ -88,8 +97,8 @@ def cmd_export(args: argparse.Namespace) -> int:
     from course_assistant.eval.calibrate import export_groundedness, export_probe
 
     run = evalkit_dir(args.run)
-    _, csv_path, n = export_groundedness(run, force=args.force)
-    rows = export_probe(run, force=args.force)
+    _, csv_path, n = export_groundedness(run, force=args.force, heldout_ids=heldout_ids())
+    rows = export_probe(run, force=args.force, heldout_ids=heldout_ids())
     print(
         f"groundedness: {n} claims to label: uv run evalkit calibrate label {run} "
         f"(or fill {csv_path} and run evalkit calibrate import)"
@@ -113,13 +122,13 @@ def cmd_score(args: argparse.Namespace) -> int:
     from course_assistant.eval.calibrate import score_groundedness, score_probe
 
     run = evalkit_dir(args.run)
-    report = score_groundedness(run, log=TUNING_LOG)
+    report = score_groundedness(run, log=TUNING_LOG, heldout_ids=heldout_ids())
     for a in report.agreements:
         print(
             f"groundedness {a.judge}: held-out kappa {a.kappa.point:.2f} "
             f"[{a.kappa.lo:.2f}, {a.kappa.hi:.2f}] over {a.n_claims} claims"
         )
-    probe = score_probe(run, log=TUNING_LOG)
+    probe = score_probe(run, log=TUNING_LOG, heldout_ids=heldout_ids())
     for b in probe.agreements:
         print(
             f"integrity {b.judge}: held-out kappa {b.kappa.point:.2f} "
@@ -179,7 +188,9 @@ def cmd_tune_bar(args: argparse.Namespace) -> int:
     cases = list(R.read_cases(run).values())
     records = R.read_records(run)
     candidates = [float(x) for x in args.candidates.split(",") if x.strip()]
-    results = tuning.sweep_bar(cases, _recordings(args.run), records, _runtime(args), candidates)
+    results = tuning.sweep_bar(
+        cases, _recordings(args.run), records, _runtime(args), candidates, heldout_ids=heldout_ids()
+    )
     print("bar    replayable  grounded(B1)  handover(B2,B4,B7)   [tuning split only]")
     for r in results:
         print(f"{r.bar:<6} {r.replayable!s:<11} {r.grounded_rate:<13.3f} {r.handover_rate:.3f}")
@@ -218,7 +229,7 @@ def cmd_record_evalreg(args: argparse.Namespace) -> int:
     rows = [{"id": c.id, "question": c.question, "context": list(c.context),
              "label": c.reference_label, "meta": dict(c.meta)}
             for c in R.read_cases(run).values()]  # fmt: skip
-    found = regression_problems(out, rows, corpus=rt.corpus, config=rt.config,
+    found = regression_problems(out, rows, corpus=rt.corpus, config=rt.config, log=TUNING_LOG,
                                 assessments=rt.assessments)  # fmt: skip
     print(f"wrote {out}: {len(found)} problem(s) on replay")
     for p in found:

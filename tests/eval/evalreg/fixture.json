@@ -4,6 +4,7 @@
   "dual": 0.5,
   "gpt-6.1-sol": 0.5
  },
+ "calibration": null,
  "case_ids": [
   "ta-b1-001",
   "ta-b1-002",

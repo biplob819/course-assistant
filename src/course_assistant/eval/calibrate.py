@@ -27,6 +27,7 @@ import secrets
 import threading
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 from typing import Any, Literal
 
@@ -66,11 +67,26 @@ def _write(path: Path, text: str) -> None:
     tmp.replace(path)
 
 
-def _split_of(case: Case) -> Split:
+def split_of(case: Case, heldout_ids: AbstractSet[str]) -> Split:
+    """A case's golden split, checked against the held-out MANIFEST ids: a listed case is
+    held out whatever its meta says, and one marked tuning is refused."""
     split = case.meta.get("split")
     if split not in ("tuning", "heldout"):
         raise CalibrationError(f"case {case.id} has no golden split")
+    if case.id in heldout_ids:
+        if split != "heldout":
+            raise CalibrationError(f"case {case.id} is in the held-out MANIFEST but marked {split}")
+        return "heldout"
     return split  # type: ignore[return-value]
+
+
+def _check_labelled_splits(splits: Mapping[str, str], heldout_ids: AbstractSet[str]) -> set[str]:
+    """Held-out case ids of a labelled sheet; a MANIFEST case labelled tuning is refused."""
+    wrong = sorted(c for c, s in splits.items() if c in heldout_ids and s != "heldout")
+    if wrong:
+        raise CalibrationError(f"{len(wrong)} case(s) in the held-out MANIFEST sit in the tuning "
+                               "half of this sheet")  # fmt: skip
+    return {c for c, s in splits.items() if s == "heldout" or c in heldout_ids}
 
 
 def _check_sizes(n: int, n_relabel: int) -> None:
@@ -109,7 +125,8 @@ def _halves(items: Mapping[Split, Mapping[tuple[str, str], list[str]]], n: int, 
 
 
 def groundedness_sample(records: Sequence[Record], cases: Mapping[str, Case], *, seed: int,
-                        n: int = 100, n_relabel: int = 20) -> list[SampledAnswer]:  # fmt: skip
+                        heldout_ids: AbstractSet[str], n: int = 100,
+                        n_relabel: int = 20) -> list[SampledAnswer]:  # fmt: skip
     """`n` answers that made claims: half from golden tuning cases, half from golden held-out
     cases, each half stratified by (rule, reference label), `n_relabel` split evenly."""
     keys = [f"{r.case_id}:{r.completion.model}" for r in records]
@@ -122,15 +139,15 @@ def groundedness_sample(records: Sequence[Record], cases: Mapping[str, Case], *,
             continue
         case = cases[r.case_id]
         stratum = (str(case.meta.get("rule")), case.reference_label or "")
-        items[_split_of(case)].setdefault(stratum, []).append(key)
+        items[split_of(case, heldout_ids)].setdefault(stratum, []).append(key)
     picked = _halves(items, n, n_relabel, seed, "groundedness")
     return [SampledAnswer(record_key=key, case_id=by_key[key].case_id,
                           model=by_key[key].completion.model, split=split, relabel=relabel)
             for key, split, relabel in picked]  # fmt: skip
 
 
-def export_groundedness(run_dir: Path, *, force: bool = False, n: int = 100,
-                        n_relabel: int = 20) -> tuple[Path, Path, int]:  # fmt: skip
+def export_groundedness(run_dir: Path, *, heldout_ids: AbstractSet[str], force: bool = False,
+                        n: int = 100, n_relabel: int = 20) -> tuple[Path, Path, int]:  # fmt: skip
     """EvalKit's `calibration/sheet.json` and `sheet.csv` for our split-aligned sample; then
     `evalkit calibrate label|score RUN_DIR` run on it unchanged."""
     from evalkit import run as R
@@ -148,16 +165,19 @@ def export_groundedness(run_dir: Path, *, force: bool = False, n: int = 100,
     if sheet.is_file() and not force:
         raise CalibrationError(f"{sheet} exists (force to replace it; no labels yet)")
     records, cases = R.read_records(run_dir), R.read_cases(run_dir)
-    sample = groundedness_sample(records, cases, seed=manifest.seed, n=n, n_relabel=n_relabel)
+    sample = groundedness_sample(records, cases, seed=manifest.seed, n=n, n_relabel=n_relabel,
+                                 heldout_ids=heldout_ids)  # fmt: skip
     rows = build_sheet(sample, records, cases, seed=manifest.seed)
     _write(sheet, json.dumps([r.model_dump(mode="json") for r in rows], indent=1) + "\n")
     _write(cal / "sheet.csv", sheet_csv(rows))
     return sheet, cal / "sheet.csv", len(rows)
 
 
-def score_groundedness(run_dir: Path, *, log: Path) -> Any:
-    """EvalKit's `cal_score`, guarded first by the committed digest-to-rubric history: a
-    held-out claim set already scored under another judge rubric is refused before scoring."""
+def score_groundedness(run_dir: Path, *, log: Path, heldout_ids: AbstractSet[str]) -> Any:
+    """The only supported way to certify groundedness: EvalKit's `cal_score`, guarded first by
+    the committed per-case history (a held-out case already scored under another judge rubric
+    is refused before scoring) and logged after. A run certified by `evalkit calibrate score`
+    directly has no log line, and `certified_calibration` treats it as uncalibrated."""
     from evalkit import run as R
     from evalkit.pipeline.calibrate import heldout_digest as ek_digest
     from evalkit.pipeline.calibrate import import_labels
@@ -175,7 +195,8 @@ def score_groundedness(run_dir: Path, *, log: Path) -> Any:
         raise CalibrationError("no first-round groundedness labels yet")
     relabel = load_labels(run_dir / "calibration" / "labels-relabel.json")
     labels = import_labels(rows, first, relabel)
-    held = {lab.claim_id.split(":", 1)[0] for lab in labels if lab.split == "heldout"}
+    splits = {lab.claim_id.split(":", 1)[0]: lab.split for lab in labels if lab.split != "relabel"}
+    held = _check_labelled_splits(splits, heldout_ids)
     clash = cases_scored_elsewhere(read_log(log), "groundedness", held, JUDGE_PROMPT_HASH)
     if clash:
         raise CalibrationError(f"{len(clash)} held-out case(s) were already scored under another "
@@ -246,7 +267,8 @@ def _applies(record: Record, kind: str) -> bool:
 
 
 def probe_sample(records: Sequence[Record], cases: Mapping[str, Case], *, kind: str = "integrity",
-                 seed: int, n: int = 100, n_relabel: int = 20) -> list[ProbeSample]:  # fmt: skip
+                 seed: int, heldout_ids: AbstractSet[str], n: int = 100,
+                 n_relabel: int = 20) -> list[ProbeSample]:  # fmt: skip
     """`n` answers the probe judged (B3 for integrity), half from golden tuning cases and half
     from golden held-out cases, stratified by assessment."""
     items: dict[Split, dict[tuple[str, str], list[str]]] = {"tuning": {}, "heldout": {}}
@@ -255,7 +277,7 @@ def probe_sample(records: Sequence[Record], cases: Mapping[str, Case], *, kind: 
             continue
         case = cases[r.case_id]
         stratum = (str(case.meta.get("assessment_id") or case.meta.get("rule")), "")
-        items[_split_of(case)].setdefault(stratum, []).append(r.case_id)
+        items[split_of(case, heldout_ids)].setdefault(stratum, []).append(r.case_id)
     picked = _halves(items, n, n_relabel, seed, kind)
     return [ProbeSample(case_id=c, split=s, relabel=rl) for c, s, rl in picked]
 
@@ -368,8 +390,8 @@ def _verdict_rubrics(records: Iterable[Record], kind: str) -> dict[str, str | No
 
 def probe_report(rows: Sequence[ProbeRow], first: ProbeLabelFile, relabel: ProbeLabelFile | None,
                  records: Sequence[Record], *, kind: str = "integrity", seed: int,
-                 scored_at: dt.datetime, previous: Sequence[ProbeCalibration] = (),
-                 logged: Sequence[Mapping[str, Any]] = (),
+                 scored_at: dt.datetime, logged: Sequence[Mapping[str, Any]],
+                 heldout_ids: AbstractSet[str], previous: Sequence[ProbeCalibration] = (),
                  n_resamples: int = 10_000,
                  min_coverage: float = MIN_JUDGE_COVERAGE) -> ProbeCalibration:  # fmt: skip
     """Per-judge kappa against the owner's first-round labels on the held-out half only."""
@@ -395,8 +417,8 @@ def probe_report(rows: Sequence[ProbeRow], first: ProbeLabelFile, relabel: Probe
     digest = heldout_digest(rows)
     from course_assistant.eval.tuning import cases_scored_elsewhere
 
-    clash = cases_scored_elsewhere(logged, kind, {r.case_id for r in rows if r.split == "heldout"},
-                                   RUBRIC_HASH)  # fmt: skip
+    held_cases = _check_labelled_splits({r.case_id: r.split for r in rows}, heldout_ids)
+    clash = cases_scored_elsewhere(logged, kind, held_cases, RUBRIC_HASH)
     if clash:
         raise CalibrationError(f"{len(clash)} held-out case(s) were already scored under another "
                                "rubric (tuning log); a changed rubric needs a fresh held-out set "
@@ -458,8 +480,8 @@ def _load_rows(run_dir: Path, kind: str) -> list[ProbeRow]:
             for x in json.loads(path.read_text(encoding="utf-8"))]  # fmt: skip
 
 
-def export_probe(run_dir: Path, *, kind: str = "integrity", force: bool = False, n: int = 100,
-                 n_relabel: int = 20) -> int:  # fmt: skip
+def export_probe(run_dir: Path, *, heldout_ids: AbstractSet[str], kind: str = "integrity",
+                 force: bool = False, n: int = 100, n_relabel: int = 20) -> int:  # fmt: skip
     from evalkit import run as R
 
     manifest = R.read_manifest(run_dir)
@@ -474,7 +496,8 @@ def export_probe(run_dir: Path, *, kind: str = "integrity", force: bool = False,
     if (d / "sheet.json").is_file() and not force:
         raise CalibrationError(f"the {kind} sheet exists (force to replace it; no labels yet)")
     records, cases = R.read_records(run_dir), R.read_cases(run_dir)
-    sample = probe_sample(records, cases, kind=kind, seed=manifest.seed, n=n, n_relabel=n_relabel)
+    sample = probe_sample(records, cases, kind=kind, seed=manifest.seed, n=n,
+                          n_relabel=n_relabel, heldout_ids=heldout_ids)  # fmt: skip
     rows = build_probe_sheet(sample, records, cases, seed=manifest.seed)
     _write(d / "sheet.json", json.dumps([r.model_dump(mode="json") for r in rows], indent=1) + "\n")
     _write(d / "sheet.csv", probe_sheet_csv(rows))
@@ -494,7 +517,8 @@ def import_probe(run_dir: Path, csv_path: Path, *, kind: str = "integrity",
     return len(labels.labels)
 
 
-def score_probe(run_dir: Path, *, log: Path, kind: str = "integrity",
+def score_probe(run_dir: Path, *, log: Path, heldout_ids: AbstractSet[str],
+                kind: str = "integrity",
                 now: dt.datetime | None = None) -> ProbeCalibration:  # fmt: skip
     """Score once per held-out set and rubric. `log` is the committed tuning log: it holds the
     digest-to-rubric history across run folders, and every scoring is appended to it."""
@@ -517,7 +541,7 @@ def score_probe(run_dir: Path, *, log: Path, kind: str = "integrity",
     report = probe_report(rows, first, relabel, R.read_records(run_dir), kind=kind,
                           seed=R.read_manifest(run_dir).seed,
                           scored_at=now or dt.datetime.now(dt.UTC), previous=previous,
-                          logged=read_log(log))  # fmt: skip
+                          logged=read_log(log), heldout_ids=heldout_ids)  # fmt: skip
     log_calibration_scored(
         log,
         calibration=kind,
@@ -530,6 +554,42 @@ def score_probe(run_dir: Path, *, log: Path, kind: str = "integrity",
     kept = [*history.get("history", []), entry]
     _write(hist_path, json.dumps({"current": entry, "history": kept}, indent=1) + "\n")
     return report
+
+
+# =============================== what counts as calibrated ===============================
+
+
+def _logged_for(log: Path, calibration: str, digest: str, rubric: str) -> bool:
+    from course_assistant.eval.tuning import read_log
+
+    return any(e["kind"] == "calibration_scored" and e.get("calibration") == calibration
+               and e.get("digest") == digest and e.get("rubric_hash") == rubric
+               for e in read_log(log))  # fmt: skip
+
+
+def certified_calibration(run_dir: Path, *, log: Path) -> dict[str, str]:
+    """`calibrated` or `uncalibrated` per calibration, as our checks see it: a calibration
+    counts only if the committed log holds a `calibration_scored` line for that held-out set
+    and rubric. EvalKit's own `calibration_status` is not enough: `evalkit calibrate score`
+    run directly certifies a folder without the per-case guard (verifier E2.3 pass 4). The
+    release gate (E2.4) and the regression gate read this."""
+    from evalkit import run as R
+
+    out = {"groundedness": "uncalibrated", "integrity": "uncalibrated"}
+    report = R.read_calibration(run_dir)
+    summary_path = run_dir / "summary.json"
+    status = (json.loads(summary_path.read_text(encoding="utf-8")).get("calibration_status")
+              if summary_path.is_file() else None)  # fmt: skip
+    if report is not None and status == "calibrated" and _logged_for(
+            log, "groundedness", report.heldout_digest, report.judge_prompt_hash):  # fmt: skip
+        out["groundedness"] = "calibrated"
+    probe = probe_dir(run_dir) / "calibration.json"
+    if probe.is_file():
+        current = json.loads(probe.read_text(encoding="utf-8")).get("current") or {}
+        if _logged_for(log, "integrity", str(current.get("heldout_digest")),
+                       str(current.get("rubric_hash"))):  # fmt: skip
+            out["integrity"] = "calibrated"
+    return out
 
 
 # =============================== runtime support check (§5.8) ===============================

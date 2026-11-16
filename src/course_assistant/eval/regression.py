@@ -162,7 +162,11 @@ def record_fixture(run_dir: Path, out_dir: Path, *, recordings: Sequence[Recordi
     (out_dir / "support.jsonl").write_text(
         "".join(json.dumps(dict(r), sort_keys=True) + "\n" for r in support), encoding="utf-8"
     )
+    report = R.read_calibration(run_dir)
+    calibration = ({"digest": report.heldout_digest, "rubric_hash": report.judge_prompt_hash}
+                   if report is not None else None)  # fmt: skip
     meta = {**fixture_meta(), "case_ids": sorted(r.case_id for r in records),
+            "calibration": calibration,
             "now": now.isoformat(), "baseline_kappa": baseline_kappa(support),
             "kappa_drop_tolerance": KAPPA_DROP_TOLERANCE, "source": source,
             "solution_digests": digests}  # fmt: skip
@@ -172,7 +176,7 @@ def record_fixture(run_dir: Path, out_dir: Path, *, recordings: Sequence[Recordi
 
 
 def regression_problems(fixture_dir: Path, rows: Sequence[Mapping[str, Any]], *, corpus: Corpus,
-                        config: AppConfig, assessments: AssessmentList,
+                        config: AppConfig, assessments: AssessmentList, log: Path,
                         tolerance: float = KAPPA_DROP_TOLERANCE) -> list[str]:  # fmt: skip
     """Every difference between the fixture and a rerun of it. `rows` are the EvalKit case rows
     rebuilt from the public golden split (`dataset.build_rows`)."""
@@ -185,6 +189,8 @@ def regression_problems(fixture_dir: Path, rows: Sequence[Mapping[str, Any]], *,
         if meta.get(key) != now_value:
             problems.append(f"{key} changed ({meta.get(key)} -> {now_value}): re-judge and "
                             "re-record the regression fixture")  # fmt: skip
+    # (g) a calibrated summary counts only with its committed calibration_scored line
+    problems += _calibration_problems(fixture_dir, meta, log)
     # (a) cases
     by_id = {r["id"]: r for r in rows}
     ids = list(meta.get("case_ids", []))
@@ -213,6 +219,25 @@ def regression_problems(fixture_dir: Path, rows: Sequence[Mapping[str, Any]], *,
     # (e) support kappa against the recorded judge verdicts
     problems += _kappa_problems(fixture_dir, tap, meta, tolerance)
     return problems
+
+
+def _calibration_problems(fixture_dir: Path, meta: Mapping[str, Any], log: Path) -> list[str]:
+    from course_assistant.eval.tuning import read_log
+
+    summary = json.loads((fixture_dir / "summary.json").read_text(encoding="utf-8"))
+    if summary.get("calibration_status") != "calibrated":
+        return []
+    cal: Any = meta.get("calibration") or {}
+    want = ("groundedness", cal.get("digest"), cal.get("rubric_hash"))
+    ok = any(e["kind"] == "calibration_scored"
+             and (e.get("calibration"), e.get("digest"), e.get("rubric_hash")) == want
+             for e in read_log(log))  # fmt: skip
+    if ok:
+        return []
+    return [
+        "summary.json says calibrated but the tuning log has no matching calibration_scored "
+        "line (certify with scripts/calibrate.py score, never evalkit calibrate score)"
+    ]
 
 
 def _replay_problems(rt: system.Runtime, case: Case, rec: Record) -> list[str]:

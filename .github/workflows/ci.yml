@@ -17,6 +17,8 @@ jobs:
       # the tuning log must be append-only against this base (E2.3 CAL-02, D-55): the push's
       # previous head, or the pull request's base
       LOG_BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+      # a new branch's first push has an all-zero `before`: compare with its merge-base instead
+      LOG_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
     strategy:
       fail-fast: false
       matrix:

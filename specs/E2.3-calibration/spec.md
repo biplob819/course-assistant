@@ -53,9 +53,9 @@ n=100, n_relabel=20)` picks 100 answers that made claims: 50 from golden **tunin
 allocation, and 10 of each half marked for the blind relabel. It returns EvalKit
 `SampledAnswer`s, so `export_groundedness(run_dir)` writes EvalKit's own
 `calibration/sheet.json` and `sheet.csv` (EvalKit's `build_sheet`: opaque keyed ids, redacted
-claim and cited unit text, no verdicts, no model name). From there EvalKit's own tools are
-used unchanged: `evalkit calibrate label RUN_DIR` (local page), `--relabel`, and
-`evalkit calibrate score RUN_DIR` (kappa per judge on held-out with a cluster bootstrap CI,
+claim and cited unit text, no verdicts, no model name). From there EvalKit's labelling page is
+used unchanged (`evalkit calibrate label RUN_DIR`, `--relabel`); scoring goes only through
+`scripts/calibrate.py score RUN` (EvalKit's `cal_score` behind the per-case log guard) (kappa per judge on held-out with a cluster bootstrap CI,
 self-consistency, extraction error rate, `calibration_status: calibrated` in the summary,
 refusal to rescore a held-out set under another rubric). Aligning the calibration split with
 the golden split keeps rubric work off held-out cases (D-5). Fewer than 50 labellable answers
@@ -218,6 +218,20 @@ ground version checked against the tuning log (refuses an unlogged change unless
   head, or the PR base). The build test requires the log to start with the version at that
   base, else at HEAD^; with neither it fails in CI and skips only locally without git. D-55
   sets the scope: accidental and unreviewed edits, not a deliberate history rewrite.
+
+## Verifier pass 4 changes
+- `scripts/calibrate.py score RUN` is the only supported certifying path. EvalKit's own
+  `evalkit calibrate label` remains the labelling page, but `evalkit calibrate score` must not
+  be used to certify: it checks only its own run folder. `certified_calibration(run_dir, log)`
+  is what our checks read (the regression gate now, the E2.4 release gate next): a groundedness
+  or integrity calibration counts only with a matching committed `calibration_scored` line
+  (digest and rubric); EvalKit's `calibrated` status alone is treated as uncalibrated, and the
+  regression gate refuses a calibrated fixture summary without such a line.
+- Held-out membership comes from `golden/heldout/MANIFEST.json` ids (`dataset.heldout_ids`),
+  never `meta.split` alone: samples, label sheets, scoring guards and `sweep_bar` refuse a
+  MANIFEST case marked tuning. `probe_report`'s `logged` history is required.
+- A new branch's first push (all-zero `before`) is compared with the merge-base of the default
+  branch (`LOG_DEFAULT_BRANCH`).
 
 ## Rules
 - No network or API call in any test; tests read only `golden/public/`; fake judges and

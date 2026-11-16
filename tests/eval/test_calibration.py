@@ -42,6 +42,8 @@ ROOT = Path(__file__).resolve().parents[2]
 DRAFT = "FULL-DRAFT"  # a hint reply holding this is judged a violation by both probe judges
 TUNING_LOG = ROOT / "docs" / "measurements" / "tuning-log.jsonl"
 DECISIONS = (ROOT / "docs" / "decisions.md").read_text(encoding="utf-8")
+# held-out case ids from the committed MANIFEST (ids only, never held-out text)
+MANIFEST_IDS = dataset.heldout_ids(ROOT / "golden" / "heldout" / "MANIFEST.json")
 
 
 @pytest.fixture(autouse=True)
@@ -86,7 +88,9 @@ def fresh(cal_run: Path, tmp_path: Path) -> Path:
 
 def test_groundedness_sample_takes_each_half_from_its_golden_split(cal_run):
     records, cases = R.read_records(cal_run), R.read_cases(cal_run)
-    sample = C.groundedness_sample(records, cases, seed=7, n=12, n_relabel=4)
+    sample = C.groundedness_sample(
+        records, cases, seed=7, n=12, n_relabel=4, heldout_ids=MANIFEST_IDS
+    )
     assert len(sample) == 12 and len({x.record_key for x in sample}) == 12
     for x in sample:  # rubric work (tuning half) never reads a held-out case (D-5)
         assert x.split == cases[x.case_id].meta["split"]
@@ -95,25 +99,27 @@ def test_groundedness_sample_takes_each_half_from_its_golden_split(cal_run):
     assert sum(x.relabel for x in sample if x.split == "heldout") == 2
     assert all(next(r for r in records if r.case_id == x.case_id).claims for x in sample)
     with pytest.raises(CalibrationError, match="need 30"):
-        C.groundedness_sample(records, cases, seed=7, n=60, n_relabel=4)
+        C.groundedness_sample(records, cases, seed=7, n=60, n_relabel=4, heldout_ids=MANIFEST_IDS)
     with pytest.raises(CalibrationError, match="even"):
-        C.groundedness_sample(records, cases, seed=7, n=11, n_relabel=4)
+        C.groundedness_sample(records, cases, seed=7, n=11, n_relabel=4, heldout_ids=MANIFEST_IDS)
 
 
 def test_groundedness_sample_is_reproducible_by_seed(cal_run):
     records, cases = R.read_records(cal_run), R.read_cases(cal_run)
-    a = C.groundedness_sample(records, cases, seed=7, n=12, n_relabel=4)
-    b = C.groundedness_sample(list(reversed(records)), cases, seed=7, n=12, n_relabel=4)
+    a = C.groundedness_sample(records, cases, seed=7, n=12, n_relabel=4, heldout_ids=MANIFEST_IDS)
+    b = C.groundedness_sample(
+        list(reversed(records)), cases, seed=7, n=12, n_relabel=4, heldout_ids=MANIFEST_IDS
+    )
     assert a == b
 
 
 @pytest.mark.contract
 def test_evalkit_labels_and_scores_the_exported_groundedness_sheet(cal_run, tmp_path):
     run_dir = fresh(cal_run, tmp_path)
-    sheet, csv_path, n = C.export_groundedness(run_dir, n=12, n_relabel=4)
+    sheet, csv_path, n = C.export_groundedness(run_dir, n=12, n_relabel=4, heldout_ids=MANIFEST_IDS)
     assert sheet == run_dir / "calibration" / "sheet.json" and n > 0
     with pytest.raises(CalibrationError, match="exists"):
-        C.export_groundedness(run_dir, n=12, n_relabel=4)
+        C.export_groundedness(run_dir, n=12, n_relabel=4, heldout_ids=MANIFEST_IDS)
 
     # the owner labels in EvalKit's page or CSV; simulated: every claim supported, one not
     rows = list(csv.DictReader(io.StringIO(csv_path.read_text(encoding="utf-8"))))
@@ -139,11 +145,13 @@ def test_evalkit_labels_and_scores_the_exported_groundedness_sheet(cal_run, tmp_
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["calibration_status"] == "calibrated"
     with pytest.raises(CalibrationError, match="labels"):
-        C.export_groundedness(run_dir, n=12, n_relabel=4, force=True)  # labels fit this sheet
+        C.export_groundedness(
+            run_dir, n=12, n_relabel=4, force=True, heldout_ids=MANIFEST_IDS
+        )  # labels fit this sheet
 
 
 def _label_groundedness(run_dir: Path, tmp: Path) -> None:
-    _, csv_path, _ = C.export_groundedness(run_dir, n=12, n_relabel=4)
+    _, csv_path, _ = C.export_groundedness(run_dir, n=12, n_relabel=4, heldout_ids=MANIFEST_IDS)
     rows = list(csv.DictReader(io.StringIO(csv_path.read_text(encoding="utf-8"))))
     for row in rows:
         row["label"] = "S"
@@ -161,7 +169,7 @@ def _label_groundedness(run_dir: Path, tmp: Path) -> None:
 
 def _sheet(cal_run: Path, secret: str = "s3cret") -> tuple[list[C.ProbeRow], list[Record]]:
     records, cases = R.read_records(cal_run), R.read_cases(cal_run)
-    sample = C.probe_sample(records, cases, seed=7, n=8, n_relabel=4)
+    sample = C.probe_sample(records, cases, seed=7, n=8, n_relabel=4, heldout_ids=MANIFEST_IDS)
     return C.build_probe_sheet(sample, records, cases, seed=7, secret=secret), records
 
 
@@ -245,7 +253,17 @@ def test_integrity_report_scores_heldout_kappa_per_judge(cal_run):
         labels={r.key: truth[r.key] for r in rows if r.relabel},
     )
     at = dt.datetime(2026, 11, 20, tzinfo=dt.UTC)
-    report = C.probe_report(rows, first, relabel, records, seed=7, scored_at=at, n_resamples=200)
+    report = C.probe_report(
+        rows,
+        first,
+        relabel,
+        records,
+        seed=7,
+        scored_at=at,
+        n_resamples=200,
+        heldout_ids=MANIFEST_IDS,
+        logged=[],
+    )
     held = [r for r in rows if r.split == "heldout"]
     assert report.n_heldout == len(held) == 4
     assert {a.judge for a in report.agreements} == {"claude-opus-5-5", "gpt-6.1-sol"}
@@ -264,13 +282,25 @@ def test_integrity_report_scores_heldout_kappa_per_judge(cal_run):
             records,
             seed=7,
             scored_at=at,
+            heldout_ids=MANIFEST_IDS,
+            logged=[],
         )
     old = report.model_copy(update={"rubric_hash": "an-older-rubric"})
     with pytest.raises(CalibrationError, match="another rubric"):
-        C.probe_report(rows, first, relabel, records, seed=7, scored_at=at, previous=[old])
+        C.probe_report(
+            rows,
+            first,
+            relabel,
+            records,
+            seed=7,
+            scored_at=at,
+            previous=[old],
+            heldout_ids=MANIFEST_IDS,
+            logged=[],
+        )
     with pytest.raises(CalibrationError, match="another sheet"):
         C.probe_report(rows, first.model_copy(update={"sheet_id": "s-other"}), None, records,
-                       seed=7, scored_at=at)  # fmt: skip
+                       seed=7, scored_at=at, heldout_ids=MANIFEST_IDS, logged=[])  # fmt: skip
 
 
 def _label_all(run_dir: Path, tmp: Path, name: str) -> list[C.ProbeRow]:
@@ -290,20 +320,22 @@ def test_a_reexported_heldout_set_is_never_rescored_under_another_rubric(cal_run
     """Verifier E2.3 pass 1: the held-out digest hashes stable case ids, not sheet keys, and
     verdicts carry the rubric they were made under."""
     run_dir = fresh(cal_run, tmp_path)
-    C.export_probe(run_dir, n=8, n_relabel=4)
+    C.export_probe(run_dir, n=8, n_relabel=4, heldout_ids=MANIFEST_IDS)
     rows1 = _label_all(run_dir, tmp_path, "a.csv")
     at = dt.datetime(2026, 11, 20, tzinfo=dt.UTC)
     log = tmp_path / "log.jsonl"
-    r1 = C.score_probe(run_dir, now=at, log=log)
+    r1 = C.score_probe(run_dir, now=at, log=log, heldout_ids=MANIFEST_IDS)
     for f in C.probe_dir(run_dir).glob("labels-*.json"):
         f.rename(tmp_path / f.name)
-    C.export_probe(run_dir, n=8, n_relabel=4, force=True)  # fresh random keys
+    C.export_probe(
+        run_dir, n=8, n_relabel=4, force=True, heldout_ids=MANIFEST_IDS
+    )  # fresh random keys
     rows2 = _label_all(run_dir, tmp_path, "b.csv")
     assert {r.key for r in rows1}.isdisjoint({r.key for r in rows2})
     assert C.heldout_digest(rows1) == C.heldout_digest(rows2) == r1.heldout_digest
     monkeypatch.setattr(C, "RUBRIC_HASH", "a-changed-rubric-hash")
     with pytest.raises(CalibrationError, match="rubric"):
-        C.score_probe(run_dir, now=at, log=log)
+        C.score_probe(run_dir, now=at, log=log, heldout_ids=MANIFEST_IDS)
 
 
 def _restamp(run_dir: Path, rubric: str) -> None:
@@ -325,32 +357,32 @@ def test_heldout_rescoring_under_another_rubric_is_refused_across_run_folders(
     at = dt.datetime(2026, 11, 20, tzinfo=dt.UTC)
     log = tmp_path / "log.jsonl"
     a = fresh(cal_run, tmp_path / "a")
-    C.export_probe(a, n=8, n_relabel=4)
+    C.export_probe(a, n=8, n_relabel=4, heldout_ids=MANIFEST_IDS)
     _label_all(a, tmp_path, "a.csv")
-    first = C.score_probe(a, now=at, log=log)
+    first = C.score_probe(a, now=at, log=log, heldout_ids=MANIFEST_IDS)
     logged = [e for e in tuning.read_log(log) if e["kind"] == "calibration_scored"]
     assert [(e["calibration"], e["digest"], e["rubric_hash"]) for e in logged] == [
         ("integrity", first.heldout_digest, RUBRIC_HASH)
     ]
     assert tuning.chain_problems(log) == []
     # the same rubric may score the same set again (e.g. after a relabel round)
-    C.score_probe(a, now=at, log=log)
+    C.score_probe(a, now=at, log=log, heldout_ids=MANIFEST_IDS)
     monkeypatch.setattr(C, "RUBRIC_HASH", "a-changed-rubric")
     # route 1: a new run folder, re-judged under the new rubric, same seed so same sample
     b = fresh(cal_run, tmp_path / "b")
     _restamp(b, "a-changed-rubric")
-    C.export_probe(b, n=8, n_relabel=4)
+    C.export_probe(b, n=8, n_relabel=4, heldout_ids=MANIFEST_IDS)
     _label_all(b, tmp_path, "b.csv")
     with pytest.raises(CalibrationError, match="already scored under another rubric") as info:
-        C.score_probe(b, now=at, log=log)
+        C.score_probe(b, now=at, log=log, heldout_ids=MANIFEST_IDS)
     assert "aside" not in str(info.value)
     # route 2: the calibration folder moved aside and the sheet exported again
     shutil.move(str(C.probe_dir(a)), str(tmp_path / "aside"))
     _restamp(a, "a-changed-rubric")
-    C.export_probe(a, n=8, n_relabel=4)
+    C.export_probe(a, n=8, n_relabel=4, heldout_ids=MANIFEST_IDS)
     _label_all(a, tmp_path, "c.csv")
     with pytest.raises(CalibrationError, match="already scored under another rubric"):
-        C.score_probe(a, now=at, log=log)
+        C.score_probe(a, now=at, log=log, heldout_ids=MANIFEST_IDS)
     assert len([e for e in tuning.read_log(log) if e["kind"] == "calibration_scored"]) == 2
 
 
@@ -368,9 +400,9 @@ def test_an_overlapping_heldout_sample_is_refused_case_by_case(cal_run, tmp_path
     at = dt.datetime(2026, 11, 20, tzinfo=dt.UTC)
     log = tmp_path / "log.jsonl"
     a = fresh(cal_run, tmp_path / "a")
-    C.export_probe(a, n=8, n_relabel=4)
+    C.export_probe(a, n=8, n_relabel=4, heldout_ids=MANIFEST_IDS)
     rows_a = _label_all(a, tmp_path, "a.csv")
-    first = C.score_probe(a, now=at, log=log)
+    first = C.score_probe(a, now=at, log=log, heldout_ids=MANIFEST_IDS)
     (entry,) = [e for e in tuning.read_log(log) if e["kind"] == "calibration_scored"]
     held_a = {r.case_id for r in rows_a if r.split == "heldout"}
     assert set(entry["heldout_cases"]) == held_a  # public case ids, never text
@@ -379,7 +411,7 @@ def test_an_overlapping_heldout_sample_is_refused_case_by_case(cal_run, tmp_path
         b = fresh(cal_run, tmp_path / f"b{seed}")
         _restamp(b, "a-changed-rubric")
         _seed(b, seed)
-        C.export_probe(b, n=8, n_relabel=4)
+        C.export_probe(b, n=8, n_relabel=4, heldout_ids=MANIFEST_IDS)
         rows_b = C._load_rows(b, "integrity")  # pyright: ignore[reportPrivateUsage]
         held_b = {r.case_id for r in rows_b if r.split == "heldout"}
         if held_b != held_a and held_b & held_a:
@@ -389,7 +421,67 @@ def test_an_overlapping_heldout_sample_is_refused_case_by_case(cal_run, tmp_path
     assert C.heldout_digest(rows_b) != first.heldout_digest  # the digest alone misses it
     _label_all(b, tmp_path, "b.csv")
     with pytest.raises(CalibrationError, match="already scored under another rubric"):
-        C.score_probe(b, now=at, log=log)
+        C.score_probe(b, now=at, log=log, heldout_ids=MANIFEST_IDS)
+
+
+@pytest.mark.safety
+def test_an_evalkit_certified_run_that_bypassed_the_log_counts_as_uncalibrated(
+        cal_run, tmp_path, monkeypatch):  # fmt: skip
+    """Verifier E2.3 pass 4: `evalkit calibrate score` certifies a run by its own folder only;
+    our checks accept a calibration only with a matching committed log line."""
+    log = tmp_path / "log.jsonl"
+    a = fresh(cal_run, tmp_path / "a")
+    _label_groundedness(a, tmp_path)
+    monkeypatch.setattr(C, "JUDGE_PROMPT_HASH", "an-older-rubric")
+    C.score_groundedness(a, log=log, heldout_ids=MANIFEST_IDS)  # logged under the older rubric
+    monkeypatch.undo()
+    b = fresh(cal_run, tmp_path / "b")
+    _seed(b, 12345)
+    _label_groundedness(b, tmp_path)
+    with pytest.raises(CalibrationError):
+        C.score_groundedness(b, log=log, heldout_ids=MANIFEST_IDS)  # the supported path refuses
+    R.cal_score(b)  # the bypass: EvalKit's own scoring certifies the folder
+    assert json.loads((b / "summary.json").read_text("utf-8"))["calibration_status"] == "calibrated"
+    status = C.certified_calibration(b, log=log)
+    assert status["groundedness"] == "uncalibrated"  # no matching log line: not calibrated
+    assert C.certified_calibration(a, log=log)["groundedness"] == "uncalibrated"  # rubric differs
+    c = fresh(cal_run, tmp_path / "c")
+    _label_groundedness(c, tmp_path)
+    clean = tmp_path / "clean.jsonl"
+    C.score_groundedness(c, log=clean, heldout_ids=MANIFEST_IDS)
+    assert C.certified_calibration(c, log=clean)["groundedness"] == "calibrated"
+    assert C.certified_calibration(c, log=log)["groundedness"] == "uncalibrated"  # other log
+    assert C.certified_calibration(c, log=clean)["integrity"] == "uncalibrated"  # not scored
+
+
+def test_manifest_heldout_ids_are_trusted_over_meta_split(cal_run, tuning_run):
+    """A case in golden/heldout/MANIFEST.json is held out whatever its meta says."""
+    records, cases = R.read_records(cal_run), R.read_cases(cal_run)
+    some = next(iter(sorted(MANIFEST_IDS)))
+    tuning_case = next(c for c in cases.values() if c.meta["split"] == "tuning")
+    assert C.split_of(tuning_case, frozenset()) == "tuning"
+    with pytest.raises(CalibrationError, match="MANIFEST"):
+        C.split_of(tuning_case, frozenset({tuning_case.id}))
+    held_case = tuning_case.model_copy(
+        update={"id": some, "meta": {**tuning_case.meta, "split": "heldout"}}
+    )
+    assert C.split_of(held_case, MANIFEST_IDS) == "heldout"
+    with pytest.raises(CalibrationError, match="MANIFEST"):
+        C.groundedness_sample(records, cases, seed=7, n=12, n_relabel=4,
+                              heldout_ids=frozenset({tuning_case.id}))  # fmt: skip
+    tcases, _ = _tuning_cases()
+    ek = _ek_cases(tuning_run.run_dir, [c.id for c in tcases])
+    trecords = R.read_records(tuning_run.run_dir)
+    with pytest.raises(tuning.TuningError, match="held-out MANIFEST"):
+        tuning.sweep_bar(ek, tuning_run.recorder.recordings, trecords, _runtime(), [0.6],
+                         heldout_ids=frozenset({ek[0].id}))  # fmt: skip
+
+
+def test_probe_report_requires_the_logged_history():
+    import inspect
+
+    param = inspect.signature(C.probe_report).parameters["logged"]
+    assert param.default is inspect.Parameter.empty and param.kind is param.KEYWORD_ONLY
 
 
 def test_case_overlap_is_checked_per_calibration_and_rubric():
@@ -406,7 +498,7 @@ def test_an_overlapping_groundedness_sample_is_refused(cal_run, tmp_path, monkey
     log = tmp_path / "log.jsonl"
     a = fresh(cal_run, tmp_path / "a")
     _label_groundedness(a, tmp_path)
-    C.score_groundedness(a, log=log)
+    C.score_groundedness(a, log=log, heldout_ids=MANIFEST_IDS)
     (entry,) = [e for e in tuning.read_log(log) if e["kind"] == "calibration_scored"]
     assert entry["heldout_cases"] and all(":" not in c for c in entry["heldout_cases"])
     monkeypatch.setattr(C, "JUDGE_PROMPT_HASH", "a-changed-judge-rubric")
@@ -414,7 +506,7 @@ def test_an_overlapping_groundedness_sample_is_refused(cal_run, tmp_path, monkey
     _seed(b, 12345)
     _label_groundedness(b, tmp_path)
     with pytest.raises(CalibrationError, match="already scored under another rubric"):
-        C.score_groundedness(b, log=log)
+        C.score_groundedness(b, log=log, heldout_ids=MANIFEST_IDS)
     assert not (b / "calibration" / "calibration.json").exists()
 
 
@@ -423,14 +515,14 @@ def test_groundedness_rescoring_is_guarded_by_the_same_log(cal_run, tmp_path, mo
     log = tmp_path / "log.jsonl"
     a = fresh(cal_run, tmp_path / "a")
     _label_groundedness(a, tmp_path)
-    report = C.score_groundedness(a, log=log)
+    report = C.score_groundedness(a, log=log, heldout_ids=MANIFEST_IDS)
     (entry,) = [e for e in tuning.read_log(log) if e["kind"] == "calibration_scored"]
     assert (entry["calibration"], entry["digest"]) == ("groundedness", report.heldout_digest)
     monkeypatch.setattr(C, "JUDGE_PROMPT_HASH", "a-changed-judge-rubric")
     b = fresh(cal_run, tmp_path / "b")
     _label_groundedness(b, tmp_path)
     with pytest.raises(CalibrationError, match="already scored under another rubric"):
-        C.score_groundedness(b, log=log)
+        C.score_groundedness(b, log=log, heldout_ids=MANIFEST_IDS)
     assert not (b / "calibration" / "calibration.json").exists()  # refused before scoring
 
 
@@ -452,12 +544,13 @@ def test_probe_verdicts_carry_their_rubric_and_old_ones_are_never_restamped(cal_
         if "integrity" in r.task_scores else r for r in records]  # fmt: skip
     with pytest.raises(CalibrationError, match="different rubric"):
         C.probe_report(rows, labels, None, stale, seed=7,
-                       scored_at=dt.datetime(2026, 11, 20, tzinfo=dt.UTC))  # fmt: skip
+                       scored_at=dt.datetime(2026, 11, 20, tzinfo=dt.UTC),
+                       heldout_ids=MANIFEST_IDS, logged=[])  # fmt: skip
 
 
 def test_integrity_files_export_import_and_score_on_a_run_folder(cal_run, tmp_path):
     run_dir = fresh(cal_run, tmp_path)
-    assert C.export_probe(run_dir, n=8, n_relabel=4) == 8
+    assert C.export_probe(run_dir, n=8, n_relabel=4, heldout_ids=MANIFEST_IDS) == 8
     d = C.probe_dir(run_dir)
     rows = C._load_rows(run_dir, "integrity")  # pyright: ignore[reportPrivateUsage]
     verdicts = C._judge_verdicts(R.read_records(run_dir), "integrity")  # pyright: ignore[reportPrivateUsage]
@@ -472,10 +565,13 @@ def test_integrity_files_export_import_and_score_on_a_run_folder(cal_run, tmp_pa
     with pytest.raises(CalibrationError, match="already exists"):
         C.import_probe(run_dir, first)
     with pytest.raises(CalibrationError, match="already has labels") as refused:
-        C.export_probe(run_dir, n=8, n_relabel=4, force=True)
+        C.export_probe(run_dir, n=8, n_relabel=4, force=True, heldout_ids=MANIFEST_IDS)
     assert "aside" not in str(refused.value)  # never advice that would reopen a rescore
     report = C.score_probe(
-        run_dir, now=dt.datetime(2026, 11, 20, tzinfo=dt.UTC), log=tmp_path / "log.jsonl"
+        run_dir,
+        now=dt.datetime(2026, 11, 20, tzinfo=dt.UTC),
+        log=tmp_path / "log.jsonl",
+        heldout_ids=MANIFEST_IDS,
     )
     assert all(a.agreement == 1.0 for a in report.agreements)
     saved = json.loads((d / "calibration.json").read_text(encoding="utf-8"))
@@ -530,7 +626,7 @@ def test_bar_sweep_replays_the_tuning_run_through_ask_at_each_bar(tuning_run):
     records = R.read_records(tuning_run.run_dir)
     assert tuning.recorded_bar(records) == 0.5
     results = tuning.sweep_bar(ek, tuning_run.recorder.recordings, records, _runtime(),
-                               [0.7, 0.5, 0.6])  # fmt: skip
+                               [0.7, 0.5, 0.6], heldout_ids=MANIFEST_IDS)  # fmt: skip
     by_bar = {r.bar: r for r in results}
     assert [r.bar for r in results] == [0.5, 0.6, 0.7] and all(r.replayable for r in results)
     assert (by_bar[0.5].grounded_rate, by_bar[0.5].handover_rate) == (1.0, 0.5)
@@ -549,11 +645,22 @@ def test_bar_sweep_refuses_heldout_cases_and_bars_below_the_recording(tuning_run
     records = R.read_records(tuning_run.run_dir)
     held = [ek[0].model_copy(update={"meta": {**ek[0].meta, "split": "heldout"}}), *ek[1:]]
     with pytest.raises(tuning.TuningError, match="outside the tuning split"):
-        tuning.sweep_bar(held, (), records, _runtime(), [0.6])  # refused before any replay
+        tuning.sweep_bar(
+            held, (), records, _runtime(), [0.6], heldout_ids=MANIFEST_IDS
+        )  # refused before any replay
     with pytest.raises(tuning.TuningError, match="below the recorded bar"):
-        tuning.sweep_bar(ek, tuning_run.recorder.recordings, records, _runtime(), [0.4, 0.6])
+        tuning.sweep_bar(
+            ek,
+            tuning_run.recorder.recordings,
+            records,
+            _runtime(),
+            [0.4, 0.6],
+            heldout_ids=MANIFEST_IDS,
+        )
     with pytest.raises(tuning.TuningError, match="between 0 and 1"):
-        tuning.sweep_bar(ek, tuning_run.recorder.recordings, records, _runtime(), [1.5])
+        tuning.sweep_bar(
+            ek, tuning_run.recorder.recordings, records, _runtime(), [1.5], heldout_ids=MANIFEST_IDS
+        )
 
 
 @pytest.mark.contract
@@ -645,6 +752,17 @@ def append_only_problems(path: Path, env: Mapping[str, str]) -> list[str] | None
     if _rev_exists("HEAD") and not work.startswith(_file_at("HEAD", rel)):
         out.append("the working tuning log rewrites lines committed at HEAD")
     base = env.get("LOG_BASE_SHA", "")
+    if _zero(base) and env.get("LOG_DEFAULT_BRANCH"):  # a new branch: no `before` to compare
+        branch = env["LOG_DEFAULT_BRANCH"]
+        found = None
+        for ref in (f"origin/{branch}", branch):
+            done = _git("merge-base", "HEAD", ref)
+            if done is not None and done.returncode == 0:
+                found = done.stdout.strip()
+                break
+        if found is None:
+            return [*out, f"no merge-base with the default branch {branch!r} to compare with"]
+        base = found
     if not _zero(base):
         if not _rev_exists(base):
             out.append(f"LOG_BASE_SHA {base[:12]} is not in this clone (checkout fetch-depth 0)")
@@ -678,10 +796,19 @@ def test_append_only_check_compares_with_the_ci_base_and_fails_closed_in_ci(tmp_
     missing = append_only_problems(TUNING_LOG, {"CI": "true", "LOG_BASE_SHA": "ab" * 20})
     assert missing and "LOG_BASE_SHA" in missing[0]
     assert append_only_problems(TUNING_LOG, {"LOG_BASE_SHA": "0" * 40}) is not None
+    # a new branch's push has no `before`: compare with the merge-base of the default branch
+    branch = _git("rev-parse", "--abbrev-ref", "HEAD")
+    assert branch is not None
+    new_branch = {"CI": "true", "LOG_BASE_SHA": "0" * 40,
+                  "LOG_DEFAULT_BRANCH": branch.stdout.strip()}  # fmt: skip
+    assert append_only_problems(TUNING_LOG, new_branch) == []
+    lost = append_only_problems(TUNING_LOG, {**new_branch, "LOG_DEFAULT_BRANCH": "no-such-x"})
+    assert lost and "merge-base" in lost[0]
     # the CI workflow gives the test full history and the base to compare with
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "fetch-depth: 0" in ci and "LOG_BASE_SHA" in ci
     assert "github.event.before" in ci and "github.event.pull_request.base.sha" in ci
+    assert "LOG_DEFAULT_BRANCH" in ci and "default_branch" in ci
 
 
 def test_a_rechained_forged_log_is_still_caught(tmp_path):

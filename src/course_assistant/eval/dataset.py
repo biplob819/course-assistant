@@ -63,6 +63,16 @@ def golden_version_for(corpus: Corpus, manifest: Manifest, root: Path) -> str:
     return manifest_version(manifest)
 
 
+def heldout_ids(manifest_path: Path) -> frozenset[str]:
+    """The held-out case ids from the committed `golden/heldout/MANIFEST.json` (ids and
+    hashes only). Guards trust these ids, never a case's own `meta.split`."""
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    cases = data.get("cases")
+    if not isinstance(cases, dict) or not cases:
+        raise DatasetError("held-out MANIFEST.json has no case ids")
+    return frozenset(str(k) for k in cases)
+
+
 def _lines(path: Path) -> list[str]:
     return [x for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
 

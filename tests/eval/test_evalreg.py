@@ -25,6 +25,7 @@ from tests.eval import offline_run as O
 from tests.eval import scripted_eval as E
 
 FIXTURE = Path(__file__).with_name("evalreg")
+TUNING_LOG = Path(__file__).resolve().parents[2] / "docs" / "measurements" / "tuning-log.jsonl"
 
 pytestmark = pytest.mark.evalreg
 
@@ -36,7 +37,7 @@ def _rows(fixture: Path = FIXTURE) -> list[dict[str, Any]]:
 
 def problems(fixture: Path = FIXTURE) -> list[str]:
     return regression_problems(fixture, _rows(fixture), corpus=E.CORPUS, config=E.CONFIG,
-                               assessments=E.ASSESSMENTS)  # fmt: skip
+                               assessments=E.ASSESSMENTS, log=TUNING_LOG)  # fmt: skip
 
 
 def copy(tmp_path: Path) -> Path:
@@ -181,3 +182,16 @@ def test_a_fixture_judged_with_real_solutions_replays_from_digests(tmp_path, mon
     text = "\n".join((out / f).read_text(encoding="utf-8") for f in FILES)
     assert "private solution text" not in text
     assert json.loads((out / "fixture.json").read_text("utf-8"))["source"] == "live"
+
+
+@pytest.mark.safety
+def test_a_calibrated_summary_without_a_logged_calibration_fails_the_gate(tmp_path):
+    """Verifier E2.3 pass 4: a summary EvalKit marked calibrated outside scripts/calibrate.py
+    has no committed calibration_scored line, so the gate refuses it."""
+    fx = copy(tmp_path)
+    summary = fx / "summary.json"
+    data = json.loads(summary.read_text(encoding="utf-8"))
+    assert data["calibration_status"] == "uncalibrated"
+    data["calibration_status"] = "calibrated"
+    summary.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    assert any("calibration_scored" in p for p in problems(fx))
