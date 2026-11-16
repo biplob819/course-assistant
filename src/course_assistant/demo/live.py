@@ -49,9 +49,10 @@ class LiveDemo:
         return "LiveDemo()"
 
     def ask(self, session: str, question: str, pid: str, *, own_key: str | None = None,
-            conversation_id: str | None = None) -> Turn:  # fmt: skip
+            conversation_id: str | None = None, scope: str | None = None) -> Turn:  # fmt: skip
         """One live question. Raises `GuardRefused` (a readable reason) before any call when
-        the passkey, the cap, the rate limit or the budget says no."""
+        the passkey, the cap, the rate limit or the budget says no. `scope` is the session
+        filter the learner picked (None: all sessions; B2.5's session picker)."""
         self.gate.require(session)
         if own_key is not None and (not isinstance(own_key, str) or not own_key.strip()):
             raise GuardRefused(NO_KEY)
@@ -70,7 +71,7 @@ class LiveDemo:
             capped = CappedSource(Live(responder), ticket.hold_usd, self.prices,
                                   alert=self.alert)  # fmt: skip
             assistant = self.assistant_for(capped)
-            turn = assistant.turn(question, pid, None, conversation_id)
+            turn = assistant.turn(question, pid, scope, conversation_id)
         finally:
             self.guard.settle(ticket, capped.total_usd if capped is not None else 0.0)
         queue_handover(turn, store=assistant.store)

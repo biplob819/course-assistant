@@ -113,3 +113,5 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [GREEN] [D3.1] — demo cache, passkey gate and spend guard; verifier pass 2 confirmed all four criteria
 - [FIX] [E2.3] — verifier pass 1: held-out digest over case ids and rubric hash on probe verdicts (CAL-01); solution-digest cache keys so a live fixture replays; fixture marked scripted with no local path; tuning log hash chain; heldout_scored logged and honoured; public support kappa wording
 - [FIX] [E2.1] — D-54: held-out case ta-b1-065 retired after its text was found in a public test; exposure guard test
+- [FIX] [E2.3] — verifier pass 2: held-out calibration digests and rubrics in the committed tuning log, so no run folder or re-export can rescore under another rubric; log continuity and git append-only check; held-out runs never skip the log
+- [FEAT] [B2.5] — learner chat page: logic in `app/chat.py` (session picker, answer card with source chips, not-covered handover, notice, history and delete, own key behind the passkey), thin Streamlit `app/learner_page.py`, `app/wiring.py`; `LiveDemo.ask(scope=)` added for the picker (building)

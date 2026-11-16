@@ -55,6 +55,7 @@ dev = [
     "pypdf>=5",
     "python-pptx>=1",
     "evalkit-harness>=0.2,<0.3",
+    "streamlit>=1.40",  # B2.5: the learner page's AppTest
 ]
 
 [build-system]
