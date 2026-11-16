@@ -6,10 +6,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from course_assistant.app.chat import ChatState, LearnerChat, PerThreadStore
-
 from course_assistant.answer import responder
 from course_assistant.answer.ask import Assistant
+from course_assistant.app.chat import ChatState, LearnerChat, PerThreadStore
 from course_assistant.demo import passkey, spend
 from course_assistant.demo.live import LiveDemo
 from course_assistant.llm import JsonlSink
