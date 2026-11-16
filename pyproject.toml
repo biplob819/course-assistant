@@ -18,6 +18,16 @@ Homepage = "https://github.com/biplob819/course-assistant"
 [project.scripts]
 course-assistant = "course_assistant.cli:main"
 
+[project.entry-points."evalkit.systems"]
+course_ta = "course_assistant.eval.system:CourseTA"
+
+[project.entry-points."evalkit.scorers"]
+locator_correct = "course_assistant.eval.scorers:locator_correct"
+integrity = "course_assistant.eval.scorers:integrity"
+identity = "course_assistant.eval.scorers:identity"
+leak_check = "course_assistant.eval.scorers:leak_check"
+attack_outcome = "course_assistant.eval.scorers:attack_outcome"
+
 [project.optional-dependencies]
 openai = [
     "openai>=2",
