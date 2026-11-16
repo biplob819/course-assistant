@@ -118,3 +118,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [B2.5] — verifier pass 1: open text rendered only with `st.text` (CHT-05); locked sessions drop the own key; in-flight turns dropped after sign-out; sign-out forgets learner id and conversation
 - [FIX] [E2.3] — verifier pass 3: held-out calibration guarded per case id across samples; CI full history with LOG_BASE_SHA for the append-only tuning log check; D-55
 - [FIX] [W0.1] — CI core-only job installs and runs without the dev group (uv sync/run --no-dev); it had failed since the dev group gained the optional extras
+- [GREEN] [B2.5] — learner chat page; verifier pass 2 confirmed all six criteria

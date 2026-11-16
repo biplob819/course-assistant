@@ -70,7 +70,9 @@ def _submitted(action: Callable[[], Any]) -> None:
         action()
     except GuardRefused as exc:
         st.session_state[FLASH] = exc.reason
-    st.session_state[FORGET] = True
+    finally:
+        # whatever happened, the typed passkey or key is forgotten (verifier B2.5 pass 2)
+        st.session_state[FORGET] = True
     st.rerun()
 
 
