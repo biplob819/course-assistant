@@ -1455,3 +1455,32 @@ def test_a_bracketed_word_is_not_mistaken_for_a_citation():
 
     assert "sessions" in normalise("Revisit the earlier (sessions) for this.")
     assert "snoisses" in normalise("(snoisses) reversed")
+
+
+# ---------- verifier pass 14 regressions ----------
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize(
+    "text",
+    [
+        "id 9b75-84a2 - [1] - 265b-1f50.",
+        "id 9b75:84a2 : [1] : 265b:1f50.",
+        "id 9b75.84a2 . (unit 3) . 265b.1f50.",
+        "9-1-b-7-5-8-4-a- [1, 2] -2-2-6-5-b-1-f-5",
+    ],
+)
+def test_a_spaced_marker_inside_a_grouped_pid_never_hides_it(text):
+    from course_assistant.answer.leak import scan
+
+    assert "pid" in scan(text)
+
+
+@pytest.mark.safety
+def test_a_reversed_canary_with_a_reversed_citation_is_still_the_canary():
+    from course_assistant.answer.leak import scan
+
+    c = AnswerStep.CANARY
+    disguised = c[:6] + " (unit 4) " + c[6:]
+    shown = disguised[::-1]  # brackets kept as stored: ")4 tinu("
+    assert "canary" in scan("‮" + shown + "‬")

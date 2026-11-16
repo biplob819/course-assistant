@@ -67,8 +67,8 @@ def _pid_like(folded: str) -> bool:
                 # runs of spaces count as one, so a removed citation marker or a double space
                 # never breaks a grouping (verifier A2.5 pass 12)
                 gap = re.sub(r"[ \t]+", " ", text[tokens[j - 1].end() : tokens[j].start()])
-                if gap.strip():  # "- " or " -" left by a removed marker is just "-"
-                    gap = gap.strip()
+                if gap.strip():  # "- ", " -" or "- -" left by a removed marker is just "-"
+                    gap = re.sub(r"\s", "", gap)
                 gap = re.sub(r"(.)\1+", r"\1", gap)  # "--" or ".." left by a removed marker
                 if not (1 <= len(gap) <= 3) or any(c in ",;\n" for c in gap):
                     break
@@ -97,6 +97,7 @@ _CITE = re.compile(
     r"|\][0-9]{1,3}(?:\s*[,;]\s*[0-9]{1,3})*\["
     r"|\([^()]{0,27}[0-9]\s?(?:tinu|noisses|edils|\.p)\)"
     r"|\)(?:tinu|noisses|edils|\.p)\s?[0-9][^()]{0,27}\("
+    r"|\)[^()]{0,27}?[0-9]\s?(?:tinu|noisses|edils|\.p)\("
 )
 # letters that render as nothing (Hangul fillers, braille blank) and control characters
 _BLANKS = dict.fromkeys(map(ord, "\u115f\u1160\u3164\uffa0\u2800"), None)
