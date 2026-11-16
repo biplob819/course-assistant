@@ -71,9 +71,11 @@ def pid_for(case_id: str) -> str:
 
 
 def version_for(runtime: Runtime) -> str:
-    """Part of EvalKit's answer cache key: rules, config and corpus all change answers."""
+    """Part of EvalKit's answer cache key: rules, config, assessment briefs (integrity and
+    hints read them) and corpus all change answers."""
     config_hash = hashlib.sha256(runtime.config.model_dump_json().encode("utf-8")).hexdigest()
-    return (f"{BASE_VERSION}:{Assistant.rules_hash()}:{config_hash[:12]}:"
+    briefs_hash = hashlib.sha256(runtime.assessments.model_dump_json().encode("utf-8")).hexdigest()
+    return (f"{BASE_VERSION}:{Assistant.rules_hash()}:{config_hash[:12]}:{briefs_hash[:12]}:"
             f"{runtime.corpus.corpus_version[:12]}")  # fmt: skip
 
 

@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "run_id": "r-65a32f837b06",
+  "task": "course-ta",
+  "task_ref": "/var/folders/lq/tfm090bx5vxf_vcq6gynt5140000gp/T/evalreg-build-6isa7zi7/run/task/course-ta.yaml",
+  "config_hash": "ad67fd747931f24d",
+  "seed": 7,
+  "n": 16,
+  "models": [
+    "course-ta"
+  ],
+  "judges": [
+    "claude-opus-5-5",
+    "gpt-6.1-sol"
+  ],
+  "judge_mode": "dual",
+  "families": {
+    "course-ta": "other"
+  },
+  "thresholds": [],
+  "live_judges": true,
+  "started_at": "2026-11-16T21:58:57.666202Z",
+  "finished_at": "2026-11-16T21:58:57.761302Z",
+  "spent_usd": 0.472,
+  "slices": [
+    "rule",
+    "split"
+  ]
+}

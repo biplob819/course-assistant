@@ -1,0 +1,31 @@
+{
+ "baseline_kappa": {
+  "claude-opus-5-5": 0.7272727272727272,
+  "dual": 0.5,
+  "gpt-6.1-sol": 0.5
+ },
+ "case_ids": [
+  "ta-b1-001",
+  "ta-b1-002",
+  "ta-b1-003",
+  "ta-b1-004",
+  "ta-b1-005",
+  "ta-b1-006",
+  "ta-b1-041",
+  "ta-b10-004",
+  "ta-b10-012",
+  "ta-b2-003",
+  "ta-b3-001",
+  "ta-b3-021",
+  "ta-b4-002",
+  "ta-b7-004",
+  "ta-b8-003",
+  "ta-b9-002"
+ ],
+ "ground_version": "ground-c92d42799fb3",
+ "judge_prompt_hash": "9a3a8246049f6f85",
+ "kappa_drop_tolerance": 0.05,
+ "now": "2026-11-20T10:00:00+00:00",
+ "rubric_hash": "95291bddf8a8564f",
+ "rules_hash": "25eea2409a8dc8ff"
+}

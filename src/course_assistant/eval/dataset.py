@@ -43,6 +43,26 @@ def manifest_version(manifest: Manifest) -> str:
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
 
+def golden_version_for(corpus: Corpus, manifest: Manifest, root: Path) -> str:
+    """E2.1's corpus version, but only for the corpus that was actually ingested: the
+    manifest's files (sha256-checked by N1.4's splitter) must split into exactly the units of
+    `corpus`. A manifest edited, or files changed, after ingest is refused, so cases are never
+    matched against a repo manifest that no longer describes the corpus answering them."""
+    from course_assistant.ingest import corpus_version, units_from_manifest
+
+    try:
+        split = units_from_manifest(manifest, root)
+    except Exception:
+        raise DatasetError("the manifest's files cannot be split (missing or changed files)"
+                           ) from None  # fmt: skip
+    if corpus_version(split.units) != corpus.corpus_version:
+        raise DatasetError(
+            f"the manifest does not describe the ingested corpus {corpus.corpus_version[:12]}: "
+            "re-ingest, or check out the manifest the corpus was built from"
+        )
+    return manifest_version(manifest)
+
+
 def _lines(path: Path) -> list[str]:
     return [x for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
 

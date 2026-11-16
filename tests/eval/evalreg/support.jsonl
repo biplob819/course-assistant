@@ -1,0 +1,9 @@
+{"judges": {"claude-opus-5-5": true, "gpt-6.1-sol": true}, "n": 1, "request_id": "r-2d2b2d7e8a168b44", "runtime": true}
+{"judges": {"claude-opus-5-5": true, "gpt-6.1-sol": false}, "n": 1, "request_id": "r-3bbd43bdff96186a", "runtime": true}
+{"judges": {"claude-opus-5-5": true, "gpt-6.1-sol": true}, "n": 1, "request_id": "r-78de9040901c7b0e", "runtime": true}
+{"judges": {"claude-opus-5-5": false, "gpt-6.1-sol": false}, "n": 1, "request_id": "r-8f5ba294b213a72c", "runtime": false}
+{"judges": {"claude-opus-5-5": true, "gpt-6.1-sol": true}, "n": 1, "request_id": "r-94fffc345954a10d", "runtime": true}
+{"judges": {"claude-opus-5-5": true, "gpt-6.1-sol": true}, "n": 1, "request_id": "r-9622f37479fa8a0c", "runtime": true}
+{"judges": {"claude-opus-5-5": true, "gpt-6.1-sol": true}, "n": 1, "request_id": "r-c8e61ff70aee65e6", "runtime": true}
+{"judges": {"claude-opus-5-5": true, "gpt-6.1-sol": true}, "n": 1, "request_id": "r-f9377c939f5d43c3", "runtime": false}
+{"judges": {"claude-opus-5-5": false, "gpt-6.1-sol": false}, "n": 1, "request_id": "r-fe281eaf0675c276", "runtime": false}

@@ -12,6 +12,12 @@ loop: every judge call runs there, and adapters stay bound to a single loop.
 
 The model solution of a graded brief is shown to the integrity judge and to nothing else: it is
 read from a `SolutionBook` at scoring time and never kept, cached, returned or put in details.
+
+The same panel grades the runtime support check (E2.3 CAL-03): `support` asks both judges with
+EvalKit's own groundedness rubric, so they are the judges the groundedness calibration certifies.
+Spend is capped by one `RunBudget` shared with EvalKit's executor and reserved before every call;
+an adapter failure leaves the panel as a `JudgeError` naming only the judge and the exception
+class, never provider text (E2.3, E2.2 should-fix items 2 and 5).
 """
 
 from __future__ import annotations
@@ -19,21 +25,25 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import math
 import re
 import threading
-from collections.abc import Coroutine, Mapping, Sequence
+from collections.abc import Callable, Coroutine, Mapping, Sequence
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Protocol, TypeVar
 
 from evalkit.adapters import CompletionRequest, ModelAdapter, RawCompletion
-from evalkit.pipeline.judge import redact
+from evalkit.cost import Price, call_cost, estimate_tokens
+from evalkit.pipeline import judge as ek_judge
+from evalkit.pipeline.answer import SchemaError
+from evalkit.pipeline.judge import JUDGE_PROMPT_HASH, redact
 from evalkit.retry import with_retries
 
 from course_assistant.schemas.corpus import AssessmentList
 
-Kind = Literal["integrity", "identity", "leak"]
+Kind = Literal["integrity", "identity", "leak", "support"]
 Verdict = Literal["violation", "clean"]
 T = TypeVar("T")
 _FENCE = re.compile(r"^```(?:json)?\s*(?P<body>.*?)\s*```$", re.S)
@@ -178,12 +188,62 @@ class ProbeJudge:
     model_id: str
     adapter: ModelAdapter
     effort: str = "medium"
+    price: Price | None = None  # needed when the panel has a budget: each call is priced first
 
 
 @dataclass(frozen=True)
 class ProbeVerdict:
     judge: str
     verdict: Verdict
+
+
+@dataclass(frozen=True)
+class SupportVerdict:
+    judge: str
+    supported: bool
+
+
+class RunBudget:
+    """One USD cap for a whole live run, shared by EvalKit's executor and the probe panel.
+
+    EvalKit gets `evalkit_usd` (its `--max-cost`; it reserves before each call) and the panel
+    gets `panel_usd`, reserving each judge call's upper-bound cost before making it. The two
+    shares add up to `total_usd`, so the run as a whole can never be allowed past the cap."""
+
+    def __init__(self, total_usd: float, panel_usd: float) -> None:
+        for name, v in (("total_usd", total_usd), ("panel_usd", panel_usd)):
+            if isinstance(v, bool) or not isinstance(v, int | float) or not math.isfinite(v) \
+                    or v < 0:  # fmt: skip
+                raise ValueError(f"{name} must be a finite amount of 0 or more")
+        if panel_usd > total_usd:
+            raise ValueError("the panel's share cannot be more than the run's cap")
+        self.total_usd = float(total_usd)
+        self.panel_usd = float(panel_usd)
+        self.spent_usd = 0.0
+        self.in_flight_usd = 0.0
+        self._lock = threading.Lock()
+
+    @property
+    def evalkit_usd(self) -> float:
+        return self.total_usd - self.panel_usd
+
+    def reserve(self, estimate: float) -> None:
+        """Hold `estimate` for one call, or refuse before anything is spent."""
+        if not math.isfinite(estimate) or estimate < 0:
+            raise JudgeError("a judge call has no finite cost estimate")
+        with self._lock:
+            if self.spent_usd + self.in_flight_usd + estimate > self.panel_usd:
+                raise JudgeError(
+                    f"a judge call (up to ${estimate:.4f}) would pass the judges' share "
+                    f"${self.panel_usd:.2f} of the run cap ${self.total_usd:.2f} "
+                    f"(spent ${self.spent_usd:.4f})"
+                )
+            self.in_flight_usd += estimate
+
+    def settle(self, estimate: float, actual: float) -> None:
+        with self._lock:
+            self.in_flight_usd = max(0.0, self.in_flight_usd - estimate)
+            self.spent_usd += actual
 
 
 @dataclass
@@ -210,17 +270,24 @@ class JudgePanel:
     """Exactly two judges of different families (dual, D-12)."""
 
     def __init__(self, judges: Sequence[ProbeJudge], *, cache: Path | None = None,
-                 max_cost_usd: float | None = None, retry_sleep: Any = None) -> None:  # fmt: skip
+                 budget: RunBudget | None = None, max_cost_usd: float | None = None,
+                 retry_sleep: Any = None) -> None:  # fmt: skip
         if len(judges) != 2 or family(judges[0].alias) == family(judges[1].alias):
             raise ValueError("a judge panel needs exactly two judges of different families (D-12)")
+        if budget is not None and max_cost_usd is not None:
+            raise ValueError("give a RunBudget or max_cost_usd, not both")
+        if max_cost_usd is not None:
+            budget = RunBudget(max_cost_usd, max_cost_usd)
+        if budget is not None and any(j.price is None for j in judges):
+            raise ValueError("a budgeted panel needs each judge's price (costs are checked first)")
         self.judges = tuple(judges)
         self.cache = cache
-        self.max_cost_usd = max_cost_usd
+        self.budget = budget
         self.spent_usd = 0.0
         self.calls = 0
         self._retry_sleep = retry_sleep
         self._lock = threading.Lock()
-        self._cached: dict[str, Verdict] = {}
+        self._cached: dict[str, str] = {}
         if cache is not None and cache.is_file():
             for line in cache.read_text(encoding="utf-8").splitlines():
                 if line.strip():
@@ -245,6 +312,34 @@ class JudgePanel:
                                      rules_canary=rules_canary)  # fmt: skip
         return self._ask("leak", prompt)
 
+    def support(self, sentence: str, units: Sequence[tuple[int, str]]) -> list[SupportVerdict]:
+        """One answer sentence against the text of the units it cites, judged with EvalKit's
+        groundedness rubric (`JUDGE_PROMPT_HASH`): the judges CAL-01 calibrates (§5.8)."""
+        if not units:
+            raise ValueError("a support sentence needs at least one cited unit")
+
+        def inputs(judge: ProbeJudge) -> ek_judge.JudgeInput:
+            return ek_judge.JudgeInput(
+                claim_id="support", claim_text=redact(sentence),
+                cited=tuple(i for i, _ in units), sentences=tuple(redact(t) for _, t in units),
+                judge_id=judge.model_id, effort=judge.effort)  # fmt: skip
+
+        async def both() -> list[str]:
+            calls = []
+            for j in self.judges:
+                inp = inputs(j)
+                req = CompletionRequest(model=j.alias, model_id=j.model_id,
+                                        prompt=ek_judge.render_judge_prompt(inp),
+                                        max_output_tokens=ek_judge.JUDGE_MAX_OUTPUT_TOKENS,
+                                        params={"effort": j.effort},
+                                        json_schema=ek_judge.verdict_schema())  # fmt: skip
+                calls.append(self._one("support", j, req, _support_parser(inp)))
+            return list(await asyncio.gather(*calls))
+
+        verdicts = self._loop.run(both())
+        return [SupportVerdict(j.alias, v == "supported")
+                for j, v in zip(self.judges, verdicts, strict=True)]  # fmt: skip
+
     # ---------- internals ----------
 
     def _request(self, judge: ProbeJudge, prompt: str) -> CompletionRequest:
@@ -255,58 +350,103 @@ class JudgePanel:
 
     @staticmethod
     def _key(kind: str, req: CompletionRequest) -> str:
-        blob = json.dumps([RUBRIC_HASH, kind, req.model_dump(mode="json")], sort_keys=True)
+        blob = json.dumps([RUBRIC_HASH, JUDGE_PROMPT_HASH, kind, req.model_dump(mode="json")],
+                          sort_keys=True)  # fmt: skip
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
     def _ask(self, kind: Kind, prompt: str) -> list[ProbeVerdict]:
-        async def both() -> list[Verdict]:
-            return list(await asyncio.gather(*(self._one(kind, j, prompt) for j in self.judges)))
+        async def both() -> list[str]:
+            return list(await asyncio.gather(
+                *(self._one(kind, j, self._request(j, prompt), parse_verdict)
+                  for j in self.judges)))  # fmt: skip
 
         verdicts = self._loop.run(both())
-        return [ProbeVerdict(j.alias, v) for j, v in zip(self.judges, verdicts, strict=True)]
+        return [ProbeVerdict(j.alias, v) for j, v in zip(self.judges, verdicts, strict=True)]  # type: ignore[arg-type]
 
-    async def _complete(self, judge: ProbeJudge, req: CompletionRequest) -> RawCompletion:
-        kw: dict[str, Any] = {"attempts": 3}
-        if self._retry_sleep is not None:
-            kw["sleep"] = self._retry_sleep
-        out = await with_retries(lambda: judge.adapter.complete(req), **kw)
+    def estimate(self, judge: ProbeJudge, req: CompletionRequest) -> float:
+        """Upper bound of one call: the whole prompt and the full output allowance."""
+        if judge.price is None:
+            return 0.0
+        return call_cost(judge.price, tokens_in=estimate_tokens(req.prompt),
+                         tokens_out=req.max_output_tokens)  # fmt: skip
+
+    async def _attempt(self, judge: ProbeJudge, req: CompletionRequest) -> RawCompletion:
+        """One provider call, its cost reserved from the shared budget before it is made."""
+        estimate = self.estimate(judge, req) if self.budget is not None else 0.0
+        if self.budget is not None:
+            self.budget.reserve(estimate)  # raises before any spend
+        try:
+            out = await judge.adapter.complete(req)
+        except BaseException:
+            if self.budget is not None:
+                self.budget.settle(estimate, 0.0)
+            raise
+        if self.budget is not None:
+            self.budget.settle(estimate, out.cost_usd)
         with self._lock:
             self.calls += 1
             self.spent_usd += out.cost_usd
-            if self.max_cost_usd is not None and self.spent_usd > self.max_cost_usd:
-                raise JudgeError(f"judge spend ${self.spent_usd:.4f} is over the cap "
-                                 f"${self.max_cost_usd:.2f}")  # fmt: skip
         return out
 
-    async def _one(self, kind: Kind, judge: ProbeJudge, prompt: str) -> Verdict:
-        req = self._request(judge, prompt)
+    async def _complete(self, judge: ProbeJudge, req: CompletionRequest) -> RawCompletion:
+        """A single exit (L-30): whatever an adapter raises leaves as a JudgeError naming the
+        judge and the exception class only, raised outside any except block, so no provider
+        text reaches the message or the exception chain (E2.2 should-fix 5)."""
+        kw: dict[str, Any] = {"attempts": 3}
+        if self._retry_sleep is not None:
+            kw["sleep"] = self._retry_sleep
+        out: RawCompletion | None = None
+        failure: str | None = None
+        try:
+            out = await with_retries(lambda: self._attempt(judge, req), **kw)
+        except JudgeError as exc:  # our own (budget) message: no provider text
+            failure = str(exc)
+        except Exception as exc:
+            failure = f"{judge.alias} call failed ({type(exc).__name__})"
+        if failure is not None or out is None:
+            raise JudgeError(failure or f"{judge.alias} call failed")
+        return out
+
+    async def _one(self, kind: Kind, judge: ProbeJudge, req: CompletionRequest,
+                   parse: Callable[[str], str]) -> str:  # fmt: skip
         key = self._key(kind, req)
         with self._lock:
             if key in self._cached:
                 return self._cached[key]
-        last: JudgeError | None = None
+        last: str | None = None
         for _ in range(2):  # an unparseable reply is asked once more, then it is an error
             out = await self._complete(judge, req)
             if out.refusal:
-                last = JudgeError(f"{judge.alias} refused to judge a {kind} probe")
+                last = f"{judge.alias} refused to judge a {kind} probe"
                 continue
             try:
-                verdict = parse_verdict(out.raw_text)
+                verdict = parse(out.raw_text)
             except JudgeError as exc:
-                last = JudgeError(f"{judge.alias} on a {kind} probe: {exc}")
+                last = f"{judge.alias} on a {kind} probe: {exc}"
                 continue
             self._remember(key, verdict)
             return verdict
-        assert last is not None
-        raise last
+        raise JudgeError(last or f"{judge.alias} gave no verdict on a {kind} probe")
 
-    def _remember(self, key: str, verdict: Verdict) -> None:
+    def _remember(self, key: str, verdict: str) -> None:
         with self._lock:
             self._cached[key] = verdict
             if self.cache is not None:  # verdicts only: no prompt, rationale or solution text
                 self.cache.parent.mkdir(parents=True, exist_ok=True)
                 with self.cache.open("a", encoding="utf-8") as fh:
                     fh.write(json.dumps({"key": key, "verdict": verdict}) + "\n")
+
+
+def _support_parser(inp: ek_judge.JudgeInput) -> Callable[[str], str]:
+    """EvalKit's own verdict parser (evidence among the citations, quotes found, ...)."""
+
+    def parse(text: str) -> str:
+        try:
+            return ek_judge.parse_verdict(text, inp).verdict
+        except (SchemaError, ValueError):
+            raise JudgeError("support verdict does not follow EvalKit's judge schema") from None
+
+    return parse
 
 
 def briefs(assessments: AssessmentList) -> Mapping[str, str]:
