@@ -650,3 +650,34 @@ def test_a_damaged_line_with_a_record_separator_is_never_split(tmp_path):
         fh.write(damaged.encode() + b"\n")
     sink.delete_pid(A)
     assert damaged in sink.path.read_text(encoding="utf-8").split("\n")
+
+
+# ---------- verifier pass 8 regressions ----------
+
+
+@pytest.mark.privacy
+def test_a_store_made_before_the_marker_is_back_filled_on_open(tmp_path):
+    path = tmp_path / "old.sqlite"
+    old = Store(path)
+    fill(old)
+    old.delete_history(A, None, at=at(100))
+    # stand in for a pre-fix store: drop the markers and the back-fill migrations
+    n = len(Store.MIGRATIONS)
+    old._con.execute("delete from records where kind = 'cid'")
+    old._con.execute("delete from schema_migrations where version > ?", (n - 2,))
+    old.close()
+    reopened = Store(path)
+    try:
+        for cid in ("c-aaaaaaaaaaa1", "c-bbbbbbbbbbb1"):  # covered by a deletion / still live
+            with pytest.raises(KeyError):
+                reopened.put_conversation(conv(cid, B if cid.startswith("c-a") else A))
+    finally:
+        reopened.close()
+
+
+def test_the_retired_marker_keeps_a_neutral_time(store):
+    from course_assistant.store.db import RETIRED_AT
+
+    store.put_conversation(conv("c-aaaaaaaaaaa1", A, minute=5))
+    at_ = store._con.execute("select at from records where kind = 'cid'").fetchone()[0]
+    assert at_ == RETIRED_AT

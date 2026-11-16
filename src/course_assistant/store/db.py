@@ -72,6 +72,11 @@ def _add_years(t: dt.datetime, years: int) -> dt.datetime:
         return t.replace(year=t.year + years, month=2, day=28)
 
 
+# the time stored on a retired-id marker: fixed, so the marker never records when the
+# conversation started (verifier B2.2 pass 8)
+RETIRED_AT = "1970-01-01T00:00:00+00:00"
+
+
 class Store:
     MIGRATIONS: tuple[str, ...] = (
         """create table if not exists records (
@@ -83,6 +88,15 @@ class Store:
         # a counter that never goes back, so audit and deletion keys are unique for ever,
         # even after purge removes old rows (verifier N1.5)
         "create table if not exists counters (name text primary key, value integer not null)",
+        # every conversation id ever used is retired for good (verifier B2.2 passes 7 and 8):
+        # back-fill markers for stores made before the marker existed, from live conversations
+        # and from the ids deletion requests still name. Bare ids, a neutral time, no learner.
+        f"""insert or ignore into records
+               select 'cid', key, null, null, '{RETIRED_AT}', '{{}}' from records
+               where kind = 'conversation'""",
+        f"""insert or ignore into records
+               select 'cid', j.value, null, null, '{RETIRED_AT}', '{{}}'
+               from records r, json_each(r.json, '$.covers') j where r.kind = 'deletion'""",
     )
 
     def __init__(self, path: Path | str, timeout: float = 30.0) -> None:
@@ -204,7 +218,7 @@ class Store:
                     raise KeyError(f"conversation {c.conversation_id} was used before")
                 self._con.execute(
                     "insert into records values ('cid', ?, null, null, ?, '{}')",
-                    (c.conversation_id, _iso(c.started_at)),
+                    (c.conversation_id, RETIRED_AT),
                 )
             self._put("conversation", c.conversation_id, c, pid=c.learner_pid,
                       conversation_id=c.conversation_id, at=c.started_at)  # fmt: skip
