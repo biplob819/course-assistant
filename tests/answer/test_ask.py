@@ -1510,3 +1510,9 @@ def test_a_reversed_canary_with_a_reversed_bracket_marker_is_the_canary():
     c = AnswerStep.CANARY
     shown = (c[:6] + "【4:0†src】" + c[6:])[::-1]
     assert "canary" in scan("‮" + shown + "‬")
+
+
+def test_a_compressed_ipv6_address_is_not_a_pid():
+    from course_assistant.answer.leak import scan
+
+    assert "pid" not in scan("The server is 6b18::ac53:7e2b:657c on port 443.")

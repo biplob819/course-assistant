@@ -46,7 +46,9 @@ def _blank_longer(m: re.Match[str]) -> str:
     split pid can leave behind (verifier A2.5 pass 15)."""
     found = m.group(0)
     hexes = sum(c in _HEX for c in found)
-    if hexes == 16 or (":" in found and "::" not in found and hexes < 20):
+    if "::" in found:
+        return " "  # a compressed IPv6 address, whatever its length (verifier A2.5 pass 16)
+    if hexes == 16 or (":" in found and hexes < 20):
         return found
     return " "
 

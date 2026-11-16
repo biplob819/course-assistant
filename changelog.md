@@ -101,3 +101,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [A2.5] — verifier pass 13: doubled separators collapse; citations need a number
 - [FIX] [A2.5] — verifier pass 14: spaced markers inside grouped pids; reversed citation form
 - [FIX] [A2.5] — verifier pass 15: short colon runs never blanked; reversed bracket marker
+- [GREEN] [A2.5] — ask() orchestration and resilience; verifier pass 16 confirmed all seven criteria
