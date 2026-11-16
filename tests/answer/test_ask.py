@@ -1429,3 +1429,29 @@ def test_a_citation_or_double_space_inside_a_grouped_pid_never_hides_it(text):
     from course_assistant.answer.leak import scan
 
     assert "pid" in scan(text)
+
+
+# ---------- verifier pass 13 regressions ----------
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Your learner id is 91b7-584a [3]-2265-b1f5 as recorded.",
+        "Your learner id is 91b7-584a-[3]-2265-b1f5 as recorded.",
+        "Your learner id is 91b7.584a.(unit 4).2265.b1f5 as recorded.",
+        "Your learner id is 91b7-584a-【4:0†source】-2265-b1f5.",
+    ],
+)
+def test_a_marker_inside_a_hyphen_or_dot_grouped_pid_never_hides_it(text):
+    from course_assistant.answer.leak import normalise, scan
+
+    assert "pid" in scan(text), normalise(text)
+
+
+def test_a_bracketed_word_is_not_mistaken_for_a_citation():
+    from course_assistant.answer.leak import normalise
+
+    assert "sessions" in normalise("Revisit the earlier (sessions) for this.")
+    assert "snoisses" in normalise("(snoisses) reversed")
