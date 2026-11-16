@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 import statistics
+import unicodedata
 from typing import Literal, get_args
 
 from pydantic import TypeAdapter, ValidationError
@@ -60,6 +61,14 @@ _FROM: dict[str, frozenset[str]] = {
 }
 
 _PID = TypeAdapter(Pid)
+
+
+def _visible(text: str) -> bool:
+    """Holds something a reader can see: not only spaces or invisible format characters such
+    as zero-width spaces (verifier B2.1 pass 2)."""
+    return any(not ch.isspace() and unicodedata.category(ch) != "Cf" for ch in text)
+
+
 _QID = TypeAdapter(QuestionId)
 _ROLE = TypeAdapter(RoleId)
 
@@ -274,7 +283,7 @@ def reply(question_id: str, text: str, *, instructor: str, store: Store,
           at: dt.datetime | None = None) -> Escalation:  # fmt: skip
     """Send the teaching team's reply. It waits in the learner's history, labelled as from the
     teaching team; audited `reply` in the same transaction."""
-    if not isinstance(text, str) or not text.strip() or len(text) > MAX_REPLY_CHARS:
+    if not isinstance(text, str) or len(text) > MAX_REPLY_CHARS or not _visible(text):
         raise Invalid
     return _change(question_id, instructor, "reply", at,
                    {"status": "replied", "reply_text": text, "replied_by": instructor},

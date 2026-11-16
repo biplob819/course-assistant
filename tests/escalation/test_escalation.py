@@ -592,3 +592,10 @@ def test_a_not_covered_draft_that_leaks_is_never_attached(store):
     finally:
         del KINDS["leaky_not_covered"]
     assert e.draft is None
+
+
+@pytest.mark.parametrize("text", ["​", " ​⁠ ", "﻿"])
+def test_a_reply_of_only_invisible_characters_is_refused(store, text):
+    _, e = escalated("not_covered", store)
+    assert code(reply, e.question_id, text, instructor="instructor-1", store=store,
+                at=NOW + dt.timedelta(hours=1)) == "invalid"  # fmt: skip
