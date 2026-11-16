@@ -61,3 +61,5 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [DOC] OWNER D-37 cap $150 and key source; D-38 moves GRD-04's live run to A2.5
 - [FEAT] [A2.1] — live route run: recall 1.000 on graded work, admin, personal, injection after tuning on the public split ($0.08)
 - [FIX] [B2.2] — verifier pass 4: store refuses another learner's conversation; trace deletion uses covers only
+- [DOC] OWNER D-39 — D-38 and D-14 confirmed
+- [GREEN] [A2.1] — scope check; verifier pass 2 confirmed all five criteria incl. the live run
