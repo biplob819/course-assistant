@@ -34,3 +34,6 @@ runs/
 
 # ingest corpus stores hold course text (N1.4); the sample one is rebuilt, never committed
 corpus_store/
+
+# the sample course build is part of the repo (CC BY 4.0, N1.3); only Python build folders are ignored
+!sample_course/build/
