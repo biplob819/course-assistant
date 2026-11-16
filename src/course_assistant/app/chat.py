@@ -12,7 +12,6 @@ stored, pickled or copied) and is cleared on sign-out. No question or answer tex
 from __future__ import annotations
 
 import datetime as dt
-import html
 import logging
 import re
 import secrets
@@ -79,15 +78,7 @@ HANDOVER_LABELS: dict[str, str] = {
     "closed": "Closed by the teaching team",
 }
 _FIXED_SHOWN = {"handed_over": Assistant.HANDED_OVER, "error": Assistant.ERROR_MESSAGE}
-_MARKDOWN = re.compile(r"([\\`*_{}\[\]()#+\-!|~>])")
 _SESSION_ID = re.compile(r"^s(\d\d)$")
-
-
-def plain(text: str) -> str:
-    """Learner or model text for Markdown, shown as typed: every Markdown character is
-    escaped and `<`, `>` and `&` become entities, so no text can open a tag, a link or an
-    image (CHT-05)."""
-    return html.escape(_MARKDOWN.sub(r"\\\1", text), quote=False)
 
 
 # ---------- the own key (CHT-06) ----------
@@ -184,15 +175,20 @@ def card_for(item: Turn | Answer, corpus: Corpus) -> Card:
     offers the teaching team; fixed texts carry nothing else."""
     a = item.answer if isinstance(item, Turn) else item
     paused = (isinstance(item, Turn) and item.paused) or (
-        a.status == "not_covered" and a.text == Assistant.PAUSED_MESSAGE)
+        a.status == "not_covered" and a.text == Assistant.PAUSED_MESSAGE
+    )
     if paused:
         return _card("paused", a.text, a.question_id)
     if a.status in ("answered", "hint_only"):
         return _card(a.status, a.text, a.question_id,
                      chips=tuple(_chip(c, corpus) for c in a.citations),
                      ai_label=AI_LABEL, check_note=CHECK_NOTE)  # fmt: skip
-    return _card(a.status, a.text, a.question_id,
-                 can_escalate=a.status == "not_covered" and a.text == Assistant.NOT_COVERED)
+    return _card(
+        a.status,
+        a.text,
+        a.question_id,
+        can_escalate=a.status == "not_covered" and a.text == Assistant.NOT_COVERED,
+    )
 
 
 def refused_card(reason: str) -> Card:
@@ -337,11 +333,20 @@ class LearnerChat:
         self.gate.unlock(code, session=state.token, ip=ip)
 
     def sign_out(self, state: ChatState) -> None:
-        """Lock this session, forget the own key and the turns shown."""
+        """Lock this session and forget everything it held: the own key, the turns shown,
+        the conversation, the scope and the learner id, so the next person in the same browser
+        starts as a new learner and never sees the earlier history."""
         self.gate.lock_session(state.token)
         state.own_key.clear()
         state.turns.clear()
         state.conversation_id = None
+        state.scope = None
+        fresh = ChatState.new()
+        state.token, state.pid = fresh.token, fresh.pid
+
+    def forget_own_key(self, state: ChatState) -> None:
+        """Drop the own key. No passkey is needed: a locked session must be able to forget."""
+        state.own_key.clear()
 
     def _require(self, state: ChatState) -> None:
         self.gate.require(state.token)
@@ -390,8 +395,9 @@ class LearnerChat:
 
     def accept_notice(self, state: ChatState, improve_course: bool = False) -> Consent:
         self._require(state)
-        purposes = ("answer_questions", "improve_course") if improve_course else (
-            "answer_questions",)
+        purposes = (
+            ("answer_questions", "improve_course") if improve_course else ("answer_questions",)
+        )
         return self._privacy(lambda: give(state.pid, purposes, self.store()))
 
     def withdraw(self, state: ChatState) -> int:
@@ -420,6 +426,9 @@ class LearnerChat:
             LOG.warning("learner chat: ask failed (%s)", type(exc).__name__)
             card = _card("error", Assistant.ERROR_MESSAGE, None)
         else:
+            # the session may have signed out (or the passkey changed) while the answer was on
+            # its way: then the turn is dropped from this page
+            self._require(state)
             card = card_for(turn, self.corpus)
             if turn.conversation_id is not None:  # a paused turn stored nothing
                 state.conversation_id = turn.conversation_id
@@ -428,7 +437,7 @@ class LearnerChat:
         return card
 
     def escalate(self, state: ChatState, question_id: str | None) -> Escalation:
-        """"Ask the teaching team" on a not-covered reply: the turn this page holds goes with
+        """ "Ask the teaching team" on a not-covered reply: the turn this page holds goes with
         its kept draft (B2.1); a second tap returns the first escalation."""
         self._require(state)
         shown = next((s for s in state.turns if s.card.question_id == question_id), None)
@@ -454,10 +463,6 @@ class LearnerChat:
             raise GuardRefused(BAD_KEY)
         state.own_key.set(k)
 
-    def forget_own_key(self, state: ChatState) -> None:
-        self._require(state)
-        state.own_key.clear()
-
     # --- history and delete (CHT-04) ---
 
     def history_raw(self, state: ChatState) -> tuple[ConversationHistory, ...]:
@@ -474,8 +479,11 @@ class LearnerChat:
                 icon, label = STATUS_LABELS.get(status, STATUS_LABELS["error"])
                 # B2.2 keeps the text of answers and hints; a handover and an error showed one
                 # fixed text each; a not-covered reply showed one of several, so none is guessed
-                shown = None if t.answer is None else (
-                    t.answer.text or _FIXED_SHOWN.get(t.answer.status))
+                shown = (
+                    None
+                    if t.answer is None
+                    else (t.answer.text or _FIXED_SHOWN.get(t.answer.status))
+                )
                 turns.append(PastTurn(
                     question_id=t.question.question_id, question=t.question.text, icon=icon,
                     status_label=label, text=shown,

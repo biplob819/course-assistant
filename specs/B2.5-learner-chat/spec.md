@@ -66,8 +66,11 @@ Streamlit's `AppTest`. Deploying it with the teaching page is D3.2.
   - `set_own_key(state, key)` / `forget_own_key(state)` (CHT-06): after the passkey only;
     the key is checked for shape (non-blank, no spaces, at most 200 characters) and held in
     the `OwnKey`.
-  - `sign_out(state)`: locks the gate session (`lock_session`), clears the own key and the
-    turns shown.
+  - `sign_out(state)`: locks the gate session (`lock_session`), clears the own key, the turns
+    shown, the scope and the conversation, and gives the browser a new token and learner id,
+    so the next person never sees the earlier history. `forget_own_key` needs no passkey, and
+    the page drops the key whenever the session is locked. `ask` checks the passkey again
+    before it adds a turn, so a question in flight is dropped after a sign-out.
 - `PerThreadStore(path)`: one SQLite `Store` per thread on the same file (Streamlit runs
   each rerun on a new thread and SQLite connections are bound to their thread).
 
@@ -92,8 +95,9 @@ Streamlit's `AppTest`. Deploying it with the teaching page is D3.2.
   label, delete one conversation or everything, withdraw consent).
 - Accessibility (CHT-05): only Streamlit's own widgets (keyboard operable, forms submit with
   Enter), every input and button has a visible text label, no `unsafe_allow_html`, no
-  custom HTML or script, no hidden labels; learner and answer text are shown with Markdown
-  escaped, so no text can inject markup.
+  custom HTML or script, no hidden labels; learner, model, teaching-team and course text are
+  shown only with `st.text`, which renders literally, so no text can become a link, LaTeX, a
+  heading, a list, a shortcode or markup (verifier pass 1).
 
 ### `LiveDemo.ask(..., scope=None)` (additive change to green D3.1)
 - `LiveDemo.ask` gains a keyword `scope` passed to `Assistant.turn` as the session filter

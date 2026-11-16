@@ -6,7 +6,8 @@
 Order on every rerun: the passkey (nothing else is drawn until it passes), the sidebar (own
 key, sign out), the notice until consent, the session picker and "New conversation", the
 chat, and "Your history". Only Streamlit's own widgets, each with a visible label; learner
-and model text always go through `plain`.
+and model text (and team and course text) only ever reach `st.text`, which renders literally:
+no Markdown, link, LaTeX, shortcode or HTML parsing (CHT-05).
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from typing import Any, TypeVar
 import streamlit as st
 
 from course_assistant.app import wiring
-from course_assistant.app.chat import STATE_KEY, Card, ChatState, LearnerChat, Shown, plain
+from course_assistant.app.chat import STATE_KEY, Card, ChatState, LearnerChat, Shown
 from course_assistant.demo._errors import GuardRefused
 
 st.set_page_config(page_title="Course assistant")
@@ -100,7 +101,7 @@ def _sidebar(chat: LearnerChat, state: ChatState) -> None:
         if state.own_key.is_set:
             st.caption("Using your own key for this session.")
             if st.button("Forget my key"):
-                chat.forget_own_key(state)
+                _safely(lambda: chat.forget_own_key(state))
                 st.rerun()
         else:
             with st.form("own_key", clear_on_submit=True):
@@ -121,7 +122,7 @@ def _sidebar(chat: LearnerChat, state: ChatState) -> None:
 
 def _notice(chat: LearnerChat, state: ChatState) -> None:
     st.header("Before you start")
-    st.markdown(plain(chat.notice(state)))
+    st.text(chat.notice(state))
     with st.form("notice"):
         improve = st.checkbox(
             "Also count my questions, in groups of five or more learners, to help improve the "
@@ -135,15 +136,16 @@ def _notice(chat: LearnerChat, state: ChatState) -> None:
 def _card(chat: LearnerChat, state: ChatState, shown: Shown, n: int) -> None:
     card: Card = shown.card
     with st.chat_message("user"):
-        st.markdown(plain(shown.question))
+        st.text(shown.question)
     with st.chat_message("assistant"):
-        st.markdown(f"**{plain(card.heading)}**")
+        st.markdown(f"**{card.heading}**")  # the page's own fixed label and icon
         if card.ai_label:
             st.caption(card.ai_label)
-        st.markdown(plain(card.text))
-        for chip in card.chips:
-            with st.expander(f"Source: {chip.label}"):
-                st.markdown(plain(chip.text))
+        st.text(card.text)
+        for i, chip in enumerate(card.chips, start=1):
+            with st.expander(f"Source {i}"):
+                st.text(chip.label)
+                st.text(chip.text)
         if card.check_note:
             st.caption(card.check_note)
         if card.can_escalate and card.question_id:
@@ -156,24 +158,26 @@ def _card(chat: LearnerChat, state: ChatState, shown: Shown, n: int) -> None:
 
 
 def _history(chat: LearnerChat, state: ChatState) -> None:
-    waiting = chat.replies_waiting(state)
+    waiting = _safely(lambda: chat.replies_waiting(state)) or 0
     title = "Your history" + (f" ({waiting} replies from the teaching team)" if waiting else "")
     with st.expander(title):
         past = _safely(lambda: chat.history(state)) or ()
         if not past:
             st.markdown("Nothing stored yet.")
         for i, conv in enumerate(past):
-            st.markdown(f"**Conversation {i + 1}** ({plain(conv.scope_label)}, started "
+            st.markdown(f"**Conversation {i + 1}** ({conv.scope_label}, started "
                         f"{conv.started_at:%d %b %Y %H:%M} UTC)")  # fmt: skip
-            for t in conv.turns:
-                st.markdown(f"You asked: {plain(t.question)}")
-                st.markdown(f"{plain(t.icon)} {plain(t.status_label)}")
-                if t.text:
-                    st.markdown(plain(t.text))
-                if t.handover:
-                    st.caption(t.handover)
-                if t.reply and t.reply_label:
-                    st.markdown(f"**{plain(t.reply_label)}:** {plain(t.reply)}")
+            for past_turn in conv.turns:
+                st.caption("You asked:")
+                st.text(past_turn.question)
+                st.markdown(f"{past_turn.icon} {past_turn.status_label}")
+                if past_turn.text:
+                    st.text(past_turn.text)
+                if past_turn.handover:
+                    st.caption(past_turn.handover)
+                if past_turn.reply and past_turn.reply_label:
+                    st.caption(f"{past_turn.reply_label}:")
+                    st.text(past_turn.reply)
             if st.button("Delete this conversation", key=f"delete-{conv.conversation_id}") and (
                 _safely(lambda c=conv.conversation_id: chat.delete(state, c))
             ):
@@ -194,6 +198,7 @@ def main() -> None:
     state: ChatState = st.session_state.setdefault(STATE_KEY, ChatState.new())
     _forget_secret_inputs()
     if chat.locked_reason(state) is not None:
+        chat.forget_own_key(state)  # a locked session (signed out, passkey changed) keeps no key
         _passkey(chat, state)
         return
     _sidebar(chat, state)

@@ -78,7 +78,7 @@ def texts(at: AppTest) -> str:
     parts = [m.value for m in at.markdown] + [c.value for c in at.caption]
     parts += [e.value for e in at.error] + [i.value for i in at.info]
     parts += [w.value for w in at.warning]
-    parts += [s.value for s in at.success]
+    parts += [s.value for s in at.success] + [x.value for x in at.text]
     return "\n".join(str(p) for p in parts)
 
 
@@ -139,9 +139,9 @@ def test_page_shows_an_answer_card_with_source_chips_that_open_the_unit_text(mak
     body = texts(at)
     assert chat_mod.STATUS_LABELS["answered"][1] in body
     assert chat_mod.AI_LABEL in body and chat_mod.CHECK_NOTE in body
-    chips = [e for e in at.expander if e.label == f"Source: {unit.label}"]
+    chips = [e for e in at.expander if e.label == "Source 1"]
     assert len(chips) == 1
-    assert unit.text in "\n".join(m.value for m in chips[0].markdown)
+    assert [x.value for x in chips[0].text] == [unit.label, unit.text]  # shown literally
     assert not at.exception
 
 
@@ -199,9 +199,124 @@ def test_page_source_uses_no_raw_html_and_no_hidden_labels():
             assert node.attr not in banned_calls, node.attr
     src = PAGE.read_text(encoding="utf-8")
     assert "<" not in src.replace("<=", "").replace("->", ""), "no markup in the page"
-    # every text the page shows from a learner or a model goes through plain()
-    for call in ("st.markdown(card.text", "st.markdown(shown.question", "st.markdown(chip.text"):
-        assert call not in src
+
+
+# Streamlit calls that parse Markdown (or a Markdown label) and the names that carry learner,
+# model, team or course text: those names may only ever reach st.text (CHT-05)
+MARKDOWN_CALLS = {
+    "markdown",
+    "caption",
+    "write",
+    "success",
+    "info",
+    "warning",
+    "error",
+    "title",
+    "header",
+    "subheader",
+    "expander",
+    "button",
+    "checkbox",
+    "selectbox",
+    "text_input",
+    "chat_message",
+    "toast",
+    "form_submit_button",
+}
+OPEN_TEXT = {"question", "text", "reply", "label", "notice", "chip", "shown", "t", "past"}
+
+
+@pytest.mark.safety
+def test_no_learner_or_model_text_reaches_a_markdown_call():
+    tree = ast.parse(PAGE.read_text(encoding="utf-8"))
+    literal_calls = 0
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "st"
+        ):
+            continue
+        if node.func.attr == "text":
+            literal_calls += 1
+            continue
+        if node.func.attr not in MARKDOWN_CALLS:
+            continue
+        names = set()
+        for arg in [*node.args, *(k.value for k in node.keywords if k.arg != "key")]:
+            for sub in ast.walk(arg):
+                if isinstance(sub, ast.Name):
+                    names.add(sub.id)
+                elif isinstance(sub, ast.Attribute):
+                    names.add(sub.attr)
+        assert not names & OPEN_TEXT, (node.func.attr, ast.unparse(node))
+    assert literal_calls >= 8  # question, answer, chip label and text, notice, history, reply
+
+
+HOSTILE_ANSWER = (
+    "See https://evil.example/login or www.evil.example, $x^2$ :smile: :material/home:."
+)
+HOSTILE_QUESTION = "Title\n===\n1. one https://evil.example/q $y$ :smile: <b>x</b> **b**"
+HOSTILE_REPLY = "Heading\n---\n2. two www.evil.example/r $z$ :material/home: [l](http://e)"
+MARKERS = (
+    "evil.example",
+    "$x^2$",
+    "$y$",
+    "$z$",
+    ":smile:",
+    ":material/home:",
+    "===",
+    "**b**",
+    "<b>",
+    "[l]",
+)
+
+
+@pytest.mark.safety
+def test_every_learner_model_and_team_text_reaches_the_page_literally(make_rig):
+    from course_assistant.escalation import escalate, reply
+    from tests.answer.test_ask import happy
+
+    rig = make_rig(owner=happy(HOSTILE_ANSWER))
+    at = accept(unlock(page()))
+    at = ask(at, HOSTILE_QUESTION)
+    state = at.session_state[STATE_KEY]
+    qid = state.turns[-1].card.question_id
+    assert state.turns[-1].card.status == "answered"
+    escalate(qid, "learner_request", learner_pid=state.pid, store=rig.store())
+    reply(qid, HOSTILE_REPLY, instructor="instructor-1", store=rig.store())
+    at.run()
+    literal = [x.value for x in at.text]
+    for value in (HOSTILE_QUESTION, HOSTILE_ANSWER, HOSTILE_REPLY):
+        assert value in literal  # in full, unchanged, through st.text
+    assert literal.count(HOSTILE_QUESTION) == 2  # the chat and the history
+    parsed = [m.value for m in at.markdown] + [c.value for c in at.caption]
+    parsed += [e.label for e in at.expander] + [s.value for s in at.success]
+    parsed += [e.value for e in at.error] + [i.value for i in at.info]
+    parsed += [h.value for h in [*at.title, *at.header, *at.subheader]]
+    parsed += [w.label for w in [*at.button, *at.checkbox, *at.selectbox, *at.text_input]]
+    for value in parsed:
+        for marker in MARKERS:
+            assert marker not in str(value), (marker, value)
+    assert not at.exception
+
+
+def test_a_locked_session_drops_its_own_key_on_the_next_run(make_rig):
+    from course_assistant.demo.passkey import hash_passcode
+    from tests.demo.test_demo import FAST, OTHER_CODE
+
+    rig = make_rig()
+    at = accept(unlock(page()))
+    labelled(at.sidebar.text_input, "Your own OpenAI API key (optional)").input(OWN_KEY)
+    labelled(at.sidebar.button, "Use my key").click()
+    at.run()
+    state = at.session_state[STATE_KEY]
+    assert state.own_key.is_set
+    rig.secret.value = hash_passcode(OTHER_CODE, iterations=FAST)  # the owner rotates it
+    at.run()
+    assert not state.own_key.is_set
+    assert [w.label for w in at.text_input] == ["Passkey"]
 
 
 def test_page_key_field_appears_only_after_the_passkey_and_clears_on_submit(make_rig):

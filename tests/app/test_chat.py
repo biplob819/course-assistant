@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import copy
-import html
 import inspect
 import logging
 import pickle
-import re
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +22,6 @@ from course_assistant.app.chat import (
     LearnerChat,
     OwnKey,
     card_for,
-    plain,
     scope_for,
     session_labels,
 )
@@ -91,7 +88,9 @@ def test_new_conversation_closes_the_open_one_and_clears_the_window(tmp_path):
     route_calls = [kw for step, kw in rig.owner_client.calls if step == "route"]
     assert data(route_calls[2])["window"] == []  # an empty window again
     assert {c.conversation_id for c in rig.store().conversations_for(st.pid)} >= {
-        first, st.conversation_id}
+        first,
+        st.conversation_id,
+    }
 
 
 def test_changing_the_scope_starts_a_new_conversation(tmp_path):
@@ -135,7 +134,11 @@ def test_an_answered_card_has_chips_with_the_exact_unit_text_ai_label_and_check_
     assert [c.label for c in card.chips] == [u.label]
     chip = card.chips[0]
     assert (chip.file_id, chip.unit_index, chip.session, chip.text) == (
-        u.file_id, u.unit_index, u.session, u.text)  # the exact corpus text (D-3)
+        u.file_id,
+        u.unit_index,
+        u.session,
+        u.text,
+    )  # the exact corpus text (D-3)
     assert chip.found
     assert st.turns[-1].card == card and st.turns[-1].question == QUESTION
 
@@ -157,7 +160,8 @@ def test_every_golden_replay_answer_renders_the_card_its_status_calls_for():
         if answer.status in ("answered", "hint_only"):
             assert card.ai_label and card.check_note
             assert [(c.file_id, c.unit_index) for c in card.chips] == [
-                (c.file_id, c.unit_index) for c in answer.citations]
+                (c.file_id, c.unit_index) for c in answer.citations
+            ]
             for chip in card.chips:
                 u = next(x for x in fx.corpus.units if x.file_id == chip.file_id)
                 assert chip.found and chip.text == u.text and chip.label == u.label
@@ -360,24 +364,17 @@ def test_every_status_has_its_own_text_label_and_icon():
     assert card.heading == f"{card.icon} {card.status_label}"
 
 
-@pytest.mark.safety
-@pytest.mark.parametrize("text", ["<script>alert(1)</script>", "**bold** _x_ [link](http://e)",
-                                  "![img](http://e/x.png)", "<img src=x onerror=alert(1)>",
-                                  "# Heading\n---\n> quote", "`code` ~~s~~ | a | b |"])  # fmt: skip
-def test_learner_and_answer_text_cannot_inject_markup(text):
-    out = plain(text)
-    assert "<" not in out and ">" not in out  # no tag can open
-    unescaped = re.sub(r"\\(.)", "", out)  # drop every backslash-escaped character
-    assert not any(ch in unescaped for ch in "*_[]()!#`~|-")  # no live Markdown remains
-    assert html.unescape(re.sub(r"\\(.)", r"\1", out)) == text  # nothing is lost
-
-
 def happy_answer() -> Any:
     fx = golden.load()
     case = next(c for c in fx.cases if c.expected_status == "answered")
     assert case.expected is not None
-    return case.expected.model_copy(update={"citations": (Citation(
-        file_id=S03, unit_index=4, label=unit(S03).label, session="s03"),)})
+    return case.expected.model_copy(
+        update={
+            "citations": (
+                Citation(file_id=S03, unit_index=4, label=unit(S03).label, session="s03"),
+            )
+        }
+    )
 
 
 # ======================= CHT-06 own key and the passkey =======================
@@ -418,6 +415,47 @@ def test_sign_out_clears_the_key_and_locks_every_method(tmp_path):
     assert not st.own_key.is_set  # signing in again does not bring the key back
 
 
+def test_sign_out_forgets_the_learner_and_the_conversation(tmp_path):
+    rig = ChatRig(tmp_path, owner=queues("answered"))
+    st = rig.ready()
+    rig.chat.choose_scope(st, "Session 1")
+    rig.chat.ask(st, QUESTION)
+    before_pid, before_token = st.pid, st.token
+    rig.chat.sign_out(st)
+    assert st.pid != before_pid and len(st.pid) == 16 and st.token != before_token
+    assert st.conversation_id is None and st.scope is None and st.turns == []
+    rig.unlock(st)  # the next person in the same browser
+    assert rig.chat.needs_notice(st)  # a new learner: the notice again, no earlier history
+    rig.chat.accept_notice(st)
+    assert rig.chat.history(st) == () and rig.chat.replies_waiting(st) == 0
+
+
+def test_a_question_in_flight_is_dropped_when_the_session_signs_out(tmp_path):
+    rig = ChatRig(tmp_path)
+    st = rig.ready()
+    real = rig.demo.ask
+
+    def ask_then_sign_out(*args: Any, **kw: Any) -> Any:
+        turn = real(*args, **kw)
+        rig.chat.sign_out(st)  # another tab signs out while the answer is on its way
+        return turn
+
+    rig.demo.ask = ask_then_sign_out  # type: ignore[method-assign]
+    with pytest.raises(GuardRefused, match="passkey"):
+        rig.chat.ask(st, QUESTION)
+    assert st.turns == [] and st.conversation_id is None
+
+
+def test_a_locked_session_can_forget_its_key_without_the_passkey(tmp_path):
+    rig = ChatRig(tmp_path)
+    st = rig.ready()
+    rig.chat.set_own_key(st, OWN_KEY)
+    rig.secret.value = hash_passcode(OTHER_CODE, iterations=FAST)  # the passkey changes
+    assert rig.chat.locked_reason(st) == NEEDED
+    rig.chat.forget_own_key(st)
+    assert not st.own_key.is_set
+
+
 def _calls(rig: ChatRig, st: ChatState) -> dict[str, Any]:
     """One call per public LearnerChat method that must refuse without the passkey."""
     return {
@@ -426,7 +464,6 @@ def _calls(rig: ChatRig, st: ChatState) -> dict[str, Any]:
         "choose_scope": lambda: rig.chat.choose_scope(st, "Session 1"),
         "delete": lambda: rig.chat.delete(st),
         "escalate": lambda: rig.chat.escalate(st, "q-0123456789abcdef"),
-        "forget_own_key": lambda: rig.chat.forget_own_key(st),
         "history": lambda: rig.chat.history(st),
         "history_raw": lambda: rig.chat.history_raw(st),
         "needs_notice": lambda: rig.chat.needs_notice(st),
@@ -440,7 +477,8 @@ def _calls(rig: ChatRig, st: ChatState) -> dict[str, Any]:
     }
 
 
-EXEMPT = {"unlock", "sign_out", "locked_reason"}  # the gate itself
+# the gate itself, and forgetting a key, which must work on a locked session too
+EXEMPT = {"unlock", "sign_out", "locked_reason", "forget_own_key"}
 
 
 @pytest.mark.safety
