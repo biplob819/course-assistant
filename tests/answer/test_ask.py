@@ -921,3 +921,84 @@ def test_a_paused_app_answers_before_reading_the_conversation(monkeypatch):
     monkeypatch.setattr(a, "_owned", broken)
     answer = a.ask(QUESTION, PID, conversation_id="c-0123456789ab")
     assert answer.status == "not_covered"
+
+
+# ---------- verifier pass 2 regressions ----------
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("disguise", [
+    lambda t: "".join(c + "̶" for c in t),            # combining strike-through
+    lambda t: " ".join(w[0] + "́" + w[1:] for w in t.split()),
+    lambda t: t.replace(" ", " [1] ", 2),                    # a citation dropped inside
+    lambda t: t.replace("o", "\u13be").replace("s", "\ua4e2"),  # Cherokee O, Lisu S
+    lambda t: t.replace("o", "օ").replace("u", "ս"),  # Armenian
+])  # fmt: skip
+def test_more_disguised_rule_fragments_are_caught(disguise):
+    from course_assistant.answer.leak import scan
+
+    assert "rules" in scan(disguise(_nine_rule_words()))
+
+
+@pytest.mark.safety
+def test_a_reversed_or_accented_canary_is_caught():
+    from course_assistant.answer.leak import scan
+
+    canary = AnswerStep.CANARY
+    assert "canary" in scan("‮" + canary[::-1] + "‬")
+    assert "canary" in scan("".join(c + "́" for c in canary))
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize(
+    "pid",
+    [
+        "0123 - 4567 - 89ab - cdef",
+        "0123,4567,89ab,cdef",
+        "0123/4567/89ab/cdef",
+        "0123–4567–89ab–cdef",
+    ],
+)
+def test_a_pid_with_wider_separators_is_caught(pid):
+    from course_assistant.answer.leak import scan
+
+    assert "pid" in scan(pid)
+
+
+@pytest.mark.parametrize(
+    "ok",
+    [
+        "10 20 30 40 50 60 70 80",
+        "1 0 1 1 0 0 1 0 1 1 1 0 0 1 0 1",
+        "1 234 567 890 123 456",
+        "1234 5678 9012 3456",
+        "Version 2.1.0 shipped on 2026-11-16 at 10.0.0.1.",
+    ],
+)
+def test_plain_numbers_are_not_mistaken_for_a_pid(ok):
+    from course_assistant.answer.leak import scan
+
+    assert "pid" not in scan(ok)
+
+
+@pytest.mark.privacy
+def test_a_delete_during_a_turn_leaves_none_of_its_trace_lines(tmp_path, monkeypatch):
+    from course_assistant.llm.trace import JsonlSink
+    from course_assistant.privacy import delete
+
+    store = Store(tmp_path / "app.sqlite")
+    sink = JsonlSink(tmp_path / "trace.jsonl")
+    client = s.StepClient(**happy())
+    rsp = responder(client=client, prices=PRICES, sleep=lambda _: None)
+    a = Assistant(CONFIG, CORPUS, ASSESSMENTS, store, rsp, sink=sink, now=Clock(),
+                  timer=lambda: 0.0, new_id=ids())  # fmt: skip
+    real_put = store.put_answer
+
+    def put_then_delete(answer):
+        real_put(answer)
+        delete(PID, store=store, traces=[sink])
+
+    monkeypatch.setattr(store, "put_answer", put_then_delete)
+    a.ask(QUESTION, PID)
+    assert PID not in sink.path.read_text(encoding="utf-8")
+    store.close()

@@ -22,8 +22,24 @@ from course_assistant.answer.route import RouteStep
 
 Finding = Literal["canary", "pid", "rules"]
 FRAGMENT_WORDS = 9  # "more than 8 words" (§5 point 7)
-# 16 hex characters, also when split by hyphens, spaces or dots (verifier A2.5 pass 1)
-_PID = re.compile(r"(?<![0-9a-f])(?:[0-9a-f][-\s.:_]?){15}[0-9a-f](?![0-9a-f])")
+# 16 hex characters, also when split by short runs of separators (verifier A2.5 passes 1, 2).
+# A pid is a hash, so it holds at least one letter a-f: an all-digit run (a list of numbers,
+# a long figure) is not a pid and never turns a good answer into not_covered
+_PID = re.compile(r"(?<![0-9a-f])(?:[0-9a-f][^0-9a-z]{0,3}){15}[0-9a-f](?![0-9a-f])")
+_CITE = re.compile(r"\[[0-9]{1,3}\]|\((?:unit|session|slide|p\.)[^)]{0,30}\)")
+# Cherokee and Armenian letters that render as Latin ones (verifier A2.5 pass 2)
+_MORE_CONFUSABLES = str.maketrans({
+    "Ꭺ": "a", "Ᏼ": "b", "Ꮯ": "c", "Ꭰ": "d", "Ꭼ": "e", "Ꮐ": "g", "Ꮋ": "h", "Ꭵ": "i",
+    "Ꮶ": "k", "Ꮮ": "l", "Ꮇ": "m", "Ꮎ": "o", "Ꮲ": "p", "Ꮪ": "s", "Ꭲ": "t", "Ꮩ": "v",
+    "Ꮃ": "w", "Ꮓ": "z", "ꭺ": "a", "ꮯ": "c", "ꮎ": "o", "ꮪ": "s",
+    "օ": "o", "ս": "u", "ո": "n", "հ": "h", "ց": "g", "զ": "q", "ա": "w", "ւ": "l",
+    "Օ": "o", "Ս": "u", "Ո": "n",
+    # Lisu capitals, which render as Latin capitals
+    "ꓮ": "a", "ꓐ": "b", "ꓚ": "c", "ꓓ": "d", "ꓰ": "e", "ꓝ": "f", "ꓖ": "g", "ꓧ": "h",
+    "ꓲ": "i", "ꓙ": "j", "ꓗ": "k", "ꓡ": "l", "ꓟ": "m", "ꓠ": "n", "ꓳ": "o", "ꓑ": "p",
+    "ꓣ": "r", "ꓢ": "s", "ꓔ": "t", "ꓴ": "u", "ꓦ": "v", "ꓪ": "w", "ꓫ": "x", "ꓬ": "y",
+    "ꓜ": "z",
+})  # fmt: skip
 _WORD = re.compile(r"[^\W_]+")
 # common look-alikes mapped to Latin before scanning (Cyrillic and Greek letters that render
 # as Latin ones); NFKC already folds fullwidth and compatibility forms
@@ -86,11 +102,16 @@ _CONFUSABLES = str.maketrans(
 
 
 def normalise(text: str) -> str:
-    """The text as the scan compares it: NFKC, format characters (zero-width spaces, soft
-    hyphens, joiners: Unicode Cf) removed, look-alikes mapped to Latin, case folded."""
-    folded = unicodedata.normalize("NFKC", text)
-    folded = "".join(ch for ch in folded if unicodedata.category(ch) != "Cf")
-    return folded.translate(_CONFUSABLES).casefold()
+    """The text as the scan compares it: accents, combining marks and format characters
+    removed, compatibility forms folded, look-alikes mapped to Latin, case folded, citation
+    markers dropped."""
+    # NFKD splits accents off their letters; combining marks (Mn, Me) and format characters
+    # (Cf) are then dropped, so neither can split a word or hide a letter (pass 2)
+    folded = unicodedata.normalize("NFKD", text)
+    folded = "".join(ch for ch in folded if unicodedata.category(ch) not in ("Cf", "Mn", "Me"))
+    folded = unicodedata.normalize("NFKC", folded)
+    folded = folded.translate(_CONFUSABLES).translate(_MORE_CONFUSABLES).casefold()
+    return _CITE.sub(" ", folded)  # a citation marker dropped inside a fragment hides nothing
 
 
 def _alnum(text: str) -> str:
@@ -122,9 +143,10 @@ def scan(text: str) -> tuple[Finding, ...]:
     found: list[Finding] = []
     folded = normalise(text)
     # the canary on letters and digits only, so separators or invisibles cannot split it
-    if _alnum(AnswerStep.CANARY.casefold()) in _alnum(folded):
+    canary, flat = _alnum(AnswerStep.CANARY.casefold()), _alnum(folded)
+    if canary in flat or canary in flat[::-1]:  # reversed too (right-to-left override)
         found.append("canary")
-    if _PID.search(folded):
+    if any(re.search(r"[a-f]", m.group(0)) for m in _PID.finditer(folded)):
         found.append("pid")
     w = words(text)
     grams = _fragments(rules_texts())

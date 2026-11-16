@@ -340,12 +340,24 @@ class Assistant:
                         calls_made=t.calls)  # fmt: skip
         self._trace_final(rid, learner_pid, conv.conversation_id, qid, turn_index,
                           result.get("route"), answer, now)  # fmt: skip
+        self._settle(learner_pid, conv.conversation_id, qid)
         return Turn(answer=answer, request_id=rid, conversation_id=conv.conversation_id,
                     paused=False, discarded=result["discarded"],
                     handover=answer.status == "handed_over",
                     injection=result.get("route") == "injection" and answer.status != "error",
                     leak=result["leak"], draft=result["kept_draft"],
                     steps=calls.timings())  # fmt: skip
+
+    def _settle(self, pid: str, conversation_id: str, qid: str) -> None:
+        """If the learner deleted this conversation (or their history) while the turn ran, the
+        trace lines this turn wrote after the delete must go too: the delete has already
+        been marked complete (verifier B2.2 pass 12). Ids only; the sink trusts the pid and
+        conversation, which are this learner's own."""
+        if self.store.get_question(qid) is not None:
+            return
+        remove = getattr(self.sink, "delete_pid", None)
+        if callable(remove):
+            remove(pid, {conversation_id})
 
     # ---------- the graph ----------
 
