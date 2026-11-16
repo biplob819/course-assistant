@@ -209,7 +209,9 @@ def test_the_answer_call_searches_with_the_raw_question_and_the_window():
 @pytest.mark.parametrize("category", [c for c in CATEGORIES if c != "course"])
 def test_the_answer_is_discarded_unless_the_route_is_course(category: str):
     queues: dict[str, list[Any]] = {
-        "route": [s.route(category)], "answer": [s.cited("SECRET DRAFT TEXT here.", S01)]}
+        "route": [s.route(category)],
+        "answer": [s.cited("SECRET DRAFT TEXT here.", S01)],
+    }
     if category == "graded_work":
         queues["route"] = [s.route("graded_work", "x", None)]  # no brief: the generic hint
     a, client, _, store = make(**queues)
@@ -556,7 +558,11 @@ def recorded_turn() -> tuple[Recorder, Turn]:
 def test_a_recorded_request_replays_by_request_id_and_step_with_no_client():
     rec, live = recorded_turn()
     assert {(r.step, r.n) for r in rec.recordings} == {
-        ("route", 0), ("answer", 0), ("support", 0), ("integrity", 0)}
+        ("route", 0),
+        ("answer", 0),
+        ("support", 0),
+        ("integrity", 0),
+    }
     replay = Replay(rec.recordings)
     a = Assistant(CONFIG, CORPUS, ASSESSMENTS, Store(":memory:"), replay, now=Clock(),
                   timer=lambda: 0.0, new_id=ids())  # fmt: skip
@@ -780,8 +786,9 @@ def test_a_request_id_already_used_is_refused_before_any_call():
     first = a.turn(QUESTION, PID, request_id="r-00000000000000cc")
     b, client2, _, _ = make(store, **happy())
     with pytest.raises(ValueError, match="already used"):
-        b.turn("Another?", PID, conversation_id=first.conversation_id,
-               request_id="r-00000000000000cc")
+        b.turn(
+            "Another?", PID, conversation_id=first.conversation_id, request_id="r-00000000000000cc"
+        )
     assert client2.calls == []
     assert store.get_question(first.answer.question_id).text == QUESTION  # type: ignore[union-attr]
 
@@ -845,3 +852,72 @@ def test_smoke_summary_reports_p50_p95_per_step_and_cost_per_question():
     assert summary["question"]["p50_ms"] == 10_000 and summary["question"]["p95_ms"] == 19_000
     assert summary["steps"]["route"]["p95_ms"] == 1900
     assert summary["cost"]["mean_usd"] == pytest.approx(0.105)
+
+
+# ---------- verifier pass 1 regressions ----------
+
+
+def _nine_rule_words() -> str:
+    from course_assistant.answer.leak import words
+
+    return " ".join(words(AnswerStep.ANSWER_RULES)[10:19])
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("disguise", [
+    lambda t: "​".join(t),                       # zero-width spaces between every char
+    lambda t: t.replace("e", "­e", 3),            # soft hyphens inside words
+    lambda t: t.replace("a", "а").replace("o", "о").replace("e", "е"),
+])  # fmt: skip
+def test_rule_fragments_hidden_by_invisible_or_look_alike_characters_are_caught(disguise):
+    from course_assistant.answer.leak import scan
+
+    assert "rules" in scan(disguise(_nine_rule_words()))
+
+
+@pytest.mark.safety
+def test_a_canary_split_by_invisibles_or_punctuation_is_caught():
+    from course_assistant.answer.leak import scan
+
+    canary = AnswerStep.CANARY
+    assert "canary" in scan("​".join(canary))
+    assert "canary" in scan(" ".join(canary))
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("pid", ["01234567-89abcdef", "0123 4567 89ab cdef", "0123.4567.89ab.cdef"])
+def test_a_pid_split_by_separators_is_caught(pid):
+    from course_assistant.answer.leak import scan
+
+    assert "pid" in scan(f"Your id is {pid}.")
+
+
+def test_ordinary_answers_do_not_trip_the_pid_pattern():
+    from course_assistant.answer.leak import scan
+
+    assert scan("Offline evals run on a golden set of 50 cases before each release.") == ()
+
+
+def test_an_unexpected_bug_still_leaves_the_question_with_an_error_answer(monkeypatch):
+    a, _, _, store = make(**happy())
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("bug")
+
+    monkeypatch.setattr(a, "_run", boom)
+    with pytest.raises(RuntimeError):
+        a.ask(QUESTION, PID, request_id="r-00000000000000aa")
+    stored = store.get_answer("q-00000000000000aa")
+    assert stored is not None and stored.status == "error"
+
+
+def test_a_paused_app_answers_before_reading_the_conversation(monkeypatch):
+    a, _, _, store = make(**happy())
+    monkeypatch.setattr(store, "is_paused", lambda session=None: True)
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("store unreadable")
+
+    monkeypatch.setattr(a, "_owned", broken)
+    answer = a.ask(QUESTION, PID, conversation_id="c-0123456789ab")
+    assert answer.status == "not_covered"

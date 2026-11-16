@@ -86,7 +86,7 @@ class DeletableSink(TraceSink, Protocol):
 def _record(line: str) -> dict[str, Any] | None:
     try:
         rec = json.loads(line)
-    except ValueError:
+    except (ValueError, RecursionError):  # deeply nested junk is a damaged line too
         return None
     return rec if isinstance(rec, dict) else None
 
@@ -96,7 +96,7 @@ def _unfuse(line: str) -> list[str]:
     written before emit started on a fresh line). Pull out every intact JSON object so each
     is judged on its own and another learner's record is kept; the torn remainder stays one
     damaged piece (verifier B2.2 pass 10)."""
-    if _record(line) is not None or len(line) > 65_536:  # a trace record is far shorter
+    if _record(line) is not None or len(line) > 8_192:  # a trace record is far shorter
         return [line]
     decoder = json.JSONDecoder()
     pieces: list[str] = []
@@ -108,7 +108,7 @@ def _unfuse(line: str) -> list[str]:
                 continue
             try:
                 obj, end = decoder.raw_decode(rest, i)
-            except ValueError:
+            except (ValueError, RecursionError):
                 continue
             if isinstance(obj, dict):
                 found = (i, end)
@@ -127,7 +127,9 @@ def _unfuse(line: str) -> list[str]:
 
 class JsonlSink:
     def __init__(self, path: Path) -> None:
-        self.path = Path(path)
+        # the real file, so a rewrite replaces it rather than a symlink to it, and every sink
+        # on the same file shares one lock (verifier B2.2 pass 11)
+        self.path = Path(path).resolve()
 
     @contextlib.contextmanager
     def _locked(self) -> Iterator[None]:

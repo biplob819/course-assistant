@@ -735,3 +735,26 @@ def test_a_fused_line_from_an_old_file_keeps_the_other_learners_record(tmp_path)
     sink.path.write_text(frag[:40] + intact + "\n", encoding="utf-8")
     sink.delete_pid(A, known={"c-aaaaaaaaaaa1"})
     assert read(sink) == [json.loads(intact)]
+
+
+# ---------- verifier pass 11 regressions ----------
+
+
+@pytest.mark.privacy
+def test_a_symlinked_trace_path_is_rewritten_at_its_target(store, tmp_path):
+    fill(store)
+    real = tmp_path / "real.jsonl"
+    link = tmp_path / "link.jsonl"
+    real.write_text("", encoding="utf-8")
+    link.symlink_to(real)
+    sink = JsonlSink(link)
+    sink.emit({"learner_pid": A, "conversation_id": "c-aaaaaaaaaaa1", "step": "answer"})
+    delete(A, store=store, traces=[sink], at=at(100))
+    assert link.is_symlink() and A not in real.read_text(encoding="utf-8")
+
+
+def test_deeply_nested_junk_never_stops_a_delete(tmp_path):
+    sink = traced(tmp_path)
+    with sink.path.open("ab") as fh:
+        fh.write(b'{"k":' * 5000 + b"\n")
+    assert sink.delete_pid(A) > 0

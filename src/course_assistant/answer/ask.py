@@ -5,7 +5,8 @@ Finalize, the post-answer leak scan and the hint step, with every outside call g
 `Source` keyed by request id and step, so a recorded request replays exactly (§10).
 
 Nothing fails silently. An `LLMError` on a call the outcome needs gives status `error` with the
-NFR8 fixed message; an error on a discarded call is traced; any other exception propagates.
+NFR8 fixed message; an error on a discarded call is traced; any other exception propagates
+after the turn's error answer is stored, so no question is left without an answer.
 No question, window, draft or hint text ever reaches a trace (D-14): trace records are built
 from ids, statuses, scores and numbers and pass through `strip_text` before the sink.
 """
@@ -293,8 +294,6 @@ class Assistant:
         rid = request_id if request_id is not None else f"r-{self._hex()}"
         if not isinstance(rid, str) or not _REQUEST_ID.fullmatch(rid):
             raise ValueError("request_id must be r- and 16 hex characters")
-        if conversation_id is not None:
-            self._owned(conversation_id, learner_pid, session)
         qid = f"q-{rid[2:]}"
         start = self.timer()
         now = self._now()
@@ -308,6 +307,8 @@ class Assistant:
                         discarded=False, handover=False, injection=False, leak=(), draft=None,
                         steps=())  # fmt: skip
 
+        if conversation_id is not None:  # after the pause check: a paused app reads nothing
+            self._owned(conversation_id, learner_pid, session)  # (verifier A2.5 pass 1)
         if self.store.get_question(qid) is not None:  # never replace an earlier turn
             raise ValueError("request_id already used")
         conv = self._conversation(learner_pid, session, conversation_id, now)
@@ -323,7 +324,14 @@ class Assistant:
         self._trace(rid, learner_pid, conv.conversation_id, qid, turn_index, "window", now,
                     error=None)  # fmt: skip
 
-        result = self._run(question, session, window, replies, qid, calls)
+        try:
+            result = self._run(question, session, window, replies, qid, calls)
+        except Exception:
+            # an unexpected bug still propagates, but the stored question never stands without
+            # an answer: it gets the NFR8 error answer first (verifier A2.5 pass 1)
+            self.store.put_answer(self._fixed(qid, "error", self.ERROR_MESSAGE, None, now, calls,
+                                              start))  # fmt: skip
+            raise
         answer = self._answer(qid, result, now, calls, start)
         self.store.put_answer(answer)
         for t in calls.timings():
