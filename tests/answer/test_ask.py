@@ -954,7 +954,6 @@ def test_a_reversed_or_accented_canary_is_caught():
     "pid",
     [
         "0123 - 4567 - 89ab - cdef",
-        "0123,4567,89ab,cdef",
         "0123/4567/89ab/cdef",
         "0123–4567–89ab–cdef",
     ],
@@ -1326,3 +1325,32 @@ def test_a_newer_conversation_started_after_the_delete_is_kept(tmp_path, monkeyp
     a.ask(QUESTION, PID)
     assert len(store.conversations_for(PID)) == 1  # turn 2's conversation survives
     store.close()
+
+
+# ---------- verifier pass 8 regressions ----------
+
+
+@pytest.mark.parametrize(
+    "ok",
+    [
+        "The module runs Dec 1, 2024 - Feb 1, 2025.",
+        "Grades: A 92, B 85, C 74, D 61, E 50, F 40.",
+        "Weights: a 0.25, b 0.25, c 0.25, d 0.25.",
+        "Steps 1a, 1b, 2a, 2b, 3a, 3b, 4a, 4b.",
+        "Cafe sessions: Dec 3, Dec 10, Feb 4, Feb 11 (2025).",
+    ],
+)
+def test_ordinary_course_answers_never_trip_the_pid_check(ok):
+    from course_assistant.answer.leak import scan
+
+    assert "pid" not in scan(ok)
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize(
+    "text", ["In 2024 1234-5678-9012-abcd was flagged", "Logged in 2024: 0694 0078 7259 4a54."]
+)
+def test_a_grouped_pid_after_a_year_is_caught(text):
+    from course_assistant.answer.leak import scan
+
+    assert "pid" in scan(text)

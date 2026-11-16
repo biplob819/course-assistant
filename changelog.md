@@ -92,3 +92,5 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [A2.5] — verifier pass 6: only whole hex groups continue a pid
 - [FIX] [B2.2] — verifier pass 16: open trace request always left after a mid-turn delete
 - [FIX] [A2.5] — verifier pass 7: no 'longer id' exception; known long ids blanked, every other pid shape flagged
+- [FIX] [A2.5] — verifier pass 8: token-level pid detection (D-49)
+- [GREEN] [B2.2] — notice, consent, history, delete; verifier pass 18 confirmed all four criteria

@@ -26,9 +26,6 @@ FRAGMENT_WORDS = 9  # "more than 8 words" (§5 point 7)
 # 16 hex characters, also when split by short runs of separators (verifier A2.5 passes 1, 2).
 # A pid is a hash, so it holds at least one letter a-f: an all-digit run (a list of numbers,
 # a long figure) is not a pid and never turns a good answer into not_covered
-# a pid: 16 hex characters standing as one token, in any grouping, with up to three separator
-# characters between any two of them (verifier A2.5 passes 1-5)
-_PID = re.compile(r"(?<![0-9a-z])[0-9a-f](?:[^0-9a-z\n]{0,3}[0-9a-f]){15}(?![0-9a-z])")
 
 
 # known longer identifiers are blanked before the pid scan, so a UUID, a long hash or an IPv6
@@ -42,13 +39,47 @@ _LONGER_IDS = re.compile(
 )
 
 
+_TOKEN = re.compile(r"[0-9a-z]+")
+_HEX = frozenset("0123456789abcdef")
+
+
 def _pid_like(folded: str) -> bool:
-    # exactly 16 hex characters is pid-shaped in any grouping, so it is never blanked
-    blanked = _LONGER_IDS.sub(
-        lambda m: m.group(0) if sum(c in "0123456789abcdef" for c in m.group(0)) == 16
-        else " ", folded)  # fmt: skip
-    return any(re.search(r"[a-f]", m.group(0)) and re.search(r"[0-9]", m.group(0))
-               for m in _PID.finditer(blanked))  # fmt: skip
+    """A pid: whole all-hex words whose lengths add up to exactly 16, joined by the same
+    separator every time (1-3 characters, no comma, semicolon or line break, which mark lists),
+    holding a digit and a letter a-f. Every starting word is tried, so a year or a number in
+    front never hides one; single letters, month names and list items break the chain with
+    their commas or uneven separators (verifier A2.5 passes 1-8). Known longer identifiers
+    (UUIDs, hex runs of 17+, IPv6) are blanked first, unless they hold exactly 16 hex."""
+    text = _LONGER_IDS.sub(
+        lambda m: m.group(0) if sum(c in _HEX for c in m.group(0)) == 16 else " ", folded
+    )
+    tokens = list(_TOKEN.finditer(text))
+    for i, first in enumerate(tokens):
+        if not set(first.group(0)) <= _HEX:
+            continue
+        total, sep, j = 0, None, i
+        while j < len(tokens):
+            word = tokens[j].group(0)
+            if not set(word) <= _HEX:
+                break
+            if j > i:
+                gap = text[tokens[j - 1].end() : tokens[j].start()]
+                if not (1 <= len(gap) <= 3) or any(c in ",;\n" for c in gap):
+                    break
+                if sep is None:
+                    sep = gap
+                elif gap != sep:
+                    break
+            total += len(word)
+            if total > 16:
+                break
+            if total == 16:
+                found = text[first.start() : tokens[j].end()]
+                if re.search(r"[a-f]", found) and re.search(r"[0-9]", found):
+                    return True
+                break
+            j += 1
+    return False
 
 
 # citation markers in every form the app or a model writes; removed (not spaced) so one inside
