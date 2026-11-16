@@ -600,3 +600,24 @@ def test_a_legacy_conversation_request_without_covers_stays_open(store, tmp_path
     store._put("deletion", f"{A}:legacy", legacy, pid=A, at=at(90))  # a row from before covers
     assert retry_trace_deletion(store, [sink], at=at(100)) == 0
     assert any(d.traces_deleted_at is None for d in store.deletions() if d.learner_pid == A)
+
+
+# ---------- verifier pass 6 regressions ----------
+
+
+@pytest.mark.privacy
+def test_a_deleted_conversation_id_is_never_given_to_another_learner(store):
+    fill(store)
+    store.delete_history(A, None, at=at(100))
+    with pytest.raises(KeyError):
+        store.put_conversation(conv("c-aaaaaaaaaaa1", B))
+
+
+def test_a_broken_utf8_tail_never_blocks_emit_or_delete(tmp_path):
+    sink = traced(tmp_path)
+    with sink.path.open("ab") as fh:
+        fh.write(b'{"learner_pid": "' + A.encode() + b'", "x": "\xe2\x82')
+    sink.emit({"learner_pid": B, "step": "finalize"})
+    assert sink.delete_pid(A) > 0
+    text = sink.path.read_text(encoding="utf-8", errors="replace")
+    assert A not in text and '"finalize"' in text

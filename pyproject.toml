@@ -26,6 +26,9 @@ ingest = [
     "pypdf>=5",
     "python-pptx>=1",
 ]
+eval = [
+    "evalkit-harness>=0.2,<0.3",  # X1.1: case-aware systems, task scorers, slices (D-11)
+]
 app = [
     "streamlit>=1.40",
 ]
@@ -41,6 +44,7 @@ dev = [
     "openai>=2",
     "pypdf>=5",
     "python-pptx>=1",
+    "evalkit-harness>=0.2,<0.3",
 ]
 
 [build-system]

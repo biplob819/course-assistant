@@ -17,6 +17,7 @@ import math
 from collections.abc import Callable, Sequence
 from typing import Any, ClassVar, get_args
 
+from course_assistant.answer._json import strict_loads
 from course_assistant.llm import InputItem, LLMError, ResponsesRequest, ResponsesResult
 from course_assistant.schemas.config import AppConfig
 from course_assistant.schemas.corpus import AssessmentList
@@ -195,7 +196,7 @@ def parse_route(result: ResponsesResult, known: set[str], question_id: str,
     if result.refusal:
         raise RouteParseError("refused")
     try:
-        data = json.loads(result.text)
+        data = strict_loads(result.text)
     except (ValueError, RecursionError) as exc:
         raise RouteParseError("not JSON") from exc
     if not isinstance(data, dict) or set(data) != set(RouteStep.JSON_SCHEMA["required"]):

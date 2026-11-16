@@ -67,3 +67,7 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [B2.2] — verifier pass 5: torn trace lines never fuse; legacy requests stay open; [N1.5] WAL switch retried on concurrent open
 - [FIX] [A2.3] — verifier pass 3: only ASCII [n] markers; bracket look-alikes are checked content
 - [FEAT] [A2.4] — integrity guard and hints: Luna integrity check over every assistant reply in the conversation (up to 20, never cut; only `clear` passes, unsure and unreadable fail closed), hint step on the brief's title and sessions with file search limited to them, Ground L1 and integrity on the hint, fixed hint naming the sessions; decomposition fixtures from the public B3 multi-turn cases; D-40
+- [GREEN] [A2.3] — grounding check; verifier pass 4 confirmed all four criteria
+- [FIX] [A2.4] — verifier pass 1: strict JSON for replies, hint pre-checks
+- [FIX] [B2.2] — verifier pass 6: deleted conversation ids retired; byte-safe emit
+- [GREEN] [X1.1] — evalkit-harness 0.2.0 released (EvalKit B4.1) and pinned; import contract test

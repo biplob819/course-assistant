@@ -13,6 +13,24 @@ def is_os_open(f: ast.expr) -> bool:
             and isinstance(f.value, ast.Name) and f.value.id == "os")  # fmt: skip
 
 
+def open_mode(node: ast.Call) -> ast.expr | None:
+    """The mode argument: open(path, mode) takes it second, path.open(mode) first."""
+    keyword = next((k.value for k in node.keywords if k.arg == "mode"), None)
+    if keyword is not None:
+        return keyword
+    index = 0 if isinstance(node.func, ast.Attribute) and not is_os_open(node.func) else 1
+    return node.args[index] if len(node.args) > index else None
+
+
+def test_binary_modes_are_read_from_the_right_argument():
+    cases = {"open(p, 'rb')": "rb", "p.open('ab+')": "ab+", "p.open(mode='wb')": "wb",
+             "open(p)": None, "p.open()": None}  # fmt: skip
+    for src, want in cases.items():
+        call = ast.parse(src).body[0].value  # type: ignore[attr-defined]
+        got = open_mode(call)
+        assert (got.value if isinstance(got, ast.Constant) else got) == want, src
+
+
 def test_only_os_open_is_exempt():
     calls = {"os.open(p, 1)": True, "open(p)": False, "path.open()": False,
              "io.open(p)": False}  # fmt: skip
@@ -34,11 +52,7 @@ def offenders():
                 if name not in CALLS:
                     continue
                 if name == "open":
-                    mode = (
-                        node.args[1]
-                        if len(node.args) > 1
-                        else next((k.value for k in node.keywords if k.arg == "mode"), None)
-                    )
+                    mode = open_mode(node)
                     if isinstance(mode, ast.Constant) and "b" in str(mode.value):
                         continue  # binary
                     if is_os_open(f):

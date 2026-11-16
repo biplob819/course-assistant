@@ -110,14 +110,14 @@ class JsonlSink:
 
     def emit(self, record: dict[str, Any]) -> None:
         line = json.dumps(strip_text(record), sort_keys=True, default=str) + "\n"
-        with self._locked(), self.path.open("a+", encoding="utf-8") as fh:
+        with self._locked(), self.path.open("ab+") as fh:  # bytes: a broken tail never blocks
             # a crash can leave a torn last line with no newline: start on a fresh line so
             # this record never fuses with another learner's fragment (verifier B2.2 pass 5)
             if fh.tell() > 0:
-                fh.seek(fh.tell() - 1)
-                if fh.read(1) != "\n":
+                fh.seek(-1, 2)
+                if fh.read(1) != b"\n":
                     line = "\n" + line
-            fh.write(line)
+            fh.write(line.encode("utf-8"))
 
     def delete_pid(self, pid: str, conversation_ids: Collection[str] | None = None,
                    known: Collection[str] = ()) -> int:  # fmt: skip
@@ -141,7 +141,8 @@ class JsonlSink:
             tmp.unlink()  # a leftover from a crash, or something planted (verifier B2.2 pass 2)
         if not self.path.is_file():
             return 0
-        lines = [x for x in self.path.read_text(encoding="utf-8").splitlines() if x.strip()]
+        raw = self.path.read_bytes().decode("utf-8", errors="replace")  # a torn byte is kept
+        lines = [x for x in raw.splitlines() if x.strip()]
         mine = set(known)
         for line in lines:
             rec = _record(line)

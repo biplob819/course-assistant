@@ -622,3 +622,38 @@ def test_a_conversation_over_the_size_cap_fails_closed_with_no_call():
     assert not result.passed and result.verdict == "too_long" and client.responses.calls == []
     step, client = integrity_with([judge()])
     assert step.run(chunk, [chunk] * 3, ASSESSMENTS).passed  # exactly at the cap is read whole
+
+
+# ---------- verifier pass 1 regressions ----------
+
+
+@pytest.mark.safety
+def test_a_duplicate_key_reply_never_passes_as_clear():
+    dup = '{"verdict": "completes", "verdict": "clear", "assessment_id": null}'
+    step, client = integrity_with([judge_reply(dup), judge_reply(dup)])
+    result = step.run("A reply.", (), ASSESSMENTS)
+    assert not result.passed and result.verdict == "unreadable"
+    assert len(client.responses.calls) == 2
+
+
+def test_a_conversation_already_too_long_gets_the_fixed_hint_with_no_paid_call():
+    brief = BRIEFS["s02-a1"]
+    step, client = hint_with([hint_reply()])
+    hint = step.run(brief, ["earlier reply"] * IntegrityStep.MAX_TURNS, ASSESSMENTS)
+    assert hint.fixed and hint.reason == "integrity_failed" and hint.cost_usd == 0.0
+    assert client.responses.calls == []
+
+
+def test_non_string_earlier_replies_are_refused_before_the_hint_call():
+    step, client = hint_with([hint_reply()])
+    with pytest.raises(TypeError):
+        step.run(BRIEFS["s02-a1"], [1, 2], ASSESSMENTS)  # type: ignore[list-item]
+    assert client.responses.calls == []
+
+
+def test_strict_json_refuses_duplicate_keys_at_any_depth():
+    from course_assistant.answer._json import strict_loads
+
+    with pytest.raises(ValueError):
+        strict_loads('{"a": {"b": 1, "b": 2}}')
+    assert strict_loads('{"a": 1}') == {"a": 1}

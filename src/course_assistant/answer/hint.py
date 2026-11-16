@@ -139,9 +139,17 @@ Internal marker, never to be written in any reply: {AnswerStep.CANARY}
             raise ValueError("the matched brief is not in the assessment list")
         if isinstance(earlier_replies, str | bytes):
             raise TypeError("earlier_replies must be a sequence of strings")
-        earlier = tuple(earlier_replies)  # read once; shapes checked by the integrity step
+        earlier = tuple(earlier_replies)  # read once
+        if not all(isinstance(r, str) for r in earlier):
+            raise TypeError("each earlier reply must be a plain string")
         if not set(assessment.sessions) <= self.sessions:
             return self._fixed(assessment, "unknown_session", None, 0.0, 0)
+        cap = self.integrity
+        if len(earlier) + 1 > cap.MAX_TURNS or sum(map(len, earlier)) >= cap.MAX_CHARS:
+            # the conversation is already past what integrity can read: no paid hint call,
+            # straight to the fixed hint (verifier A2.4 pass 1)
+            too_long = cap.run("(no hint written)", earlier, assessments)
+            return self._fixed(assessment, "integrity_failed", too_long, 0.0, 0)
 
         result = self.responder(self.request(assessment))
         draft = self.mapper.draft(result)

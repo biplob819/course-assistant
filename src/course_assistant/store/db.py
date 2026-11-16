@@ -192,6 +192,11 @@ class Store:
             existing = self.get_conversation(c.conversation_id)
             if existing is not None and existing.learner_pid != c.learner_pid:
                 raise KeyError(f"conversation {c.conversation_id} belongs to another learner")
+            if existing is None and any(c.conversation_id in d.covers
+                                        for d in self.deletions()):  # fmt: skip
+                # a deleted conversation id is never handed out again: an open deletion
+                # request still trusts it (verifier B2.2 pass 6)
+                raise KeyError(f"conversation {c.conversation_id} was deleted and is retired")
             self._put("conversation", c.conversation_id, c, pid=c.learner_pid,
                       conversation_id=c.conversation_id, at=c.started_at)  # fmt: skip
 

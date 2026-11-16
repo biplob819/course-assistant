@@ -23,6 +23,7 @@ from typing import Any, ClassVar, Literal
 
 from pydantic import model_validator
 
+from course_assistant.answer._json import strict_loads
 from course_assistant.llm import InputItem, LLMError, ResponsesRequest, ResponsesResult
 from course_assistant.schemas._base import Ident, Model, Name, NonNegFloat, NonNegInt
 from course_assistant.schemas.config import AppConfig
@@ -212,7 +213,7 @@ def parse_integrity(result: ResponsesResult, known: set[str]) -> tuple[Verdict, 
     if result.refusal:
         raise IntegrityParseError("refused")
     try:
-        data = json.loads(result.text)
+        data = strict_loads(result.text)
     except (ValueError, RecursionError) as exc:
         raise IntegrityParseError("not JSON") from exc
     if not isinstance(data, dict) or set(data) != set(IntegrityStep.JSON_SCHEMA["required"]):

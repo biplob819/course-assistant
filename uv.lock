@@ -247,6 +247,9 @@ dependencies = [
 app = [
     { name = "streamlit" },
 ]
+eval = [
+    { name = "evalkit-harness" },
+]
 ingest = [
     { name = "pypdf" },
     { name = "python-pptx" },
@@ -257,6 +260,7 @@ openai = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "evalkit-harness" },
     { name = "hypothesis" },
     { name = "openai" },
     { name = "pypdf" },
@@ -269,6 +273,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "evalkit-harness", marker = "extra == 'eval'", specifier = ">=0.2,<0.3" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=2" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pypdf", marker = "extra == 'ingest'", specifier = ">=5" },
@@ -276,10 +281,11 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6" },
     { name = "streamlit", marker = "extra == 'app'", specifier = ">=1.40" },
 ]
-provides-extras = ["openai", "ingest", "app"]
+provides-extras = ["openai", "ingest", "eval", "app"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "evalkit-harness", specifier = ">=0.2,<0.3" },
     { name = "hypothesis", specifier = ">=6" },
     { name = "openai", specifier = ">=2" },
     { name = "pypdf", specifier = ">=5" },
@@ -288,6 +294,19 @@ dev = [
     { name = "python-pptx", specifier = ">=1" },
     { name = "ruff", specifier = ">=0.6" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20261113" },
+]
+
+[[package]]
+name = "evalkit-harness"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ee/fc/677a40ce000e77e7d01089cb799a5494c63865db19dc70d8a67ee5803355/evalkit_harness-0.2.0.tar.gz", hash = "sha256:ab9dee7427493c2a5d8001eb3997a640060788484b8f6be0008d7b6aacd96971", size = 198446, upload-time = "2026-11-16T17:02:34.863Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d2/91/020594be4b22030a19638d3aab4e29703888d41ed2adf3545c98455622c2/evalkit_harness-0.2.0-py3-none-any.whl", hash = "sha256:c31ab531dab69c07b5e24c94833c7f1e3b8f1f5b67aadbcd4e270fa02c3cfa92", size = 256467, upload-time = "2026-11-16T17:02:30.234Z" },
 ]
 
 [[package]]
