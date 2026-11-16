@@ -1,3 +1,5 @@
+# make demo-cache CONFIG=... YES=--yes  (the confirmation is the caller's, never the Makefile's)
+YES ?=
 # Make targets call the CLI or a script (Tech Spec §4). Targets marked "calls" spend money.
 
 CONFIG ?= sample_course/config.yaml
@@ -8,7 +10,7 @@ eval-replay:  ## golden replay through ask(), no API calls
 	uv run course-assistant eval-replay
 
 demo-cache:  ## calls: build demo/replay.json from the curated public questions (D3.1)
-	uv run --env-file .env python scripts/demo_cache.py --config $(CONFIG) --yes
+	uv run --env-file .env python scripts/demo_cache.py --config $(CONFIG) $(YES)
 
 demo-check:  ## replay demo/replay.json offline, no API calls
 	uv run python scripts/demo_cache.py --check

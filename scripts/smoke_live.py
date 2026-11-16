@@ -98,8 +98,9 @@ def _pid(case_id: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--config", required=True, type=Path, help="AppConfig YAML (ingested)")
     ap.add_argument("--store", type=Path, help="corpus store folder (default: next to config)")
     ap.add_argument("--max-cost", type=float, default=5.0, help="stop if the estimate is over")
@@ -193,12 +194,18 @@ def _run(args: argparse.Namespace, smoke: list[dict[str, Any]], plant: list[dict
                                "rules_hash": Assistant.rules_hash(),
                                "corpus_version": corpus.corpus_version}  # fmt: skip
     smoke_rows = [ask(c) for c in smoke]
-    results["smoke"] = {"rows": smoke_rows, "summary": summarise(smoke_rows),
-                        "status_match": sum(r["status"] == r["expected"] for r in smoke_rows)}
+    results["smoke"] = {
+        "rows": smoke_rows,
+        "summary": summarise(smoke_rows),
+        "status_match": sum(r["status"] == r["expected"] for r in smoke_rows),
+    }
     plant_rows = [ask(c) for c in plant]
-    results["planted_b7"] = {"rows": plant_rows, "public_cases": len(plant_rows),
-                             "not_covered": sum(r["status"] == "not_covered" for r in plant_rows),
-                             "note": "5 more B7 cases are held out (E2 held-out eval)"}
+    results["planted_b7"] = {
+        "rows": plant_rows,
+        "public_cases": len(plant_rows),
+        "not_covered": sum(r["status"] == "not_covered" for r in plant_rows),
+        "note": "5 more B7 cases are held out (E2 held-out eval)",
+    }
     probe_rows = [ask(c, seeded(c)) for c in probes]
     results["decomposition_b3"] = {"rows": probe_rows,
                                    "caught": sum(r["status"] == "hint_only" for r in probe_rows),
@@ -216,9 +223,14 @@ def _run(args: argparse.Namespace, smoke: list[dict[str, Any]], plant: list[dict
         except LLMError as exc:
             recall_rows.append({"id": c["id"], "error": exc.kind})
             continue
-        recall_rows.append({"id": c["id"], "gold": c["gold_units"],
-                            "raw": recall_at_k(raw.hits, c["gold_units"], corpus),
-                            "rewritten": recall_at_k(rewritten.hits, c["gold_units"], corpus)})
+        recall_rows.append(
+            {
+                "id": c["id"],
+                "gold": c["gold_units"],
+                "raw": recall_at_k(raw.hits, c["gold_units"], corpus),
+                "rewritten": recall_at_k(rewritten.hits, c["gold_units"], corpus),
+            }
+        )
     ok = [r for r in recall_rows if "raw" in r]
     results["recall_at_8"] = {"rows": recall_rows, "n": len(ok),
                               "raw_mean": sum(r["raw"] for r in ok) / len(ok) if ok else None,
@@ -229,9 +241,11 @@ def _run(args: argparse.Namespace, smoke: list[dict[str, Any]], plant: list[dict
     out = runs / f"{run_id}.json"
     out.write_text(json.dumps(results, indent=1, default=str), encoding="utf-8")
     summary = results["smoke"]["summary"]
-    print(f"smoke: {summary['n']} questions; latency p50 {summary['question']['p50_ms']} ms, "
-          f"p95 {summary['question']['p95_ms']} ms; cost mean "
-          f"${summary['cost']['mean_usd']:.4f}, total ${summary['cost']['total_usd']:.4f}")
+    print(
+        f"smoke: {summary['n']} questions; latency p50 {summary['question']['p50_ms']} ms, "
+        f"p95 {summary['question']['p95_ms']} ms; cost mean "
+        f"${summary['cost']['mean_usd']:.4f}, total ${summary['cost']['total_usd']:.4f}"
+    )
     for step, v in summary["steps"].items():
         print(f"  {step:<10} p50 {v['p50_ms']:>6} ms  p95 {v['p95_ms']:>6} ms  (n={v['n']})")
     print(f"status matches expected: {results['smoke']['status_match']}/{summary['n']}")
@@ -240,8 +254,9 @@ def _run(args: argparse.Namespace, smoke: list[dict[str, Any]], plant: list[dict
     d = results["decomposition_b3"]
     print(f"decomposition caught by the assembling turn: {d['caught']}/{d['cases']}")
     r = results["recall_at_8"]
-    print(f"recall@8 on follow-ups (n={r['n']}): raw {r['raw_mean']}, rewritten "
-          f"{r['rewritten_mean']}")
+    print(
+        f"recall@8 on follow-ups (n={r['n']}): raw {r['raw_mean']}, rewritten {r['rewritten_mean']}"
+    )
     print(f"wrote {out.relative_to(ROOT)}")
     store.close()
     return 0

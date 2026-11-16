@@ -93,14 +93,19 @@ def answered(case: GoldenCase, text: str | None = None) -> dict[str, list[Any]]:
 def hint(case: GoldenCase, text: str = "Revisit the slides on this idea and how they frame it.",
          ) -> dict[str, list[Any]]:  # fmt: skip
     aid = case.assessment_id or "s01-a1"
-    return {"route": [s.route("graded_work", case.question, aid)],
-            "answer": [s.cited("Discarded draft.", "file-s01-slides-3")],
-            "hint": [s.cited(text, brief_file(aid))], "integrity": [s.integrity("clear")]}
+    return {
+        "route": [s.route("graded_work", case.question, aid)],
+        "answer": [s.cited("Discarded draft.", "file-s01-slides-3")],
+        "hint": [s.cited(text, brief_file(aid))],
+        "integrity": [s.integrity("clear")],
+    }
 
 
 def routed(category: str) -> dict[str, list[Any]]:
-    return {"route": [s.route(category)], "answer": [s.cited("Discarded draft.",
-                                                             "file-s01-slides-3")]}
+    return {
+        "route": [s.route(category)],
+        "answer": [s.cited("Discarded draft.", "file-s01-slides-3")],
+    }
 
 
 def not_covered() -> dict[str, list[Any]]:

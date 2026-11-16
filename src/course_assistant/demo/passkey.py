@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import contextlib
 import hashlib
 import hmac
 import os
@@ -121,11 +122,12 @@ def env_hash(
 class PasskeyGate:
     def __init__(self, load_hash: Callable[[], str | None], *, max_failures: int = 5,
                  window_s: float = 900.0, clock: Callable[[], float] = time.monotonic,
-                 max_keys: int = MAX_KEYS) -> None:  # fmt: skip
-        if max_failures < 1 or window_s <= 0 or max_keys < 2:
+                 max_keys: int = MAX_KEYS, global_max_failures: int = 50) -> None:  # fmt: skip
+        if max_failures < 1 or window_s <= 0 or max_keys < 2 or global_max_failures < 1:
             raise ValueError("max_failures, window_s and max_keys must be positive")
         self._load = load_hash
         self.max_failures = max_failures
+        self.global_max_failures = global_max_failures
         self.window_s = window_s
         self._clock = clock
         self._max_keys = max_keys
@@ -170,29 +172,41 @@ class PasskeyGate:
     def locked(self, session: str, ip: str | None = None) -> bool:
         with self._lock:
             now = self._clock()
-            return any(len(self._recent(k, now)) >= self.max_failures
-                       for k in self._keys(session, ip))  # fmt: skip
+            keys = [*self._keys(session, ip), ("global", "*")]
+            return any(len(self._recent(k, now)) >= self._limit(k) for k in keys)
 
     def unlock(self, code: str, *, session: str, ip: str | None = None) -> None:
-        """Unlock `session` with the passcode, or raise `GuardRefused`."""
+        """Unlock `session` with the passcode, or raise `GuardRefused`. Each attempt is counted
+        as a failure before the slow check runs, under the lock, so simultaneous guesses cannot
+        all slip in before the lockout (verifier D3.1 pass 1); a right code then takes its own
+        count back. A global count also caps guesses from rotating sessions with no trusted IP."""
         if not isinstance(session, str) or not session:
             raise GuardRefused(NEEDED)
         stored = self._stored()
-        if self.locked(session, ip):
-            raise GuardRefused(LOCKED)
+        keys = [*self._keys(session, ip), ("global", "*")]
+        with self._lock:
+            now = self._clock()
+            if any(len(self._recent(k, now)) >= self._limit(k) for k in keys):
+                raise GuardRefused(LOCKED)
+            for key in keys:
+                self._recent(key, now)
+                self._failures.setdefault(key, deque()).append(now)
+            self._bound(self._failures)
         if verify_passcode(code, stored):
             with self._lock:
+                for key in keys:
+                    hits = self._failures.get(key)
+                    if hits:
+                        with contextlib.suppress(ValueError):
+                            hits.remove(now)
                 self._failures.pop(("session", session), None)
                 self._unlocked[session] = fingerprint(stored)
                 self._bound(self._unlocked)
             return
-        with self._lock:
-            now = self._clock()
-            for key in self._keys(session, ip):
-                self._recent(key, now)
-                self._failures.setdefault(key, deque()).append(now)
-            self._bound(self._failures)
         raise GuardRefused(WRONG)
+
+    def _limit(self, key: tuple[str, str]) -> int:
+        return self.global_max_failures if key[0] == "global" else self.max_failures
 
     def require(self, session: str) -> None:
         """Every page and route calls this first: refuse unless `session` was unlocked against

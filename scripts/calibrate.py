@@ -89,10 +89,14 @@ def cmd_export(args: argparse.Namespace) -> int:
     run = evalkit_dir(args.run)
     _, csv_path, n = export_groundedness(run, force=args.force)
     rows = export_probe(run, force=args.force)
-    print(f"groundedness: {n} claims to label: uv run evalkit calibrate label {run} "
-          f"(or fill {csv_path} and run evalkit calibrate import)")
-    print(f"integrity: {rows} conversations to label V or C in "
-          f"{run / 'calibration' / 'integrity' / 'sheet.csv'}; relabel.csv later, blind")
+    print(
+        f"groundedness: {n} claims to label: uv run evalkit calibrate label {run} "
+        f"(or fill {csv_path} and run evalkit calibrate import)"
+    )
+    print(
+        f"integrity: {rows} conversations to label V or C in "
+        f"{run / 'calibration' / 'integrity' / 'sheet.csv'}; relabel.csv later, blind"
+    )
     return 0
 
 
@@ -112,12 +116,16 @@ def cmd_score(args: argparse.Namespace) -> int:
     run = evalkit_dir(args.run)
     report = R.cal_score(run)
     for a in report.agreements:
-        print(f"groundedness {a.judge}: held-out kappa {a.kappa.point:.2f} "
-              f"[{a.kappa.lo:.2f}, {a.kappa.hi:.2f}] over {a.n_claims} claims")
+        print(
+            f"groundedness {a.judge}: held-out kappa {a.kappa.point:.2f} "
+            f"[{a.kappa.lo:.2f}, {a.kappa.hi:.2f}] over {a.n_claims} claims"
+        )
     probe = score_probe(run)
     for b in probe.agreements:
-        print(f"integrity {b.judge}: held-out kappa {b.kappa.point:.2f} "
-              f"[{b.kappa.lo:.2f}, {b.kappa.hi:.2f}] over {b.n} conversations")
+        print(
+            f"integrity {b.judge}: held-out kappa {b.kappa.point:.2f} "
+            f"[{b.kappa.lo:.2f}, {b.kappa.hi:.2f}] over {b.n} conversations"
+        )
     return 0
 
 
@@ -155,8 +163,10 @@ def cmd_support(args: argparse.Namespace) -> int:
     a = support_agreement(tapped, judged, seed=7)
     (folder / "support-agreement.json").write_text(a.model_dump_json(indent=1) + "\n",
                                                    encoding="utf-8")  # fmt: skip
-    print(f"support check vs dual judges: kappa {a.kappa.point:.2f} [{a.kappa.lo:.2f}, "
-          f"{a.kappa.hi:.2f}] over {a.n_sentences} sentences; ${panel.spent_usd:.4f}")
+    print(
+        f"support check vs dual judges: kappa {a.kappa.point:.2f} [{a.kappa.lo:.2f}, "
+        f"{a.kappa.hi:.2f}] over {a.n_sentences} sentences; ${panel.spent_usd:.4f}"
+    )
     return 0
 
 
@@ -216,8 +226,9 @@ def cmd_record_evalreg(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
     commands = (("export", cmd_export), ("import-integrity", cmd_import), ("score", cmd_score),
                 ("support", cmd_support), ("tune-bar", cmd_tune_bar),

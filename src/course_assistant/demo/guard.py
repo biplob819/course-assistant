@@ -35,8 +35,7 @@ CHUNK_TOKENS = 800  # the vector store's chunk size: tokens per retrieved result
 ITEM_OVERHEAD_TOKENS = 16  # role and framing per input item
 
 STORE_DOWN = (
-    "The live budget store is unavailable right now. Replay mode always works, or try again "
-    "later."
+    "The live budget store is unavailable right now. Replay mode always works, or try again later."
 )
 BUDGET_USED = "Today's live budget is used up. Replay mode is always available."
 OWNER_KEY_OFF = "Live mode on the demo's key is off. You can use your own OpenAI key."
@@ -247,8 +246,10 @@ class CappedSource:
             self._count(worst, worst)
             raise
         actual = result.cost_usd
-        if isinstance(actual, bool) or not isinstance(actual, int | float) or not (
-            math.isfinite(actual) and actual >= 0
+        if (
+            isinstance(actual, bool)
+            or not isinstance(actual, int | float)
+            or not (math.isfinite(actual) and actual >= 0)
         ):
             self._count(worst, worst)
             raise LLMError("config", "a call reported a bad cost", 1)

@@ -56,8 +56,9 @@ def _edit_json_lines(path: Path, fn: Any) -> None:
 def test_planted_defects_are_each_reported(tmp_path):
     fx = copy(tmp_path / "summary")
     summary = fx / "summary.json"
-    summary.write_text(summary.read_text(encoding="utf-8").replace('"slices"', '"slices" ', 1),
-                       encoding="utf-8")  # one byte
+    summary.write_text(
+        summary.read_text(encoding="utf-8").replace('"slices"', '"slices" ', 1), encoding="utf-8"
+    )  # one byte
     assert problems(fx) == ["summary.json differs from EvalKit's re-aggregation"]
 
     fx = copy(tmp_path / "completion")

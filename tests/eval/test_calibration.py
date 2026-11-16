@@ -50,7 +50,8 @@ def _reset() -> Any:
 # ---------- one offline run shared by the CAL-01 tests ----------
 
 ANSWERED = [E.first("B1", status="answered", skip=i) for i in range(12)] + [
-    E.first("B10", status="answered", skip=i) for i in range(4)]
+    E.first("B10", status="answered", skip=i) for i in range(4)
+]
 PROBES = [E.first("B3", skip=i) for i in range(12)]
 HELD = {c.id for c in ANSWERED[:6] + ANSWERED[12:14] + PROBES[:6]}  # stand-ins for held-out
 
@@ -122,8 +123,10 @@ def test_evalkit_labels_and_scores_the_exported_groundedness_sheet(cal_run, tmp_
     assert R.cal_import(run_dir, filled) == len(rows)
     sheet_rows = R._load_sheet(run_dir)  # pyright: ignore[reportPrivateUsage]
     relabel = {r.key: LabelEntry(label="supported") for r in sheet_rows if r.relabel}
-    save_labels(run_dir / "calibration" / "labels-relabel.json",
-                LabelFile(sheet_id=sheet_rows[0].sheet_id, round="relabel", labels=relabel))
+    save_labels(
+        run_dir / "calibration" / "labels-relabel.json",
+        LabelFile(sheet_id=sheet_rows[0].sheet_id, round="relabel", labels=relabel),
+    )
     report = R.cal_score(run_dir)  # EvalKit's own scoring, unchanged
     assert {a.judge for a in report.agreements} == {"claude-opus-5-5", "gpt-6.1-sol"}
     assert all(a.split == "heldout" for a in report.agreements)
@@ -217,8 +220,11 @@ def test_integrity_report_scores_heldout_kappa_per_judge(cal_run):
     flip = next(r.key for r in rows if r.split == "heldout")
     first_labels[flip] = "clean" if truth[flip] == "violation" else "violation"
     first = C.ProbeLabelFile(sheet_id=rows[0].sheet_id, round="first", labels=first_labels)
-    relabel = C.ProbeLabelFile(sheet_id=rows[0].sheet_id, round="relabel",
-                               labels={r.key: truth[r.key] for r in rows if r.relabel})
+    relabel = C.ProbeLabelFile(
+        sheet_id=rows[0].sheet_id,
+        round="relabel",
+        labels={r.key: truth[r.key] for r in rows if r.relabel},
+    )
     at = dt.datetime(2026, 11, 20, tzinfo=dt.UTC)
     report = C.probe_report(rows, first, relabel, records, seed=7, scored_at=at, n_resamples=200)
     held = [r for r in rows if r.split == "heldout"]
@@ -232,8 +238,14 @@ def test_integrity_report_scores_heldout_kappa_per_judge(cal_run):
         assert a.agreement == pytest.approx(3 / 4)  # one held-out label disagrees
     assert report.self_consistency is not None
     with pytest.raises(CalibrationError, match="no first-round label"):
-        C.probe_report(rows, C.ProbeLabelFile(sheet_id=rows[0].sheet_id, round="first",
-                                              labels={}), None, records, seed=7, scored_at=at)
+        C.probe_report(
+            rows,
+            C.ProbeLabelFile(sheet_id=rows[0].sheet_id, round="first", labels={}),
+            None,
+            records,
+            seed=7,
+            scored_at=at,
+        )
     old = report.model_copy(update={"rubric_hash": "an-older-rubric"})
     with pytest.raises(CalibrationError, match="another rubric"):
         C.probe_report(rows, first, relabel, records, seed=7, scored_at=at, previous=[old])
@@ -274,14 +286,19 @@ def _tuning_cases() -> tuple[list[Any], dict[str, dict[str, list[Any]]]]:
     b7, b4 = E.first("B7"), E.first("B4")
     scripts = {c.id: E.script_for(c) for c in (b7, b4)}
     for c, score in zip(b1, (0.82, 0.82, 0.65), strict=True):
-        scripts[c.id] = {"route": [s.route("course", c.question)],
-                         "answer": [s.cited("The cited slide says so.", E.gold_file(c), score)],
-                         "support": [s.support(True)], "integrity": [s.integrity("clear")]}
+        scripts[c.id] = {
+            "route": [s.route("course", c.question)],
+            "answer": [s.cited("The cited slide says so.", E.gold_file(c), score)],
+            "support": [s.support(True)],
+            "integrity": [s.integrity("clear")],
+        }
     for c in b2:  # weak hits the bar should stop: L2 would wrongly pass them
-        scripts[c.id] = {"route": [s.route("course", c.question)],
-                         "answer": [s.cited("A loosely related slide says so.",
-                                            "file-s01-slides-3", 0.55)],
-                         "support": [s.support(True)], "integrity": [s.integrity("clear")]}
+        scripts[c.id] = {
+            "route": [s.route("course", c.question)],
+            "answer": [s.cited("A loosely related slide says so.", "file-s01-slides-3", 0.55)],
+            "support": [s.support(True)],
+            "integrity": [s.integrity("clear")],
+        }
     return [*b1, *b2, b7, b4], scripts
 
 
@@ -382,18 +399,32 @@ def _turn(case: Any, source: Any) -> Any:
     rt = system.Runtime(config=E.CONFIG, corpus=E.CORPUS, assessments=E.ASSESSMENTS,
                         source=source, now=lambda: O.NOW, timer=lambda: 0.0)  # fmt: skip
     row = dataset.to_case(case, E.CORPUS, E.GOLDEN_VERSION)
-    ek = Case(id=row["id"], question=row["question"], context=tuple(row["context"]),
-              reference_label=row["label"], source="local/course-ta", meta=row["meta"])
+    ek = Case(
+        id=row["id"],
+        question=row["question"],
+        context=tuple(row["context"]),
+        reference_label=row["label"],
+        source="local/course-ta",
+        meta=row["meta"],
+    )
     return system.run_case(rt, ek)[0]
 
 
 def test_support_tap_captures_what_l2_judged_without_changing_ask():
     case = E.first("B1", status="answered")
     text = "The first slide lists three questions. They come before any model choice."
-    script = {"route": [s.route("course", case.question)],
-              "answer": [s.sol(text, ((E.gold_file(case), 38), (E.gold_file(case), len(text))),
-                               ((E.gold_file(case), 0.8),))],
-              "support": [s.support(True, False)], "integrity": [s.integrity("clear")]}
+    script = {
+        "route": [s.route("course", case.question)],
+        "answer": [
+            s.sol(
+                text,
+                ((E.gold_file(case), 38), (E.gold_file(case), len(text))),
+                ((E.gold_file(case), 0.8),),
+            )
+        ],
+        "support": [s.support(True, False)],
+        "integrity": [s.integrity("clear")],
+    }
     plain = _turn(case, E.PerCase({case.id: script}))
     tap = SupportTap(E.PerCase({case.id: script}))
     tapped = _turn(case, tap)
@@ -442,7 +473,8 @@ def test_support_judges_use_evalkits_groundedness_rubric():
                                   judge_id=j.model_id, effort=j.effort)  # fmt: skip
         assert req.prompt == ek_judge.render_judge_prompt(inp)
         assert json.dumps(req.json_schema, sort_keys=True) == json.dumps(
-            ek_judge.verdict_schema(), sort_keys=True)
+            ek_judge.verdict_schema(), sort_keys=True
+        )
     # EvalKit's parser: evidence outside the citations is unparseable, asked once more, then fails
     bad = json.dumps({"verdict": "supported", "evidence": [99], "quote": None, "rationale": "r"})
     panel2, fakes2 = O.fake_panel()
@@ -522,7 +554,8 @@ def test_calibrate_script_refuses_paid_steps_and_tunes_from_a_run_offline(tuning
     run = tmp_path / "tune"
     shutil.copytree(tuning_run.run_dir, run)
     (run / "recordings.jsonl").write_text(
-        "".join(r.model_dump_json() + "\n" for r in tuning_run.recorder.recordings), "utf-8")
+        "".join(r.model_dump_json() + "\n" for r in tuning_run.recorder.recordings), "utf-8"
+    )
     log = tmp_path / "tuning-log.jsonl"
     shutil.copyfile(TUNING_LOG, log)
     monkeypatch.setattr(calibrate, "TUNING_LOG", log)

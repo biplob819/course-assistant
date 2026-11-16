@@ -141,9 +141,14 @@ def unlocked_gate(secret: Secret | None = None, clock: Tick | None = None,
 def guard_with(counter: Any, gate: passkey.PasskeyGate | None = None,
                config: GuardConfig | None = None, clock: Tick | None = None,
                alerts: list | None = None) -> Guard:  # fmt: skip
-    return Guard(gate or unlocked_gate(), counter, config or GuardConfig(),
-                 clock=clock or Tick(), today=lambda: DAY,
-                 alert=None if alerts is None else lambda w, k: alerts.append((w, k)))
+    return Guard(
+        gate or unlocked_gate(),
+        counter,
+        config or GuardConfig(),
+        clock=clock or Tick(),
+        today=lambda: DAY,
+        alert=None if alerts is None else lambda w, k: alerts.append((w, k)),
+    )
 
 
 def scripted(**queues: list[Any]) -> tuple[Any, s.StepClient]:
@@ -268,7 +273,8 @@ def test_a_case_showing_another_status_is_left_out_and_too_few_fails_the_build()
     curated = (*demo_cache.CURATED[:-1], ("ta-b4-010", "answered"))  # really handed over
     fx, report = build_from_golden(curated)
     assert [(x.case_id, x.reason, x.got) for x in report.skipped] == [
-        ("demo-20", "status", "handed_over")]
+        ("demo-20", "status", "handed_over")
+    ]
     assert len(fx.cases) == len(curated) - 1 and report.per_status["handed_over"] == 2
     one_each = tuple(next(c for c in demo_cache.CURATED if c[1] == st) for st in demo_cache.SHOWN)
     with pytest.raises(DemoCacheError, match="at least two") as err:
@@ -327,7 +333,8 @@ def test_demo_cache_script_refuses_without_yes_key_or_budget_and_dry_runs(
 
 def test_make_demo_cache_runs_the_script():
     text = (ROOT / "Makefile").read_text(encoding="utf-8")
-    assert "demo-cache:" in text and "scripts/demo_cache.py" in text and "--yes" in text
+    assert "demo-cache:" in text and "scripts/demo_cache.py" in text
+    assert " --yes" not in text.split("demo-cache:")[1].split("\n\n")[0]  # caller confirms
 
 
 # ======================= RPL-02 guard, counter, executor =======================
@@ -528,6 +535,7 @@ def test_failed_and_retried_calls_are_counted_at_their_bound_not_free():
         raise LLMError("transport", "timed out", 1)
 
     capped = CappedSource(Live(slow), 1.0, PRICES)
+
     def run() -> None:
         with pytest.raises(LLMError):
             capped.call("r-0000000000000000", request())
@@ -841,3 +849,39 @@ def test_no_passcode_hash_or_visitor_key_reaches_a_log_error_trace_or_repr(tmp_p
     for secret in (CODE, OTHER_CODE, "99999999", HASH, salt_b64, VISITOR_KEY, QUESTION):
         assert secret not in dumped, secret
     assert "demo live: mode=own_key status=answered" in caplog.text  # aggregate only
+
+
+# ---------- verifier pass 1 regressions ----------
+
+
+@pytest.mark.safety
+def test_simultaneous_wrong_guesses_never_pass_the_lockout():
+    import threading
+
+    gate = passkey.PasskeyGate(Secret(), clock=Tick(), max_failures=5)
+    checked = []
+
+    def guess():
+        try:
+            gate.unlock("000000", session="s", ip="1.1.1.1")
+        except GuardRefused as exc:
+            checked.append(str(exc))
+
+    threads = [threading.Thread(target=guess) for _ in range(40)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sum(1 for c in checked if c == passkey.WRONG) <= 5
+
+
+@pytest.mark.safety
+def test_rotating_sessions_with_no_ip_hit_the_global_cap():
+    gate = passkey.PasskeyGate(Secret(), clock=Tick(), global_max_failures=10)
+    wrong = 0
+    for i in range(40):
+        try:
+            gate.unlock("000000", session=f"s{i}", ip=None)
+        except GuardRefused as exc:
+            wrong += str(exc) == passkey.WRONG
+    assert wrong <= 10

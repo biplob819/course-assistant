@@ -32,8 +32,10 @@ from course_assistant.schemas.config import GoldenCase
 from tests.eval import scripted_eval as E
 
 NOW = dt.datetime(2026, 11, 20, 10, 0, tzinfo=dt.UTC)
-EVALKIT_YAML = ("models: [course-ta]\nsystems: {course-ta: course_ta}\n"
-                "judges: [claude-opus-5-5, gpt-6.1-sol]\nextractor: claude-haiku-5-5\nseed: 7\n")
+EVALKIT_YAML = (
+    "models: [course-ta]\nsystems: {course-ta: course_ta}\n"
+    "judges: [claude-opus-5-5, gpt-6.1-sol]\nextractor: claude-haiku-5-5\nseed: 7\n"
+)
 SUPPORT_HEAD = "You check one claim against the source sentences it cites."
 UNSUPPORTED_MARK = "unverified"  # a support sentence holding this is unsupported for the judges
 

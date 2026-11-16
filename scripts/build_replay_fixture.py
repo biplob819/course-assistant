@@ -51,10 +51,19 @@ def sample_corpus() -> Corpus:
     split = units_from_manifest(load_manifest(ROOT / "sample_course" / "manifest.yaml"), ROOT)
     cv = corpus_version(split.units)
     units = tuple(
-        CorpusUnit(unit_index=i, file_id=f"file-{u.session}-{u.kind}-{u.number}",
-                   vs_file_id=f"vsf-{i:03d}", manifest_id=u.manifest_id, session=u.session,
-                   kind=u.kind, locator=u.locator, label=u.label, text=golden.PLACEHOLDER,
-                   version=u.version, corpus_version=cv)
+        CorpusUnit(
+            unit_index=i,
+            file_id=f"file-{u.session}-{u.kind}-{u.number}",
+            vs_file_id=f"vsf-{i:03d}",
+            manifest_id=u.manifest_id,
+            session=u.session,
+            kind=u.kind,
+            locator=u.locator,
+            label=u.label,
+            text=golden.PLACEHOLDER,
+            version=u.version,
+            corpus_version=cv,
+        )
         for i, u in enumerate(split.units, start=1)
     )
     return Corpus(schema_version="1.0", cohort="sample", corpus_version=cv, units=units)
@@ -104,9 +113,12 @@ class Builder:
     def answered(self, case: dict[str, Any], text: str | None = None,
                  n: int = 1) -> dict[str, list[Any]]:  # fmt: skip
         file_id, label = self.file_for(case)
-        return {"route": [s.route("course", case["question"])],
-                "answer": [s.cited(text or f"This is covered in {label}.", file_id)],
-                "support": [s.support(*([True] * n))], "integrity": [s.integrity("clear")]}
+        return {
+            "route": [s.route("course", case["question"])],
+            "answer": [s.cited(text or f"This is covered in {label}.", file_id)],
+            "support": [s.support(*([True] * n))],
+            "integrity": [s.integrity("clear")],
+        }
 
     def grounded_hint(self, aid: str) -> list[Any]:
         return [s.cited("Revisit the slides on this idea and how they frame it.",
@@ -156,8 +168,9 @@ class Builder:
         for i in range(3):
             c = self.pick("B3", multi=False, category="graded_work")
             aid = c["assessment_id"]
-            hint = self.grounded_hint(aid) if i < 2 else [
-                s.sol("Just write it like this.", (), ())]  # ungrounded: the fixed hint
+            hint = (
+                self.grounded_hint(aid) if i < 2 else [s.sol("Just write it like this.", (), ())]
+            )  # ungrounded: the fixed hint
             add(c, "hint-graded" if i < 2 else "hint-graded-fixed", "hint_only", {
                 "route": [s.route("graded_work", c["question"], aid)],
                 "answer": [s.cited("Discarded draft.", "file-s01-slides-3")],

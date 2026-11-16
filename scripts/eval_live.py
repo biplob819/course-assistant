@@ -119,8 +119,9 @@ def prepare(out_dir: Path, cases: list[Any], corpus: Any) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--config", required=True, type=Path, help="AppConfig YAML (ingested)")
     ap.add_argument("--store", type=Path, help="corpus store folder (default: next to config)")
     ap.add_argument("--split", choices=("public", "heldout", "both"), default="heldout")
@@ -128,8 +129,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--replay", type=Path, help="recordings.jsonl from an earlier live run")
     ap.add_argument("--out", type=Path, default=ROOT / "runs")
     ap.add_argument("--dry-run", action="store_true", help="write the folder, call nothing")
-    ap.add_argument("--allow-unlogged", action="store_true",
-                    help="run with a bar or support rules not in the tuning log (tuning runs)")
+    ap.add_argument(
+        "--allow-unlogged",
+        action="store_true",
+        help="run with a bar or support rules not in the tuning log (tuning runs)",
+    )
     ap.add_argument("--yes", action="store_true", help="confirm that this run spends money")
     args = ap.parse_args(argv)
     if not args.dry_run:
@@ -229,7 +233,8 @@ def _run(args: argparse.Namespace, config: Any, corpus: Any, out_dir: Path, task
         tap.save(out_dir / "support-tap.jsonl")  # private: holds answer sentences
         rows = support_rows(tap.sentences, judge_support(tap.sentences, panel, corpus))
         (out_dir / "support.jsonl").write_text(
-            "".join(json.dumps(r, sort_keys=True) + "\n" for r in rows), encoding="utf-8")
+            "".join(json.dumps(r, sort_keys=True) + "\n" for r in rows), encoding="utf-8"
+        )
         if rows:
             agreement = support_agreement(tap.sentences, {(r["request_id"], r["n"]): r["judges"]
                                                           for r in rows}, seed=7)  # fmt: skip

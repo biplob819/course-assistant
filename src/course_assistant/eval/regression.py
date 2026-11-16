@@ -120,12 +120,14 @@ def record_fixture(run_dir: Path, out_dir: Path, *, recordings: Sequence[Recordi
     for name in ("run.json", "records.jsonl", "summary.json"):
         shutil.copyfile(run_dir / name, out_dir / name)
     (out_dir / "recordings.jsonl").write_text(
-        "".join(r.model_dump_json() + "\n" for r in recordings), encoding="utf-8")
+        "".join(r.model_dump_json() + "\n" for r in recordings), encoding="utf-8"
+    )
     keep = _lines(probe_cache) if probe_cache.is_file() else []
     (out_dir / "probe-verdicts.jsonl").write_text("".join(x + "\n" for x in keep),
                                                   encoding="utf-8")  # fmt: skip
     (out_dir / "support.jsonl").write_text(
-        "".join(json.dumps(dict(r), sort_keys=True) + "\n" for r in support), encoding="utf-8")
+        "".join(json.dumps(dict(r), sort_keys=True) + "\n" for r in support), encoding="utf-8"
+    )
     meta = {**fixture_meta(), "case_ids": sorted(r.case_id for r in records),
             "now": now.isoformat(), "baseline_kappa": baseline_kappa(support),
             "kappa_drop_tolerance": KAPPA_DROP_TOLERANCE}  # fmt: skip
@@ -243,7 +245,8 @@ def _summary_problems(fixture_dir: Path, cases: Mapping[str, Case],
     try:
         shutil.copyfile(fixture_dir / "run.json", work / "run.json")
         (work / "cases.jsonl").write_text(
-            "".join(cases[i].model_dump_json() + "\n" for i in sorted(cases)), encoding="utf-8")
+            "".join(cases[i].model_dump_json() + "\n" for i in sorted(cases)), encoding="utf-8"
+        )
         manifest = R.read_manifest(work)
         summary = R.summarise(work, manifest, records, "complete")
         text = summary_json(summary)

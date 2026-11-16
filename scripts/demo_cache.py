@@ -59,8 +59,9 @@ def check(path: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--config", type=Path, help="AppConfig YAML (ingested sample course)")
     ap.add_argument("--store", type=Path, help="corpus store folder (default: next to config)")
     ap.add_argument("--out", type=Path, default=OUT)
@@ -75,16 +76,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.config is None:
         print("demo_cache: --config is required", file=sys.stderr)
         return 2
-    if not args.dry_run:
-        if not args.yes:
-            print("demo_cache: this run makes paid API calls; pass --yes to confirm",
-                  file=sys.stderr)  # fmt: skip
-            return 2
-        if not os.environ.get("OPENAI_API_KEY"):
-            print("demo_cache: OPENAI_API_KEY is not set (the demo project's key, "
-                  "uv run --env-file .env ...)", file=sys.stderr)  # fmt: skip
-            return 2
-
     from course_assistant.demo.cache import curated_cases, estimate_usd
     from course_assistant.demo.guard import GuardConfig
     from course_assistant.ingest import CorpusStore
@@ -98,6 +89,16 @@ def main(argv: list[str] | None = None) -> int:
     if cost > args.max_cost:
         print("demo_cache: estimate over --max-cost", file=sys.stderr)
         return 3
+    # the estimate is printed first; only then are --yes and the key required (pass 1)
+    if not args.dry_run:
+        if not args.yes:
+            print("demo_cache: this run makes paid API calls; pass --yes to confirm",
+                  file=sys.stderr)  # fmt: skip
+            return 2
+        if not os.environ.get("OPENAI_API_KEY"):
+            print("demo_cache: OPENAI_API_KEY is not set (the demo project's key, "
+                  "uv run --env-file .env ...)", file=sys.stderr)  # fmt: skip
+            return 2
     config = load_app_config(args.config)
     if args.dry_run:
         return 0

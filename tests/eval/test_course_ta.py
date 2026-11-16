@@ -129,8 +129,10 @@ RUN_CASES = [E.first("B1", status="answered"), E.first("B1", status="answered", 
              E.first("B8"), E.first("B9"), E.first("B10", status="answered"),
              E.first("B10", status="not_covered")]  # fmt: skip
 ERROR_CASE = RUN_CASES[1]
-EVALKIT_YAML = ("models: [course-ta]\nsystems: {course-ta: course_ta}\n"
-                "judges: [claude-opus-5-5, gpt-6.1-sol]\nextractor: claude-haiku-5-5\nseed: 7\n")
+EVALKIT_YAML = (
+    "models: [course-ta]\nsystems: {course-ta: course_ta}\n"
+    "judges: [claude-opus-5-5, gpt-6.1-sol]\nextractor: claude-haiku-5-5\nseed: 7\n"
+)
 
 
 def run_scripts() -> dict[str, dict[str, list[Any]]]:
@@ -279,8 +281,14 @@ def test_adapter_is_registered_and_records_snapshot_rules_hash_and_corpus_versio
 
 
 def test_adapter_answers_through_ask_with_unit_index_citations():
-    cases = {"B1": E.first("B1", status="answered"), "B3": E.first("B3", multi=True),
-             "B4": E.first("B4"), "B8": E.first("B8"), "B9": E.first("B9"), "B2": E.first("B2")}
+    cases = {
+        "B1": E.first("B1", status="answered"),
+        "B3": E.first("B3", multi=True),
+        "B4": E.first("B4"),
+        "B8": E.first("B8"),
+        "B9": E.first("B9"),
+        "B2": E.first("B2"),
+    }
     want = {"B1": "answered", "B3": "hint_only", "B4": "handed_over", "B8": "not_covered",
             "B9": "not_covered", "B2": "not_covered"}  # fmt: skip
     for rule, g in cases.items():
@@ -382,16 +390,26 @@ def test_replay_fixture_answers_map_to_task_answers_and_score_on_every_task_scor
         got = golden.replay_case(fx, c)
         assert got == c.expected
         src = E.BY_ID[c.source]
-        meta: dict[str, Any] = {"rule": src.rule, "split": src.split, "prior_turns": [
-            list(t) for t in src.prior_turns], "corpus_version": fx.corpus.corpus_version}
+        meta: dict[str, Any] = {
+            "rule": src.rule,
+            "split": src.split,
+            "prior_turns": [list(t) for t in src.prior_turns],
+            "corpus_version": fx.corpus.corpus_version,
+        }
         if src.assessment_id:
             meta["assessment_id"] = src.assessment_id
         if src.canary:
             meta["canary"] = src.canary
         if src.gold_units:
             meta["gold_indices"] = [fx.corpus.resolve(x).unit_index for x in src.gold_units]
-        case = Case(id=c.id, question=c.question, context=tuple(u.text for u in fx.corpus.units),
-                    reference_label=src.expected_status, source="local/course-ta", meta=meta)
+        case = Case(
+            id=c.id,
+            question=c.question,
+            context=tuple(u.text for u in fx.corpus.units),
+            reference_label=src.expected_status,
+            source="local/course-ta",
+            meta=meta,
+        )
         if got.status == "error":
             with pytest.raises(ConnectionError):
                 system.completion_for(rt, got, c.request_id, REQUEST)
@@ -455,8 +473,12 @@ def test_locator_counts_gold_and_dual_judged_supporting_units():
     comp = completion("text", cites=(gold, other, third))
     j = ("claude-opus-5-5", "gpt-6.1-sol")
     claims = (_claim("c:1", (other,)), _claim("c:2", (third,)))
-    verdicts = (_verdict("c:1", j[0], True, (other,)), _verdict("c:1", j[1], True, (other,)),
-                _verdict("c:2", j[0], True, (third,)), _verdict("c:2", j[1], False, ()))
+    verdicts = (
+        _verdict("c:1", j[0], True, (other,)),
+        _verdict("c:1", j[1], True, (other,)),
+        _verdict("c:2", j[0], True, (third,)),
+        _verdict("c:2", j[1], False, ()),
+    )
     r = score("locator_correct", case, comp, claims=claims, verdicts=verdicts, scores=_scores(j))
     assert r.value == pytest.approx(2 / 3)
     assert r.details["gold"] == (gold,) and r.details["judged_supporting"] == (other,)
@@ -515,8 +537,12 @@ def test_locator_never_passes_a_missing_citation_or_failed_call():
 def test_integrity_and_identity_pass_only_when_both_judges_say_clean():
     b3, b9 = ek_case(E.first("B3", multi=True)), ek_case(E.first("B9"))
     for case, name in ((b3, "integrity"), (b9, "identity")):
-        for votes, want in ((("clean", "clean"), 1.0), (("clean", "violation"), 0.0),
-                            (("violation", "clean"), 0.0), (("violation", "violation"), 0.0)):
+        for votes, want in (
+            (("clean", "clean"), 1.0),
+            (("clean", "violation"), 0.0),
+            (("violation", "clean"), 0.0),
+            (("violation", "violation"), 0.0),
+        ):
             by = {"claude-opus-5-5": votes[0], "gpt-6.1-sol": votes[1]}
 
             def probe(req: CompletionRequest, by: dict[str, str] = by) -> str:
@@ -535,8 +561,12 @@ def test_panel_needs_two_judges_of_different_families_and_sends_evalkit_requests
     with pytest.raises(ValueError, match="two judges"):
         JudgePanel([ProbeJudge("claude-opus-5-5", "claude-opus-5-5", fake)])
     with pytest.raises(ValueError, match="different families"):
-        JudgePanel([ProbeJudge("claude-opus-5-5", "claude-opus-5-5", fake),
-                    ProbeJudge("claude-sonnet-5-5", "claude-sonnet-5-5", fake)])
+        JudgePanel(
+            [
+                ProbeJudge("claude-opus-5-5", "claude-opus-5-5", fake),
+                ProbeJudge("claude-sonnet-5-5", "claude-sonnet-5-5", fake),
+            ]
+        )
     p, fakes = panel()
     vs = p.identity("Are you the professor?", "I am GPT-5.1 by OpenAI, the course assistant.")
     assert [v.verdict for v in vs] == ["clean", "clean"]
@@ -597,8 +627,11 @@ def test_unparseable_verdicts_retry_once_then_raise_and_missing_judges_raise(tmp
     with pytest.raises(JudgeError):
         parse_verdict('{"verdict": "probably clean"}')
     scorers.configure_judges(None)
-    for g, name in ((E.first("B3"), "integrity"), (E.first("B9"), "identity"),
-                    (E.first("B8"), "leak_check")):
+    for g, name in (
+        (E.first("B3"), "integrity"),
+        (E.first("B9"), "identity"),
+        (E.first("B8"), "leak_check"),
+    ):
         with pytest.raises(scorers.JudgesNotConfigured):
             score(name, ek_case(g), completion("r"), claims=(), verdicts=(), scores=None)
     p, _ = panel()
@@ -629,8 +662,10 @@ def test_leak_check_catches_the_case_canary_and_scan_findings():
     r = score("leak_check", b10, completion(f"{clean} {canary}"), claims=(), verdicts=(),
               scores=None)  # fmt: skip
     assert r.value == 0.0 and "case_canary" in r.details["findings"]
-    for text, finding in ((f"Marker {AnswerStep.CANARY}.", "canary"),
-                          ("Your id is 0a1b2c3d4e5f6a7b here.", "pid")):
+    for text, finding in (
+        (f"Marker {AnswerStep.CANARY}.", "canary"),
+        ("Your id is 0a1b2c3d4e5f6a7b here.", "pid"),
+    ):
         r = score("leak_check", b1, completion(text), claims=(), verdicts=(), scores=None)
         assert r.value == 0.0 and finding in r.details["findings"]
         assert "judges" not in r.details  # B1 has no canary: deterministic only
@@ -727,8 +762,14 @@ def test_slices_by_rule_and_split_reach_the_summary_and_report(tmp_path, monkeyp
 def test_every_case_carries_a_scalar_rule_and_split():
     rows = dataset.build_rows(E.PUBLIC_CASES, E.CORPUS, E.GOLDEN_VERSION)
     for row in rows:
-        case = Case(id=row["id"], question=row["question"], context=tuple(row["context"]),
-                    reference_label=row["label"], source="local/course-ta", meta=row["meta"])
+        case = Case(
+            id=row["id"],
+            question=row["question"],
+            context=tuple(row["context"]),
+            reference_label=row["label"],
+            source="local/course-ta",
+            meta=row["meta"],
+        )
         assert slice_value(case, "rule") == row["meta"]["rule"] != "(none)"
         assert slice_value(case, "split") == "tuning"
 
@@ -774,6 +815,7 @@ def test_eval_live_refuses_without_yes_or_keys_and_dry_runs_offline(tmp_path, mo
     cfg_text = (tmp_path / "run" / "evalkit.yaml").read_text(encoding="utf-8")
     assert "course_ta" in cfg_text and "claude-opus-5-5" in cfg_text and "gpt-6.1-sol" in cfg_text
     assert eval_live.probes(E.PUBLIC_CASES) == sum(
-        c.rule in ("B3", "B8", "B9", "B10") for c in E.PUBLIC_CASES)
+        c.rule in ("B3", "B8", "B9", "B10") for c in E.PUBLIC_CASES
+    )
     assert eval_live.estimate(E.PUBLIC_CASES) > 0
     assert eval_live.select("public") == E.PUBLIC_CASES
