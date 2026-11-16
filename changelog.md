@@ -91,3 +91,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [DOC] OWNER D-48 — the passkey is a numeric passcode only the owner knows
 - [FIX] [A2.5] — verifier pass 6: only whole hex groups continue a pid
 - [FIX] [B2.2] — verifier pass 16: open trace request always left after a mid-turn delete
+- [FIX] [A2.5] — verifier pass 7: no 'longer id' exception; known long ids blanked, every other pid shape flagged

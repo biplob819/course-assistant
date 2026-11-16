@@ -13,6 +13,7 @@ from ids, statuses, scores and numbers and pass through `strip_text` before the 
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import hashlib
 import json
@@ -370,37 +371,37 @@ class Assistant:
             return None  # unreadable: the turn cannot tell, so it removes nothing
 
     def _settle(self, pid: str, conversation_id: str | None, before: frozenset[str] | None) -> None:
-        """If the learner filed a delete while this turn ran, whatever the turn wrote after it
-        goes too: app rows through Store.delete_history (a new, open request) and this sink's
-        lines. New requests are found by key, never by time. The turn never marks trace
-        deletion complete: purge's retry_trace_deletion closes the open request with every
-        configured sink, so a sink this turn cannot see is never skipped (verifier B2.2
-        passes 12-15). Any failure leaves the request open for purge to flag, and never
-        replaces the turn's result. If the store cannot be read, nothing is removed."""
+        """If the learner filed a delete while this turn ran, what this turn wrote goes too:
+        its trace lines (this conversation's; all the learner's for a paused turn, which has
+        none), an open copy of each new request for purge's retry, and this conversation's app
+        rows if the turn wrote them back. Only the turn's own conversation, never a newer
+        one the learner started after the delete. New requests are found by key; each step has
+        its own guard so one store error cannot skip the others; the turn never marks trace
+        deletion complete (verifier B2.2 passes 12-17). If the store cannot be read at the
+        start, nothing is removed."""
         if before is None:
             return
         try:
             new = self.store.deletions_by_key(self.store.deletion_keys(pid) - before)
-            whole = any(d.conversation_id is None for d in new)
-            scoped = conversation_id is not None and any(conversation_id in d.covers for d in new)
-            if not (whole or scoped):
-                return
-            now = self._now()
-            owned = {c.conversation_id for c in self.store.conversations_for(pid)}
-            if whole and owned:
-                self.store.delete_history(pid, None, at=now)
-            elif scoped and conversation_id in owned:
-                self.store.delete_history(pid, conversation_id, at=now)
-            # always leave an open copy of each new request, so purge's retry clears any line
-            # this turn wrote after the first request closed, even if this sink fails or the
-            # app rows were already gone (verifier B2.2 pass 16)
-            for d in new:
-                self.store.reopen_traces(d, at=max(now, d.requested_at))
-            remove = getattr(self.sink, "delete_pid", None)
-            if callable(remove):
-                remove(pid, None if whole else {conversation_id})
-        except Exception:  # an open request is flagged by purge (US9, 7 days)
+        except Exception:
             return
+        whole = any(d.conversation_id is None for d in new)
+        scoped = conversation_id is not None and any(conversation_id in d.covers for d in new)
+        if not (whole or scoped):
+            return
+        remove = getattr(self.sink, "delete_pid", None)
+        if callable(remove):
+            with contextlib.suppress(Exception):
+                remove(pid, None if conversation_id is None else {conversation_id})
+        now = self._now()
+        for d in new:
+            with contextlib.suppress(Exception):
+                self.store.reopen_traces(d, at=max(now, d.requested_at))
+        if conversation_id is not None:
+            with contextlib.suppress(Exception):
+                owned = {c.conversation_id for c in self.store.conversations_for(pid)}
+                if conversation_id in owned:
+                    self.store.delete_history(pid, conversation_id, at=now)
 
     def _store_answer(self, answer: Answer, qid: str) -> bool:
         """Store the answer; False (not an error) when the question was deleted meanwhile."""

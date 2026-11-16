@@ -1262,3 +1262,67 @@ def test_a_failing_sink_after_a_mid_turn_delete_leaves_an_open_request(tmp_path,
         a.ask(QUESTION, PID)
     assert any(d.traces_deleted_at is None for d in store.deletions() if d.learner_pid == PID)
     store.close()
+
+
+# ---------- verifier pass 7 regressions ----------
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Learner 1f2e3d4c 5b6a7980 added a post.",
+        "Learner 1f2e 3d4c 5b6a 7980 added a post.",
+        "Since 2024 1f2e3d4c 5b6a7980 has been enrolled.",
+        "In 2024 1f2e 3d4c 5b6a 7980 joined.",
+        "ref 2024-1f2e3d4c5b6a7980",
+        "1f2e3d4c5b6a7980-2024 cohort",
+        "pid 1f2e3d4c:5b6a7980:beef",
+    ],
+)
+def test_hex_words_and_years_beside_a_pid_never_hide_it(text):
+    from course_assistant.answer.leak import scan
+
+    assert "pid" in scan(text)
+
+
+@pytest.mark.parametrize(
+    "ok",
+    [
+        "sha 3f9a0c1d7e2b4a68c1d2e3f4a5b6c7d8e9f0a1b2",
+        "host fe80::1ff:fe23:4567:890a on the slide",
+        "address 2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+    ],
+)
+def test_known_longer_identifiers_are_not_pids(ok):
+    from course_assistant.answer.leak import scan
+
+    assert "pid" not in scan(ok)
+
+
+@pytest.mark.privacy
+def test_a_newer_conversation_started_after_the_delete_is_kept(tmp_path, monkeypatch):
+    from course_assistant.llm.trace import JsonlSink
+    from course_assistant.privacy import delete
+
+    store = Store(tmp_path / "app.sqlite")
+    sink = JsonlSink(tmp_path / "trace.jsonl")
+    queues = {k: v * 2 for k, v in happy().items()}
+    rsp = responder(client=s.StepClient(**queues), prices=PRICES, sleep=lambda _: None)
+    a = Assistant(CONFIG, CORPUS, ASSESSMENTS, store, rsp, sink=sink, now=Clock(),
+                  timer=lambda: 0.0, new_id=ids())  # fmt: skip
+    real = store.put_answer
+    fired = []
+
+    def delete_then_second_turn(answer):
+        real(answer)
+        if not fired:
+            fired.append(True)
+            delete(PID, store=store, traces=[sink])
+            monkeypatch.setattr(store, "put_answer", real)
+            a.ask("A new question after the delete?", PID)  # turn 2, finishes first
+
+    monkeypatch.setattr(store, "put_answer", delete_then_second_turn)
+    a.ask(QUESTION, PID)
+    assert len(store.conversations_for(PID)) == 1  # turn 2's conversation survives
+    store.close()

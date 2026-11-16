@@ -31,35 +31,24 @@ FRAGMENT_WORDS = 9  # "more than 8 words" (§5 point 7)
 _PID = re.compile(r"(?<![0-9a-z])[0-9a-f](?:[^0-9a-z\n]{0,3}[0-9a-f]){15}(?![0-9a-z])")
 
 
-def _seps(found: str) -> set[str]:
-    return {c for c in found if not c.isalnum()}
-
-
-def _continues(text: str, at: int, step: int, seps: set[str]) -> bool:
-    """Does the hex run carry on past `at` (forwards for step 1, backwards for -1)? Only if
-    the next character is a separator the match used (or '-' or ':' when it used none) and
-    the token beyond it is a whole all-hex group of 4 or more, as in a UUID. A label ("id",
-    "code"), a number or a short hex word beside the pid never counts (verifier A2.5 pass 6)."""
-    i = at if step == 1 else at - 1
-    if not (0 <= i < len(text)) or text[i] not in (seps or {"-", ":"}):
-        return False
-    j, token = i + step, []
-    while 0 <= j < len(text) and text[j].isalnum():
-        token.append(text[j])
-        j += step
-    return len(token) >= 4 and all(c in "0123456789abcdef" for c in token)
+# known longer identifiers are blanked before the pid scan, so a UUID, a long hash or an IPv6
+# address is never read as a pid; nothing else gets the benefit of the doubt (a false positive
+# turns an answer into not_covered, which fails safe) (verifier A2.5 passes 1-7)
+_LONGER_IDS = re.compile(
+    r"(?<![0-9a-z])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![0-9a-z])"
+    r"|(?<![0-9a-z])[0-9a-f]{17,}(?![0-9a-z])"
+    r"|(?<![0-9a-z:])(?:[0-9a-f]{1,4}:){5,7}[0-9a-f]{1,4}(?![0-9a-z:])"
+    r"|(?<![0-9a-z:])[0-9a-f:]*::[0-9a-f:]*[0-9a-f](?![0-9a-z:])"
+)
 
 
 def _pid_like(folded: str) -> bool:
-    for m in _PID.finditer(folded):
-        found = m.group(0)
-        if not (re.search(r"[a-f]", found) and re.search(r"[0-9]", found)):
-            continue
-        seps = _seps(found)
-        if _continues(folded, m.end(), 1, seps) or _continues(folded, m.start(), -1, seps):
-            continue  # part of a longer id, such as a UUID
-        return True
-    return False
+    # exactly 16 hex characters is pid-shaped in any grouping, so it is never blanked
+    blanked = _LONGER_IDS.sub(
+        lambda m: m.group(0) if sum(c in "0123456789abcdef" for c in m.group(0)) == 16
+        else " ", folded)  # fmt: skip
+    return any(re.search(r"[a-f]", m.group(0)) and re.search(r"[0-9]", m.group(0))
+               for m in _PID.finditer(blanked))  # fmt: skip
 
 
 # citation markers in every form the app or a model writes; removed (not spaced) so one inside
