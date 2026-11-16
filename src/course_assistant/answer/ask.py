@@ -17,6 +17,7 @@ import contextlib
 import datetime as dt
 import hashlib
 import json
+import logging
 import math
 import re
 import threading
@@ -62,6 +63,7 @@ STATUSES: tuple[str, ...] = get_args(Status)
 Label = Literal["route", "answer", "ground", "integrity", "hint"]
 ErrorKind = Literal["transport", "parse", "config"]
 T = TypeVar("T")
+_ALERT_LOG = logging.getLogger("course_assistant.alert")
 
 _PID = re.compile(r"^[0-9a-f]{16}$")
 _REQUEST_ID = re.compile(r"^r-[0-9a-f]{16}$")
@@ -254,7 +256,8 @@ class Assistant:
                  store: Store, responder: Responder | Source, *, sink: TraceSink | None = None,
                  now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC),
                  timer: Callable[[], float] = time.monotonic,
-                 new_id: Callable[[], str] = lambda: uuid.uuid4().hex[:16]) -> None:  # fmt: skip
+                 new_id: Callable[[], str] = lambda: uuid.uuid4().hex[:16],
+                 alert: Callable[[str, str], None] | None = None) -> None:  # fmt: skip
         if not isinstance(assessments, AssessmentList):
             raise TypeError("assessments must be an AssessmentList")
         self.config = config
@@ -266,6 +269,7 @@ class Assistant:
         self.now = now
         self.timer = timer
         self.new_id = new_id
+        self.alert = alert  # (step, exception type): a failure inside _settle (D3.1)
         self.sessions = {u.session for u in corpus.units}
         self.briefs = {a.assessment_id: a for a in assessments.assessments}
 
@@ -370,8 +374,22 @@ class Assistant:
     def _deletions_of(self, pid: str) -> frozenset[str] | None:
         try:
             return self.store.deletion_keys(pid)
-        except Exception:
+        except Exception as exc:
+            self._settle_failed("deletion_keys", exc, pid)
             return None  # unreadable: the turn cannot tell, so it removes nothing
+
+    def _settle_failed(self, step: str, exc: BaseException, pid: str) -> None:
+        """Audit and alert a failure inside `_settle` (D3.1, deferred from B2.2): the step and
+        the exception type only, never its message. Neither may hide the turn's answer."""
+        kind = type(exc).__name__
+        _ALERT_LOG.warning("settle step %s failed (%s)", step, kind)
+        if self.alert is not None:
+            try:
+                self.alert(step, kind)
+            except Exception:
+                _ALERT_LOG.warning("settle alert hook failed")
+        with contextlib.suppress(Exception):
+            self.store.audit("system-1", "settle_failed", pid, at=self._now())
 
     def _settle(self, pid: str, conversation_id: str | None, before: frozenset[str] | None) -> None:
         """If the learner filed a delete while this turn ran, what this turn wrote goes too:
@@ -386,7 +404,8 @@ class Assistant:
             return
         try:
             new = self.store.deletions_by_key(self.store.deletion_keys(pid) - before)
-        except Exception:
+        except Exception as exc:
+            self._settle_failed("read_deletions", exc, pid)
             return
         whole = any(d.conversation_id is None for d in new)
         scoped = conversation_id is not None and any(conversation_id in d.covers for d in new)
@@ -394,17 +413,23 @@ class Assistant:
             return
         remove = getattr(self.sink, "delete_pid", None)
         if callable(remove):
-            with contextlib.suppress(Exception):
+            try:
                 remove(pid, None if conversation_id is None else {conversation_id})
+            except Exception as exc:
+                self._settle_failed("delete_traces", exc, pid)
         now = self._now()
         for d in new:
-            with contextlib.suppress(Exception):
+            try:
                 self.store.reopen_traces(d, at=max(now, d.requested_at))
+            except Exception as exc:
+                self._settle_failed("reopen_traces", exc, pid)
         if conversation_id is not None:
-            with contextlib.suppress(Exception):
+            try:
                 owned = {c.conversation_id for c in self.store.conversations_for(pid)}
                 if conversation_id in owned:
                     self.store.delete_history(pid, conversation_id, at=now)
+            except Exception as exc:
+                self._settle_failed("delete_history", exc, pid)
 
     def _store_answer(self, answer: Answer, qid: str) -> bool:
         """Store the answer; False (not an error) when the question was deleted meanwhile."""

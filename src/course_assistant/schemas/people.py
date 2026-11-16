@@ -40,6 +40,7 @@ AUDIT_ACTIONS = (
     "withdraw_consent",
     "delete_history",
     "purge",
+    "settle_failed",
 )
 AuditAction = Literal[
     "view_queue",
@@ -54,6 +55,7 @@ AuditAction = Literal[
     "withdraw_consent",
     "delete_history",
     "purge",
+    "settle_failed",
 ]
 
 

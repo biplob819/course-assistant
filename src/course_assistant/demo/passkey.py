@@ -1,0 +1,213 @@
+"""The passkey gate (D3.1, RPL-04; OWNER D-45 and D-48).
+
+The passkey is a simple numeric passcode that only the owner knows. The repo never holds it:
+the app's secret store holds a salted PBKDF2-HMAC-SHA256 hash (`DEMO_PASSKEY_HASH`), made
+locally with `course-assistant passkey-hash`. Every page and route calls `require(session)`
+before doing anything, and that holds for visitors who bring their own OpenAI key too.
+
+- The hash is read at every check, so changing the secret revokes every unlocked session at
+  once and removing it closes the gate (fail closed).
+- Codes are compared in constant time (`hmac.compare_digest` on the derived digests).
+- Failed attempts are counted per session and per IP; after `max_failures` within `window_s`
+  the caller is refused before the code is checked, even when the code is right.
+"""
+
+from __future__ import annotations
+
+import base64
+import binascii
+import hashlib
+import hmac
+import os
+import re
+import secrets
+import threading
+import time
+from collections import deque
+from collections.abc import Callable, Mapping
+
+from course_assistant.demo._errors import GuardRefused, PasskeyConfigError
+
+SECRET_NAME = "DEMO_PASSKEY_HASH"
+SCHEME = "pbkdf2_sha256"
+ITERATIONS = 600_000
+MIN_ITERATIONS = 100_000
+SALT_BYTES = 16
+_CODE = re.compile(r"^[0-9]{6,12}$")
+_HASH = re.compile(
+    r"^pbkdf2_sha256\$([0-9]{6,8})\$([A-Za-z0-9+/=]{16,64})\$([A-Za-z0-9+/=]{40,64})$"
+)
+MAX_KEYS = 10_000  # failure memory bound: the oldest idle keys are forgotten first
+
+CLOSED = "The demo is closed right now."
+NEEDED = "Enter the passkey to continue."
+WRONG = "Wrong passkey."
+LOCKED = "Too many wrong passkeys. Try again in 15 minutes."
+
+
+def valid_code(code: object) -> bool:
+    return isinstance(code, str) and _CODE.fullmatch(code) is not None
+
+
+def _derive(code: str, salt: bytes, iterations: int) -> bytes:
+    return hashlib.pbkdf2_hmac("sha256", code.encode("utf-8"), salt, iterations)
+
+
+def hash_passcode(code: str, *, salt: bytes | None = None, iterations: int = ITERATIONS) -> str:
+    """`pbkdf2_sha256$<iterations>$<salt b64>$<digest b64>` for a 6-12 digit passcode."""
+    if not valid_code(code):
+        raise ValueError("a passcode is 6 to 12 digits")
+    if iterations < MIN_ITERATIONS:
+        raise ValueError(f"iterations must be at least {MIN_ITERATIONS}")
+    salt = secrets.token_bytes(SALT_BYTES) if salt is None else salt
+    if len(salt) < SALT_BYTES:
+        raise ValueError(f"salt must be at least {SALT_BYTES} bytes")
+    b64 = base64.b64encode
+    digest = _derive(code, salt, iterations)
+    return f"{SCHEME}${iterations}${b64(salt).decode()}${b64(digest).decode()}"
+
+
+def _parse(stored: str) -> tuple[int, bytes, bytes]:
+    m = _HASH.fullmatch(stored.strip()) if isinstance(stored, str) else None
+    if m is None:
+        raise PasskeyConfigError(f"{SECRET_NAME} is not a passkey hash")
+    try:
+        salt = base64.b64decode(m[2], validate=True)
+        digest = base64.b64decode(m[3], validate=True)
+    except (binascii.Error, ValueError):
+        raise PasskeyConfigError(f"{SECRET_NAME} is not a passkey hash") from None
+    iterations = int(m[1])
+    if iterations < MIN_ITERATIONS or len(salt) < SALT_BYTES or len(digest) != 32:
+        raise PasskeyConfigError(f"{SECRET_NAME} is not a passkey hash")
+    return iterations, salt, digest
+
+
+def verify_passcode(code: str, stored: str) -> bool:
+    """True only when `code` derives to the stored digest. A malformed hash raises
+    `PasskeyConfigError` (never a pass); a malformed code is derived anyway and fails."""
+    iterations, salt, digest = _parse(stored)
+    candidate = code if isinstance(code, str) else ""
+    ok = hmac.compare_digest(_derive(candidate, salt, iterations), digest)
+    return ok and valid_code(code)
+
+
+def fingerprint(stored: str) -> str:
+    """Which hash a session was unlocked against (never the hash itself)."""
+    return hashlib.sha256(stored.strip().encode("utf-8")).hexdigest()[:16]
+
+
+def read_secret(name: str, *, env: Mapping[str, str] | None = None,
+                secrets_store: Mapping[str, object] | None = None) -> str | None:  # fmt: skip
+    """A secret from the environment first, then a Streamlit-style secrets mapping; None when
+    unset or blank. Never from a file in the repo."""
+    env = os.environ if env is None else env
+    value = env.get(name)
+    if (value is None or not value.strip()) and secrets_store is not None:
+        try:
+            raw = secrets_store.get(name)
+        except Exception:
+            raw = None
+        value = raw if isinstance(raw, str) else None
+    return value.strip() if value and value.strip() else None
+
+
+def env_hash(
+    env: Mapping[str, str] | None = None, secrets_store: Mapping[str, object] | None = None
+) -> Callable[[], str | None]:
+    """A `load_hash` for the gate that reads `DEMO_PASSKEY_HASH` at every check."""
+    return lambda: read_secret(SECRET_NAME, env=env, secrets_store=secrets_store)
+
+
+class PasskeyGate:
+    def __init__(self, load_hash: Callable[[], str | None], *, max_failures: int = 5,
+                 window_s: float = 900.0, clock: Callable[[], float] = time.monotonic,
+                 max_keys: int = MAX_KEYS) -> None:  # fmt: skip
+        if max_failures < 1 or window_s <= 0 or max_keys < 2:
+            raise ValueError("max_failures, window_s and max_keys must be positive")
+        self._load = load_hash
+        self.max_failures = max_failures
+        self.window_s = window_s
+        self._clock = clock
+        self._max_keys = max_keys
+        self._failures: dict[tuple[str, str], deque[float]] = {}
+        self._unlocked: dict[str, str] = {}
+        self._lock = threading.Lock()
+
+    def __repr__(self) -> str:
+        return f"PasskeyGate(max_failures={self.max_failures}, window_s={self.window_s})"
+
+    def _stored(self) -> str:
+        try:
+            stored = self._load()
+        except Exception:
+            stored = None
+        if not stored:
+            raise GuardRefused(CLOSED)
+        try:
+            _parse(stored)
+        except PasskeyConfigError:
+            raise GuardRefused(CLOSED) from None
+        return stored
+
+    @staticmethod
+    def _keys(session: str, ip: str | None) -> list[tuple[str, str]]:
+        keys = [("session", session)]
+        if ip:
+            keys.append(("ip", ip))
+        return keys
+
+    def _recent(self, key: tuple[str, str], now: float) -> deque[float]:
+        hits = self._failures.get(key)
+        if hits is None:
+            return deque()
+        while hits and now - hits[0] > self.window_s:
+            hits.popleft()
+        if not hits:
+            del self._failures[key]
+            return deque()
+        return hits
+
+    def locked(self, session: str, ip: str | None = None) -> bool:
+        with self._lock:
+            now = self._clock()
+            return any(len(self._recent(k, now)) >= self.max_failures
+                       for k in self._keys(session, ip))  # fmt: skip
+
+    def unlock(self, code: str, *, session: str, ip: str | None = None) -> None:
+        """Unlock `session` with the passcode, or raise `GuardRefused`."""
+        if not isinstance(session, str) or not session:
+            raise GuardRefused(NEEDED)
+        stored = self._stored()
+        if self.locked(session, ip):
+            raise GuardRefused(LOCKED)
+        if verify_passcode(code, stored):
+            with self._lock:
+                self._failures.pop(("session", session), None)
+                self._unlocked[session] = fingerprint(stored)
+                self._bound(self._unlocked)
+            return
+        with self._lock:
+            now = self._clock()
+            for key in self._keys(session, ip):
+                self._recent(key, now)
+                self._failures.setdefault(key, deque()).append(now)
+            self._bound(self._failures)
+        raise GuardRefused(WRONG)
+
+    def require(self, session: str) -> None:
+        """Every page and route calls this first: refuse unless `session` was unlocked against
+        the hash that is set now."""
+        stored = self._stored()
+        with self._lock:
+            ok = isinstance(session, str) and self._unlocked.get(session) == fingerprint(stored)
+        if not ok:
+            raise GuardRefused(NEEDED)
+
+    def lock_session(self, session: str) -> None:
+        """Forget an unlocked session (sign out)."""
+        with self._lock:
+            self._unlocked.pop(session, None)
+
+    def _bound(self, table: dict) -> None:  # type: ignore[type-arg]
+        while len(table) > self._max_keys:
+            del table[next(iter(table))]  # insertion order: the oldest first

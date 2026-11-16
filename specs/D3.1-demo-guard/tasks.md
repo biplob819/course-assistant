@@ -1,0 +1,10 @@
+# D3.1 tasks
+
+- [x] 1. Spec and criteria written
+- [x] 2. node_start GO
+- [x] 3. Tests first
+- [x] 4. Build
+- [x] 5. Converge twice
+- [ ] 6. Verifier
+- [ ] 7. Proofs, green, commit
+- [ ] Live (owner, pending): `make demo-cache` on the ingested sample course; demo OpenAI project with a hard limit; secrets set in the host

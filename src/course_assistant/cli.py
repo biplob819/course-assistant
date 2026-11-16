@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -45,7 +46,38 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rep.add_argument("--fixture", type=Path, help="default: the packaged golden replay file")
     rep.add_argument("--json", action="store_true", help="machine-readable output")
+    sub.add_parser(
+        "passkey-hash",
+        help="turn the demo passcode into the salted hash for the secret store",
+        description="Read a 6-12 digit passcode twice without echo and print only its salted "
+        "PBKDF2 hash, to paste into the app's secret store as DEMO_PASSKEY_HASH. Writes no "
+        "file and makes no network call; changing the hash revokes every unlocked session.",
+    )
     return ap
+
+
+def _passkey_hash(read: Callable[[str], str] | None = None) -> int:
+    from course_assistant.demo.passkey import SECRET_NAME, hash_passcode, valid_code
+
+    if read is None:
+        import getpass
+
+        read = getpass.getpass
+    try:
+        first = read("Demo passcode (6-12 digits): ")
+        second = read("Again: ")
+    except (EOFError, KeyboardInterrupt):
+        print("passkey-hash: no passcode read", file=sys.stderr)
+        return EXIT_CONFIG
+    if first != second:
+        print("passkey-hash: the two entries differ", file=sys.stderr)
+        return EXIT_CONFIG
+    if not valid_code(first):
+        print("passkey-hash: a passcode is 6 to 12 digits", file=sys.stderr)
+        return EXIT_CONFIG
+    print(hash_passcode(first))
+    print(f"Store this line as {SECRET_NAME} in the app's secret store.", file=sys.stderr)
+    return EXIT_OK
 
 
 def _eval_replay(args: argparse.Namespace) -> int:
@@ -122,6 +154,8 @@ def main(argv: list[str] | None = None) -> int:
         return _ingest(args)
     if args.command == "eval-replay":
         return _eval_replay(args)
+    if args.command == "passkey-hash":
+        return _passkey_hash()
     return EXIT_OK
 
 
