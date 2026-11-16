@@ -110,18 +110,16 @@ def cmd_import(args: argparse.Namespace) -> int:
 
 
 def cmd_score(args: argparse.Namespace) -> int:
-    from evalkit import run as R
-
-    from course_assistant.eval.calibrate import score_probe
+    from course_assistant.eval.calibrate import score_groundedness, score_probe
 
     run = evalkit_dir(args.run)
-    report = R.cal_score(run)
+    report = score_groundedness(run, log=TUNING_LOG)
     for a in report.agreements:
         print(
             f"groundedness {a.judge}: held-out kappa {a.kappa.point:.2f} "
             f"[{a.kappa.lo:.2f}, {a.kappa.hi:.2f}] over {a.n_claims} claims"
         )
-    probe = score_probe(run)
+    probe = score_probe(run, log=TUNING_LOG)
     for b in probe.agreements:
         print(
             f"integrity {b.judge}: held-out kappa {b.kappa.point:.2f} "

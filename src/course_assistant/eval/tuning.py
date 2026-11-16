@@ -32,7 +32,9 @@ from course_assistant.schemas._base import FrozenMap, Model, NonNegInt
 TARGET_GROUNDED = 0.90  # §6.4 grounded answer rate (point)
 TARGET_HANDOVER = 0.95  # §6.4 correct handover
 HANDOVER_RULES = frozenset({"B2", "B4", "B7"})
-KINDS = ("grounding_bar", "support_rules", "heldout_scored", "heldout_refreshed")
+KINDS = ("grounding_bar", "support_rules", "heldout_scored", "heldout_refreshed",
+         "calibration_scored")
+REFRESH_OPENING = "Refreshes held-out"  # a heldout_refreshed decision must open with this
 _DECISION = re.compile(r"^D-\d+$")
 
 
@@ -159,11 +161,23 @@ def current(log: Sequence[Mapping[str, Any]]) -> tuple[float | None, str | None]
     return bar, ground
 
 
-def decision_exists(decision: str, decisions_text: str) -> bool:
+def _decision_row(decision: str, decisions_text: str) -> str | None:
     if not _DECISION.fullmatch(decision):
-        return False
-    row = re.compile(rf"^\|\s*(?:OWNER\s+)?{re.escape(decision)}\s*\|", re.M)
-    return row.search(decisions_text) is not None
+        return None
+    row = re.compile(rf"^\|\s*(?:OWNER\s+)?{re.escape(decision)}\s*\|.*$", re.M)
+    m = row.search(decisions_text)
+    return m.group(0) if m else None
+
+
+def decision_exists(decision: str, decisions_text: str) -> bool:
+    return _decision_row(decision, decisions_text) is not None
+
+
+def decision_refreshes(decision: str, decisions_text: str) -> bool:
+    """The decision's own text (a cell after its id) opens with "Refreshes held-out"."""
+    row = _decision_row(decision, decisions_text)
+    cells = [c.strip() for c in (row or "").strip().strip("|").split("|")][1:]
+    return any(c.startswith(REFRESH_OPENING) for c in cells)
 
 
 GENESIS = "0" * 64
@@ -216,9 +230,14 @@ def log_change(path: Path, entry: Mapping[str, Any], decisions_text: str) -> dic
         return log_heldout_scored(path, run=str(entry.get("run", "")),
                                   bar=float(entry.get("bar", 0.0)),
                                   ground_version=str(entry.get("ground_version", "")))  # fmt: skip
+    if kind == "calibration_scored":
+        raise TuningError("calibration scores are logged by scoring itself")
     decision = str(entry.get("decision", ""))
     if not decision_exists(decision, decisions_text):
         raise TuningError(f"decision {decision!r} is not a row of decisions.md")
+    if kind == "heldout_refreshed" and not decision_refreshes(decision, decisions_text):
+        raise TuningError(f"a heldout_refreshed entry needs a decision opening with "
+                          f"{REFRESH_OPENING!r}; {decision} does not")  # fmt: skip
     log = read_log(path)
     bar, ground = current(log)
     row: dict[str, Any] = {"kind": kind, "decision": decision,
@@ -241,6 +260,50 @@ def log_change(path: Path, entry: Mapping[str, Any], decisions_text: str) -> dic
             if k in entry:
                 row[k] = entry[k]
     return _append(path, row)
+
+
+def log_calibration_scored(path: Path, *, calibration: str, digest: str, rubric_hash: str,
+                           run: str) -> dict[str, Any]:  # fmt: skip
+    """One held-out calibration scoring: which held-out set (digest) under which rubric. The
+    committed log is the one place this history lives, across run folders (CAL-01)."""
+    return _append(path, {"kind": "calibration_scored", "calibration": calibration,
+                          "digest": digest, "rubric_hash": rubric_hash, "run": run,
+                          "at": dt.date.today().isoformat()})  # fmt: skip
+
+
+def scored_rubrics(log: Sequence[Mapping[str, Any]], calibration: str, digest: str) -> set[str]:
+    return {str(e["rubric_hash"]) for e in log if e["kind"] == "calibration_scored"
+            and e.get("calibration") == calibration and e.get("digest") == digest}  # fmt: skip
+
+
+def continuity_problems(log: Sequence[Mapping[str, Any]], decisions_text: str) -> list[str]:
+    """Replays the log: every change continues from the value before it and names an existing
+    decision; a refresh names a "Refreshes held-out" decision. A chain recomputed after a
+    forged line still fails here."""
+    bar: float | None = None
+    ground: str | None = None
+    out = []
+    for i, e in enumerate(log, start=1):
+        kind = e.get("kind")
+        if kind not in KINDS:
+            out.append(f"line {i}: unknown kind {kind!r}")
+            continue
+        if kind in ("grounding_bar", "support_rules", "heldout_refreshed") and not \
+                decision_exists(str(e.get("decision", "")), decisions_text):  # fmt: skip
+            out.append(f"line {i}: decision {e.get('decision')!r} is not a row of decisions.md")
+        if kind == "heldout_refreshed" and not decision_refreshes(str(e.get("decision", "")),
+                                                                  decisions_text):  # fmt: skip
+            out.append(f"line {i}: heldout_refreshed needs a 'Refreshes held-out' decision")
+        if kind == "grounding_bar":
+            if e.get("from") != bar or e.get("to") == bar:
+                out.append(f"line {i}: a grounding_bar change does not continue from {bar!r}")
+            bar = float(e["to"])
+        elif kind == "support_rules":
+            to = e.get("to")
+            if e.get("from") != ground or to == ground or not str(to).startswith("ground-"):
+                out.append(f"line {i}: a support_rules change does not continue from {ground!r}")
+            ground = str(to)
+    return out
 
 
 def unlogged(log: Sequence[Mapping[str, Any]], bar: float | None, ground_version: str) -> list[str]:

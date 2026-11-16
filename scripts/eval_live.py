@@ -106,6 +106,25 @@ def heldout_gate(split: str, log_path: Path = TUNING_LOG) -> str | None:
     return None
 
 
+def unlogged_gate(split: str, drift: list[str], *, allow_unlogged: bool) -> str | None:
+    """`--allow-unlogged` is for tuning runs only: a held-out run always needs a logged bar
+    and ground version."""
+    if not drift:
+        return None
+    if split in ("heldout", "both"):
+        return "a held-out run needs the bar and support rules logged (no --allow-unlogged)"
+    if not allow_unlogged:
+        return ("log the change first (calibrate.py tune-bar --log), or pass --allow-unlogged "
+                "for a tuning run")  # fmt: skip
+    return None
+
+
+def logs_heldout_score(split: str, *, replay: bool) -> bool:
+    """Every run that scores the held-out split logs it, a replayed one too."""
+    del replay  # a replay scores the held-out split just the same
+    return split in ("heldout", "both")
+
+
 def plan_budget(cases: list[Any], max_cost: float) -> Any:
     """One cap for the run: the judges' share sized from the probes, EvalKit the rest. Refused
     when either share would be below its estimate."""
@@ -185,9 +204,9 @@ def main(argv: list[str] | None = None) -> int:
     if gate is not None:
         print(f"eval_live: {gate}", file=sys.stderr)
         return 2
-    if drift and not args.allow_unlogged:
-        print("eval_live: log the change first (calibrate.py tune-bar --log), or pass "
-              "--allow-unlogged for a tuning run", file=sys.stderr)  # fmt: skip
+    refusal = unlogged_gate(args.split, drift, allow_unlogged=args.allow_unlogged)
+    if refusal is not None:
+        print(f"eval_live: {refusal}", file=sys.stderr)
         return 2
     try:
         budget = plan_budget(cases, args.max_cost)
@@ -195,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"eval_live: {exc}", file=sys.stderr)
         return 3
     code = _run(args, config, corpus, out_dir, task, len(cases), budget)
-    if args.split in ("heldout", "both") and not args.replay:
+    if logs_heldout_score(args.split, replay=bool(args.replay)):
         from course_assistant.eval.tuning import log_heldout_scored
 
         log_heldout_scored(TUNING_LOG, run=out_dir.name, bar=config.grounding_bar,

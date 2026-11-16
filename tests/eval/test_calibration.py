@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import datetime as dt
+import hashlib
 import io
 import json
 import shutil
@@ -110,6 +111,7 @@ def test_evalkit_labels_and_scores_the_exported_groundedness_sheet(cal_run, tmp_
     assert sheet == run_dir / "calibration" / "sheet.json" and n > 0
     with pytest.raises(CalibrationError, match="exists"):
         C.export_groundedness(run_dir, n=12, n_relabel=4)
+
     # the owner labels in EvalKit's page or CSV; simulated: every claim supported, one not
     rows = list(csv.DictReader(io.StringIO(csv_path.read_text(encoding="utf-8"))))
     for i, row in enumerate(rows):
@@ -135,6 +137,20 @@ def test_evalkit_labels_and_scores_the_exported_groundedness_sheet(cal_run, tmp_
     assert summary["calibration_status"] == "calibrated"
     with pytest.raises(CalibrationError, match="labels"):
         C.export_groundedness(run_dir, n=12, n_relabel=4, force=True)  # labels fit this sheet
+
+
+def _label_groundedness(run_dir: Path, tmp: Path) -> None:
+    _, csv_path, _ = C.export_groundedness(run_dir, n=12, n_relabel=4)
+    rows = list(csv.DictReader(io.StringIO(csv_path.read_text(encoding="utf-8"))))
+    for row in rows:
+        row["label"] = "S"
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=list(rows[0]), lineterminator="\n")
+    w.writeheader()
+    w.writerows(rows)
+    filled = tmp / f"g-{run_dir.parent.name}.csv"
+    filled.write_text(buf.getvalue(), encoding="utf-8")
+    R.cal_import(run_dir, filled)
 
 
 # ======================= CAL-01 integrity (probe) labels =======================
@@ -274,7 +290,8 @@ def test_a_reexported_heldout_set_is_never_rescored_under_another_rubric(cal_run
     C.export_probe(run_dir, n=8, n_relabel=4)
     rows1 = _label_all(run_dir, tmp_path, "a.csv")
     at = dt.datetime(2026, 11, 20, tzinfo=dt.UTC)
-    r1 = C.score_probe(run_dir, now=at)
+    log = tmp_path / "log.jsonl"
+    r1 = C.score_probe(run_dir, now=at, log=log)
     for f in C.probe_dir(run_dir).glob("labels-*.json"):
         f.rename(tmp_path / f.name)
     C.export_probe(run_dir, n=8, n_relabel=4, force=True)  # fresh random keys
@@ -283,7 +300,70 @@ def test_a_reexported_heldout_set_is_never_rescored_under_another_rubric(cal_run
     assert C.heldout_digest(rows1) == C.heldout_digest(rows2) == r1.heldout_digest
     monkeypatch.setattr(C, "RUBRIC_HASH", "a-changed-rubric-hash")
     with pytest.raises(CalibrationError, match="rubric"):
-        C.score_probe(run_dir, now=at)
+        C.score_probe(run_dir, now=at, log=log)
+
+
+def _restamp(run_dir: Path, rubric: str) -> None:
+    """The run re-judged under another rubric (as `eval_live --replay` into a new folder)."""
+    path = run_dir / "records.jsonl"
+    rows = [json.loads(x) for x in path.read_text("utf-8").splitlines() if x.strip()]
+    for r in rows:
+        for ts in (r.get("task_scores") or {}).values():
+            if "judges" in ts.get("details", {}):
+                ts["details"]["rubric_hash"] = rubric
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+
+
+@pytest.mark.safety
+def test_heldout_rescoring_under_another_rubric_is_refused_across_run_folders(
+        cal_run, tmp_path, monkeypatch):  # fmt: skip
+    """Verifier E2.3 pass 2: the digest-to-rubric history lives in the committed tuning log,
+    so neither a new run folder nor moving the calibration folder aside can rescore."""
+    at = dt.datetime(2026, 11, 20, tzinfo=dt.UTC)
+    log = tmp_path / "log.jsonl"
+    a = fresh(cal_run, tmp_path / "a")
+    C.export_probe(a, n=8, n_relabel=4)
+    _label_all(a, tmp_path, "a.csv")
+    first = C.score_probe(a, now=at, log=log)
+    logged = [e for e in tuning.read_log(log) if e["kind"] == "calibration_scored"]
+    assert [(e["calibration"], e["digest"], e["rubric_hash"]) for e in logged] == [
+        ("integrity", first.heldout_digest, RUBRIC_HASH)]
+    assert tuning.chain_problems(log) == []
+    # the same rubric may score the same set again (e.g. after a relabel round)
+    C.score_probe(a, now=at, log=log)
+    monkeypatch.setattr(C, "RUBRIC_HASH", "a-changed-rubric")
+    # route 1: a new run folder, re-judged under the new rubric, same seed so same sample
+    b = fresh(cal_run, tmp_path / "b")
+    _restamp(b, "a-changed-rubric")
+    C.export_probe(b, n=8, n_relabel=4)
+    _label_all(b, tmp_path, "b.csv")
+    with pytest.raises(CalibrationError, match="already scored under another rubric") as info:
+        C.score_probe(b, now=at, log=log)
+    assert "aside" not in str(info.value)
+    # route 2: the calibration folder moved aside and the sheet exported again
+    shutil.move(str(C.probe_dir(a)), str(tmp_path / "aside"))
+    _restamp(a, "a-changed-rubric")
+    C.export_probe(a, n=8, n_relabel=4)
+    _label_all(a, tmp_path, "c.csv")
+    with pytest.raises(CalibrationError, match="already scored under another rubric"):
+        C.score_probe(a, now=at, log=log)
+    assert len([e for e in tuning.read_log(log) if e["kind"] == "calibration_scored"]) == 2
+
+
+@pytest.mark.safety
+def test_groundedness_rescoring_is_guarded_by_the_same_log(cal_run, tmp_path, monkeypatch):
+    log = tmp_path / "log.jsonl"
+    a = fresh(cal_run, tmp_path / "a")
+    _label_groundedness(a, tmp_path)
+    report = C.score_groundedness(a, log=log)
+    (entry,) = [e for e in tuning.read_log(log) if e["kind"] == "calibration_scored"]
+    assert (entry["calibration"], entry["digest"]) == ("groundedness", report.heldout_digest)
+    monkeypatch.setattr(C, "JUDGE_PROMPT_HASH", "a-changed-judge-rubric")
+    b = fresh(cal_run, tmp_path / "b")
+    _label_groundedness(b, tmp_path)
+    with pytest.raises(CalibrationError, match="already scored under another rubric"):
+        C.score_groundedness(b, log=log)
+    assert not (b / "calibration" / "calibration.json").exists()  # refused before scoring
 
 
 @pytest.mark.safety
@@ -322,7 +402,11 @@ def test_integrity_files_export_import_and_score_on_a_run_folder(cal_run, tmp_pa
     assert C.import_probe(run_dir, again, relabel=True) == 4
     with pytest.raises(CalibrationError, match="already exists"):
         C.import_probe(run_dir, first)
-    report = C.score_probe(run_dir, now=dt.datetime(2026, 11, 20, tzinfo=dt.UTC))
+    with pytest.raises(CalibrationError, match="already has labels") as refused:
+        C.export_probe(run_dir, n=8, n_relabel=4, force=True)
+    assert "aside" not in str(refused.value)  # never advice that would reopen a rescore
+    report = C.score_probe(run_dir, now=dt.datetime(2026, 11, 20, tzinfo=dt.UTC),
+                           log=tmp_path / "log.jsonl")
     assert all(a.agreement == 1.0 for a in report.agreements)
     saved = json.loads((d / "calibration.json").read_text(encoding="utf-8"))
     assert saved["current"]["heldout_digest"] == report.heldout_digest
@@ -405,7 +489,8 @@ def test_bar_sweep_refuses_heldout_cases_and_bars_below_the_recording(tuning_run
 @pytest.mark.contract
 def test_tuning_log_records_every_change_against_a_decision(tmp_path):
     log = tmp_path / "log.jsonl"
-    text = "| D-1 | x |\n| OWNER D-2 | y |\n"
+    text = ("| D-1 | x |\n| OWNER D-2 | y |\n"
+            "| D-3 | 2026-11-18 | Refreshes held-out: a new held-out set was written | a | b |\n")
     tuning.log_change(log, {"kind": "grounding_bar", "from": None, "to": 0.5,
                             "decision": "D-1"}, text)  # fmt: skip
     with pytest.raises(tuning.TuningError, match="not a row"):
@@ -429,8 +514,11 @@ def test_tuning_log_records_every_change_against_a_decision(tmp_path):
     tuning.log_change(log, {"kind": "grounding_bar", "from": 0.5, "to": 0.6, "decision": "D-2",
                             "results": [{"bar": 0.6}]}, text)  # fmt: skip
     assert tuning.fresh_heldout_required(tuning.read_log(log))
-    tuning.log_change(log, {"kind": "heldout_refreshed", "decision": "D-2"}, text)
+    with pytest.raises(tuning.TuningError, match="Refreshes held-out"):
+        tuning.log_change(log, {"kind": "heldout_refreshed", "decision": "D-2"}, text)
+    tuning.log_change(log, {"kind": "heldout_refreshed", "decision": "D-3"}, text)
     assert not tuning.fresh_heldout_required(tuning.read_log(log))
+    assert tuning.continuity_problems(tuning.read_log(log), text) == []
     assert all("text" not in json.dumps(e) for e in tuning.read_log(log))
 
 
@@ -442,10 +530,87 @@ def test_committed_ground_version_and_bar_match_the_tuning_log():
     bar, _ = tuning.current(entries)
     assert bar is not None  # the bar comes from the log, never a constant in this test
     assert tuning.unlogged(entries, bar, GroundStep.version()) == []
-    for e in entries:
-        if e["kind"] != "heldout_scored":
-            assert tuning.decision_exists(e["decision"], DECISIONS), e["decision"]
+    assert tuning.continuity_problems(entries, DECISIONS) == []  # from/to, decisions
+    assert _append_only_problems(TUNING_LOG) == []  # never rewritten against git
     assert not tuning.fresh_heldout_required(entries)
+
+
+def _git_show(rev: str, rel: str) -> str | None:
+    """The file at `rev`, "" when the revision has no such file, None when git is unusable."""
+    import subprocess
+
+    try:
+        ok = subprocess.run(["git", "rev-parse", "--verify", "-q", f"{rev}^{{commit}}"],
+                            cwd=ROOT, capture_output=True, text=True)  # fmt: skip
+    except FileNotFoundError:
+        return None
+    if ok.returncode != 0:
+        return None if rev == "HEAD" else ""
+    out = subprocess.run(["git", "show", f"{rev}:{rel}"], cwd=ROOT, capture_output=True,
+                         text=True)  # fmt: skip
+    return out.stdout if out.returncode == 0 else ""
+
+
+def _append_only_problems(path: Path) -> list[str]:
+    """The working log starts with HEAD's log, and in CI HEAD's log starts with HEAD^'s."""
+    import os
+
+    rel = path.relative_to(ROOT).as_posix()
+    head = _git_show("HEAD", rel)
+    if head is None:
+        pytest.skip("no git: the append-only check needs history")
+    out = []
+    if not path.read_text(encoding="utf-8").startswith(head):
+        out.append("the working tuning log rewrites lines committed at HEAD")
+    if os.environ.get("CI"):
+        parent = _git_show("HEAD^", rel)
+        if parent and not head.startswith(parent):
+            out.append("HEAD's tuning log rewrites lines committed at HEAD^")
+    return out
+
+
+def test_a_rechained_forged_log_is_still_caught(tmp_path):
+    """Verifier E2.3 pass 2: an unkeyed chain can be recomputed, so continuity of the values
+    and the git prefix are checked as well."""
+    rows = tuning.read_log(TUNING_LOG)
+    gv = rows[-1]["ground_version"]
+    forged = [*rows,
+              {"kind": "grounding_bar", "decision": "D-52", "from": 0.9, "to": 0.7, "at": "x",
+               "ground_version": gv},
+              {"kind": "support_rules", "decision": "D-52", "from": "whatever",
+               "to": "ground-NEWRULES", "at": "x", "ground_version": "ground-NEWRULES"}]
+    log = tmp_path / "forged.jsonl"
+    prev = tuning.GENESIS
+    lines = []
+    for r in forged:
+        line = json.dumps({**{k: v for k, v in r.items() if k != "prev"}, "prev": prev},
+                          sort_keys=True)  # fmt: skip
+        lines.append(line)
+        prev = hashlib.sha256(line.encode()).hexdigest()
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert tuning.chain_problems(log) == []  # the chain alone is fooled
+    found = tuning.continuity_problems(tuning.read_log(log), DECISIONS)
+    assert len(found) == 2 and all("does not continue" in f for f in found)
+    # dropping a committed line: the git prefix check catches it
+    committed = TUNING_LOG.read_text(encoding="utf-8").splitlines()
+    if len(committed) > 1:
+        dropped = tmp_path / "dropped.jsonl"
+        dropped.write_text("\n".join(committed[1:]) + "\n", encoding="utf-8")
+        assert not dropped.read_text(encoding="utf-8").startswith(
+            TUNING_LOG.read_text(encoding="utf-8"))
+
+
+def test_eval_live_never_lets_a_heldout_run_skip_the_log(tmp_path):
+    import eval_live
+
+    assert eval_live.unlogged_gate("heldout", ["bar drift"], allow_unlogged=True) is not None
+    assert eval_live.unlogged_gate("both", ["bar drift"], allow_unlogged=True) is not None
+    assert eval_live.unlogged_gate("public", ["bar drift"], allow_unlogged=True) is None
+    assert eval_live.unlogged_gate("public", ["bar drift"], allow_unlogged=False) is not None
+    assert eval_live.unlogged_gate("heldout", [], allow_unlogged=False) is None
+    assert eval_live.logs_heldout_score("heldout", replay=True)  # replays score held-out too
+    assert eval_live.logs_heldout_score("both", replay=False)
+    assert not eval_live.logs_heldout_score("public", replay=True)
 
 
 def test_tuning_log_hash_chain_catches_edits_and_heldout_scoring_blocks_changes(tmp_path):

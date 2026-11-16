@@ -141,7 +141,8 @@ def export_groundedness(run_dir: Path, *, force: bool = False, n: int = 100,
     cal = run_dir / "calibration"
     sheet = cal / "sheet.json"
     if sheet.is_file() and any(cal.glob("labels-*.json")):
-        raise CalibrationError(f"{sheet} already has labels; move the calibration folder aside")
+        raise CalibrationError(f"{sheet} already has labels; a held-out set is scored once per "
+                               "rubric, so a new export needs a fresh held-out set")
     if sheet.is_file() and not force:
         raise CalibrationError(f"{sheet} exists (force to replace it; no labels yet)")
     records, cases = R.read_records(run_dir), R.read_cases(run_dir)
@@ -150,6 +151,33 @@ def export_groundedness(run_dir: Path, *, force: bool = False, n: int = 100,
     _write(sheet, json.dumps([r.model_dump(mode="json") for r in rows], indent=1) + "\n")
     _write(cal / "sheet.csv", sheet_csv(rows))
     return sheet, cal / "sheet.csv", len(rows)
+
+
+def score_groundedness(run_dir: Path, *, log: Path) -> Any:
+    """EvalKit's `cal_score`, guarded first by the committed digest-to-rubric history: a
+    held-out claim set already scored under another judge rubric is refused before scoring."""
+    from evalkit import run as R
+    from evalkit.pipeline.calibrate import heldout_digest as ek_digest
+    from evalkit.pipeline.calibrate import import_labels
+    from evalkit.pipeline.labeller import load_labels
+
+    from course_assistant.eval.tuning import log_calibration_scored, read_log, scored_rubrics
+
+    rows = R._load_sheet(run_dir)  # pyright: ignore[reportPrivateUsage]
+    first = load_labels(run_dir / "calibration" / "labels-first.json")
+    if first is None:
+        raise CalibrationError("no first-round groundedness labels yet")
+    relabel = load_labels(run_dir / "calibration" / "labels-relabel.json")
+    digest = ek_digest(import_labels(rows, first, relabel))
+    other = scored_rubrics(read_log(log), "groundedness", digest) - {JUDGE_PROMPT_HASH}
+    if other:
+        raise CalibrationError(f"this held-out set was already scored under another rubric "
+                               f"({sorted(other)[0]}, tuning log); a changed rubric needs a "
+                               "fresh held-out set (Tech Spec §5.7)")  # fmt: skip
+    report = R.cal_score(run_dir)
+    log_calibration_scored(log, calibration="groundedness", digest=report.heldout_digest,
+                           rubric_hash=JUDGE_PROMPT_HASH, run=run_dir.name)  # fmt: skip
+    return report
 
 
 # =============================== integrity (probe) labels ===============================
@@ -333,6 +361,7 @@ def _verdict_rubrics(records: Iterable[Record], kind: str) -> dict[str, str | No
 def probe_report(rows: Sequence[ProbeRow], first: ProbeLabelFile, relabel: ProbeLabelFile | None,
                  records: Sequence[Record], *, kind: str = "integrity", seed: int,
                  scored_at: dt.datetime, previous: Sequence[ProbeCalibration] = (),
+                 logged: Sequence[Mapping[str, Any]] = (),
                  n_resamples: int = 10_000,
                  min_coverage: float = MIN_JUDGE_COVERAGE) -> ProbeCalibration:  # fmt: skip
     """Per-judge kappa against the owner's first-round labels on the held-out half only."""
@@ -356,6 +385,13 @@ def probe_report(rows: Sequence[ProbeRow], first: ProbeLabelFile, relabel: Probe
     if relabel is not None and any(not by_key[k].relabel for k in relabel.labels):
         raise CalibrationError("relabel-round labels outside the relabel set")
     digest = heldout_digest(rows)
+    from course_assistant.eval.tuning import scored_rubrics
+
+    other = scored_rubrics(logged, kind, digest) - {RUBRIC_HASH}
+    if other:
+        raise CalibrationError(f"this held-out set was already scored under another rubric "
+                               f"({sorted(other)[0]}, tuning log); a changed rubric needs a "
+                               "fresh held-out set (Tech Spec §5.4)")  # fmt: skip
     for old in previous:
         if old.heldout_digest == digest and old.rubric_hash != RUBRIC_HASH:
             raise CalibrationError("this held-out set was already scored under another rubric; "
@@ -422,7 +458,8 @@ def export_probe(run_dir: Path, *, kind: str = "integrity", force: bool = False,
         raise CalibrationError("judging is still pending: finish the run before calibrating")
     d = probe_dir(run_dir, kind)
     if (d / "sheet.json").is_file() and any(d.glob("labels-*.json")):
-        raise CalibrationError(f"the {kind} sheet already has labels; move it aside first")
+        raise CalibrationError(f"the {kind} sheet already has labels; a held-out set is scored "
+                               "once per rubric, so a new export needs a fresh held-out set")
     if (d / "sheet.json").is_file() and not force:
         raise CalibrationError(f"the {kind} sheet exists (force to replace it; no labels yet)")
     records, cases = R.read_records(run_dir), R.read_cases(run_dir)
@@ -446,9 +483,13 @@ def import_probe(run_dir: Path, csv_path: Path, *, kind: str = "integrity",
     return len(labels.labels)
 
 
-def score_probe(run_dir: Path, *, kind: str = "integrity",
+def score_probe(run_dir: Path, *, log: Path, kind: str = "integrity",
                 now: dt.datetime | None = None) -> ProbeCalibration:  # fmt: skip
+    """Score once per held-out set and rubric. `log` is the committed tuning log: it holds the
+    digest-to-rubric history across run folders, and every scoring is appended to it."""
     from evalkit import run as R
+
+    from course_assistant.eval.tuning import log_calibration_scored, read_log
 
     d = probe_dir(run_dir, kind)
     rows = _load_rows(run_dir, kind)
@@ -464,7 +505,10 @@ def score_probe(run_dir: Path, *, kind: str = "integrity",
                 for x in history.get("history", [])]  # fmt: skip
     report = probe_report(rows, first, relabel, R.read_records(run_dir), kind=kind,
                           seed=R.read_manifest(run_dir).seed,
-                          scored_at=now or dt.datetime.now(dt.UTC), previous=previous)  # fmt: skip
+                          scored_at=now or dt.datetime.now(dt.UTC), previous=previous,
+                          logged=read_log(log))  # fmt: skip
+    log_calibration_scored(log, calibration=kind, digest=report.heldout_digest,
+                           rubric_hash=report.rubric_hash, run=run_dir.name)
     entry = json.loads(report.model_dump_json())
     kept = [*history.get("history", []), entry]
     _write(hist_path, json.dumps({"current": entry, "history": kept}, indent=1) + "\n")

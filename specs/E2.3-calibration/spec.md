@@ -197,6 +197,18 @@ ground version checked against the tuning log (refuses an unlogged change unless
   held-out run while `fresh_heldout_required` holds.
 - The regression gate reports "public support kappa fell", never "held-out".
 
+## Verifier pass 2 changes
+- The digest-to-rubric history of every held-out calibration scoring lives in the committed
+  tuning log (`calibration_scored`: calibration, digest, rubric hash, run). `score_probe` and
+  `score_groundedness` (which guards EvalKit's `cal_score` before it runs) take the log, refuse
+  a digest already scored under any other rubric, and append on success, so neither a new run
+  folder nor a re-export can rescore. Refusals never advise moving folders aside.
+- The build test replays the log's `from`/`to` continuity and decisions (`continuity_problems`)
+  and requires the log to be append-only against git (the working copy starts with HEAD's;
+  in CI HEAD's starts with HEAD^'s), skipping only without git.
+- `--allow-unlogged` never applies to held-out runs; replayed held-out runs log
+  `heldout_scored`; `heldout_refreshed` names a decision opening with "Refreshes held-out".
+
 ## Rules
 - No network or API call in any test; tests read only `golden/public/`; fake judges and
   scripted model outputs only.
