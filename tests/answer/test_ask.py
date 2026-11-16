@@ -1069,3 +1069,47 @@ def test_ordinary_text_trips_no_finding(ok):
     from course_assistant.answer.leak import scan
 
     assert scan(ok) == ()
+
+
+@pytest.mark.privacy
+def test_a_whole_delete_at_the_start_of_a_turn_leaves_no_app_rows(tmp_path, monkeypatch):
+    from course_assistant.llm.trace import JsonlSink
+    from course_assistant.privacy import delete, history
+
+    store = Store(tmp_path / "app.sqlite")
+    sink = JsonlSink(tmp_path / "trace.jsonl")
+    rsp = responder(client=s.StepClient(**happy()), prices=PRICES, sleep=lambda _: None)
+    a = Assistant(CONFIG, CORPUS, ASSESSMENTS, store, rsp, sink=sink, now=Clock(),
+                  timer=lambda: 0.0, new_id=ids())  # fmt: skip
+    real = store.is_paused
+
+    def then_delete(*args, **kwargs):
+        out = real(*args, **kwargs)
+        delete(PID, store=store, traces=[sink])
+        return out
+
+    monkeypatch.setattr(store, "is_paused", then_delete)
+    a.ask(QUESTION, PID)
+    assert history(PID, store) == () and store.conversations_for(PID) == []
+    assert PID not in sink.path.read_text(encoding="utf-8")
+    store.close()
+
+
+# ---------- verifier pass 4 regressions ----------
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize(
+    "text",
+    [
+        "pid: 3fa9c0e17b2d4e86",
+        "learner id 3fa9c0e17b2d4e86",
+        "Learner 3fa9c0e17b2d4e86 and others",
+        "code 3fa9c0e17b2d4e86",
+        "3fa9c0\uab7c17b2d4\uab7c86",
+    ],
+)
+def test_a_pid_next_to_a_word_ending_in_a_hex_letter_is_caught(text):
+    from course_assistant.answer.leak import scan
+
+    assert "pid" in scan(text)

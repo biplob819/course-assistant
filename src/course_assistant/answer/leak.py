@@ -2,9 +2,10 @@
 
 A model-written text that is about to be shown is refused if it holds the canary planted in
 the rules, anything shaped like a learner pid (16 hex characters, D-13), or a run of more than
-8 consecutive words copied from any rules text. Text is normalised first (NFKC, no format
-characters, look-alikes mapped to Latin, case folded), and words are compared as runs of
-letters and digits.
+8 consecutive words copied from any rules text. Text is normalised first (NFKD, accents,
+combining marks, format, control and blank characters removed, known look-alikes mapped to
+Latin, case folded, citation markers removed); then any remaining non-ASCII letter is a
+wildcard in the comparison, so a look-alike from any script still lines up (D-43).
 """
 
 from __future__ import annotations
@@ -26,14 +27,30 @@ FRAGMENT_WORDS = 9  # "more than 8 words" (§5 point 7)
 # A pid is a hash, so it holds at least one letter a-f: an all-digit run (a list of numbers,
 # a long figure) is not a pid and never turns a good answer into not_covered
 # a pid as it is written: 16 hex characters in one run, or in groups of 4 or 8 joined by up to
-# three separator characters, not part of a longer hex run or group (so a UUID, a list of
-# learning rates or hex-looking words are not a pid), holding both a digit and a letter a-f
+# three separator characters, standing as its own word; it holds a digit and a letter a-f
 _PID = re.compile(
-    r"(?<![0-9a-f])(?<![0-9a-f][^0-9a-z])(?<![0-9a-f][^0-9a-z]{2})(?<![0-9a-f][^0-9a-z]{3})"
-    r"(?:[0-9a-f]{16}|[0-9a-f]{8}(?:[^0-9a-z]{1,3}[0-9a-f]{4}){2}|[0-9a-f]{4}"
-    r"(?:[^0-9a-z]{1,3}[0-9a-f]{4}){3}|[0-9a-f]{8}[^0-9a-z]{1,3}[0-9a-f]{8})"
-    r"(?![0-9a-f])(?![^0-9a-z]{1,3}[0-9a-f])"
+    r"(?<![0-9a-z])(?:[0-9a-f]{16}|[0-9a-f]{8}(?:[^0-9a-z]{1,3}[0-9a-f]{4}){2}|[0-9a-f]{4}"
+    r"(?:[^0-9a-z]{1,3}[0-9a-f]{4}){3}|[0-9a-f]{8}[^0-9a-z]{1,3}[0-9a-f]{8})(?![0-9a-z])"
 )
+# a neighbouring all-hex word of 4+ characters means the match is part of a longer id (a
+# UUID): checked on whole words, so "pid:", "id", "and" or "code" never hide a pid (pass 4)
+_HEX_BEFORE = re.compile(r"(?<![0-9a-z])[0-9a-f]{4,}[^0-9a-z]{1,3}$")
+_HEX_AFTER = re.compile(r"^[^0-9a-z]{1,3}[0-9a-f]{4,}(?![0-9a-z])")
+
+
+def _pid_like(folded: str) -> bool:
+    for m in _PID.finditer(folded):
+        found = m.group(0)
+        if not (re.search(r"[a-f]", found) and re.search(r"[0-9]", found)):
+            continue
+        if _HEX_BEFORE.search(folded[max(0, m.start() - 40) : m.start()]):
+            continue
+        if _HEX_AFTER.search(folded[m.end() : m.end() + 40]):
+            continue
+        return True
+    return False
+
+
 # citation markers in every form the app or a model writes; removed (not spaced) so one inside
 # a word cannot split it
 _CITE = re.compile(
@@ -46,7 +63,7 @@ _BLANKS = dict.fromkeys(map(ord, "\u115f\u1160\u3164\uffa0\u2800"), None)
 _MORE_CONFUSABLES = str.maketrans({
     "Ꭺ": "a", "Ᏼ": "b", "Ꮯ": "c", "Ꭰ": "d", "Ꭼ": "e", "Ꮐ": "g", "Ꮋ": "h", "Ꭵ": "i",
     "Ꮶ": "k", "Ꮮ": "l", "Ꮇ": "m", "Ꮎ": "o", "Ꮲ": "p", "Ꮪ": "s", "Ꭲ": "t", "Ꮩ": "v",
-    "Ꮃ": "w", "Ꮓ": "z", "ꭺ": "a", "ꮯ": "c", "ꮎ": "o", "ꮪ": "s",
+    "Ꮃ": "w", "Ꮓ": "z", "ꭺ": "a", "ꮯ": "c", "ꮎ": "o", "ꮪ": "s", "ꭼ": "e", "ꮃ": "w", "ꮖ": "i",
     "օ": "o", "ս": "u", "ո": "n", "հ": "h", "ց": "g", "զ": "q", "ա": "w", "ւ": "l",
     "Օ": "o", "Ս": "u", "Ո": "n",
     # Lisu capitals, which render as Latin capitals
@@ -129,6 +146,8 @@ def normalise(text: str) -> str:
     )  # fmt: skip
     folded = unicodedata.normalize("NFKC", folded)
     folded = folded.translate(_CONFUSABLES).translate(_MORE_CONFUSABLES).casefold()
+    # again after casefold, which can turn a mapped capital into an unmapped small letter
+    folded = folded.translate(_CONFUSABLES).translate(_MORE_CONFUSABLES)
     return _CITE.sub("", folded)
 
 
@@ -212,8 +231,7 @@ def scan(text: str) -> tuple[Finding, ...]:
     if _contains_like(flat, canary) or _contains_like(flat[::-1], canary):
         found.append("canary")  # reversed too (right-to-left override)
     folded = normalise(text)
-    if any(re.search(r"[a-f]", m.group(0)) and re.search(r"[0-9]", m.group(0))
-           for m in _PID.finditer(folded)):  # fmt: skip
+    if _pid_like(folded):
         found.append("pid")
     w = words(text)
     reversed_words = words(normalise(text)[::-1])

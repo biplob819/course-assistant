@@ -370,21 +370,33 @@ class Assistant:
             return None  # unreadable: the turn cannot tell, so it removes nothing
 
     def _settle(self, pid: str, conversation_id: str | None, before: int | None) -> None:
-        """Remove this turn's trace lines if the learner filed a delete while it ran: all
-        their lines for a whole-history delete, else the turn's conversation. Ids only. If the
-        store cannot be read, nothing is removed (never a guess that deletes data)."""
-        remove = getattr(self.sink, "delete_pid", None)
-        if not callable(remove) or before is None:
+        """If the learner filed a delete while this turn ran, whatever the turn wrote after it
+        (app rows as well as trace lines) goes too, through the same privacy.delete: a whole
+        delete runs again for the learner, a conversation delete again for this turn's
+        conversation if the turn wrote it back. Any failure leaves that new request open for
+        purge to flag, and never replaces the turn's result (verifier B2.2 passes 12-14). If
+        the store cannot be read, nothing is removed (never a guess that deletes data)."""
+        if before is None:
             return
+        from course_assistant.privacy import delete  # privacy imports the store, not ask
+
+        sink = self.sink
+        traces: list[TraceSink] = (
+            [sink] if sink is not None and callable(getattr(sink, "delete_pid", None)) else []
+        )
         try:
             mine = [d for d in self.store.deletions() if d.learner_pid == pid]
-        except Exception:
+            new = mine[before:]
+            if any(d.conversation_id is None for d in new):
+                delete(pid, store=self.store, traces=traces)
+            elif conversation_id is not None and any(conversation_id in d.covers for d in new):
+                owned = {c.conversation_id for c in self.store.conversations_for(pid)}
+                if conversation_id in owned:
+                    delete(pid, conversation_id, store=self.store, traces=traces)
+                elif traces:
+                    traces[0].delete_pid(pid, {conversation_id})  # type: ignore[attr-defined]
+        except Exception:  # an open request is flagged by purge (US9, 7 days)
             return
-        new = mine[before:]
-        if any(d.conversation_id is None for d in new):
-            remove(pid, None)
-        elif conversation_id is not None and any(conversation_id in d.covers for d in new):
-            remove(pid, {conversation_id})
 
     def _store_answer(self, answer: Answer, qid: str) -> bool:
         """Store the answer; False (not an error) when the question was deleted meanwhile."""

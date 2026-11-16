@@ -86,6 +86,7 @@ CHT-02	B2.5	not-started		"Answer card with source chips that open the unit text;
 CHT-03	B2.5	not-started		"Not-covered reply with ""Ask the teaching team"" button [US2]"
 CHT-04	B2.5	not-started		Notice at first use, history, delete [US9]
 CHT-05	B2.5	not-started		Accessibility: keyboard, labels, status not shown by colour alone
+CHT-06	B2.5	not-started		Bring your own OpenAI key: a visitor may enter their own key, which is used for that session only, never stored or logged, and never replaces the passkey check [OWNER D-45]
 GLD-01	E2.1	green	"logical=tests/golden/test_golden.py›""test_composition_matches_the_tech_spec_plus_extension""; contract=tests/golden/test_golden.py›""test_every_line_is_a_versioned_golden_case""; golden=n/a:no ask() pipeline exists before A2.5; repro=tests/golden/test_golden.py›""test_build_is_deterministic""; safety=tests/golden/test_golden.py›""test_public_cases_are_valid_with_known_locators_and_assessments"""	280 cases by rule (§6.1) on the sample course, each with expected status and gold units or assessment id [FR11]
 GLD-02	E2.1	green	"logical=tests/golden/test_golden.py›""test_split_is_roughly_half_and_half_by_rule""; contract=tests/golden/test_golden.py›""test_heldout_cases_are_private_and_pinned_by_the_manifest""; golden=n/a:no ask() pipeline exists before A2.5; repro=tests/golden/test_golden.py›""test_build_is_deterministic""; safety=tests/golden/test_golden.py›""test_no_held_out_text_or_topic_reaches_the_public_split"""	50/50 stratified split, fixed seed; held-out git-ignored with committed hash manifest [D-5, H3]
 GLD-03	E2.1	green	"logical=tests/golden/test_golden.py›""test_public_cases_are_valid_with_known_locators_and_assessments""; contract=tests/golden/test_golden.py›""test_every_line_is_a_versioned_golden_case""; golden=n/a:no ask() pipeline exists before A2.5; repro=tests/golden/test_golden.py›""test_build_is_deterministic""; safety=tests/golden/test_golden.py›""test_absent_topic_questions_name_an_absent_topic"""	Second-reader review (fresh verifier plus owner spot-check of 20%) [H13]
@@ -113,6 +114,7 @@ FRN-04	E2.5	not-started		Read 20 sampled records end to end before trusting the 
 RPL-01	D3.1	not-started		`make demo-cache`: about 20 curated questions, at least two per status [FR12]
 RPL-02	D3.1	not-started		Guard: passcode, session-token rate limit, per-request cap, persistent daily KV counter; one cost number (L-39) [FR12, D-16]
 RPL-03	D3.1	not-started		Separate demo OpenAI project with a hard spend limit [NFR6]
+RPL-04	D3.1	not-started		Passkey gate on every page and API route: no question is answered without a valid passkey, including for visitors who bring their own OpenAI key; passkeys are stored hashed, can be revoked, and failed attempts are rate-limited [OWNER D-45]
 DEM-01	D3.2	not-started		Learner and teaching pages in `portfolio-demos`; replay default; live behind a passcode [US10]
 DEM-02	D3.2	not-started		Secrets in the host secret store; aggregate-only logs [NFR7]
 DEM-03	D3.2	not-started		Off switch demonstrated live; nightly demo data reset [Trust]
@@ -138,3 +140,4 @@ OSS-05	R3.1	not-started		CONTRIBUTING, SECURITY (key handling, reporting a vulne
 OSS-06	R3.1	not-started		Privacy statement: no telemetry; learner and course data go only to the OpenAI project the operator configures [NFR3]
 OSS-07	R3.1	not-started		Example GitHub Action that runs the course-ta gate and fails the job when a threshold fails [FR11]
 OSS-08	R3.1	not-started		Tag v0.1.0, semver policy, a clean-venv install of the published package runs `--version`, `doctor` and the sample-course replay [D-21]
+OSS-09	R3.1	not-started		README with screenshots of both pages, a step-by-step guide, and every important link (PyPI, docs, live demo, EvalKit, sample course licence, issue tracker, security policy) [OWNER D-46]

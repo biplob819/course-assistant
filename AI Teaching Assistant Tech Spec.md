@@ -550,7 +550,7 @@ eval_run     = n_cases × per_question(model) + EvalKit judging (claims × 2 jud
 
 **Measured (A2.5 smoke run, 16 Nov 2026):** $0.0069 per question on average over 30 public questions (route, answer, checks and hints), $0.21 for the 30; the full smoke run, including 5 planted questions, 20 decomposition conversations and 15 recall comparisons, cost about $0.73 of an estimated $2.55. All live spend to date (route runs, ingest and smoke): $0.81. At 600 learners asking 10 questions a month, the answer path costs about $41 a month, well inside the cap; E2.5's full runs replace this with the golden-set measurement.
 
-Every real-API run appends to `docs/measurements/spend-ledger.jsonl`, and totals are reported to the owner after each run. Any single run over $25 is asked about first.
+Every real-API run appends to the git-ignored `runs/ledger.jsonl` (summaries go into each node's RUN-STATE), and totals are reported to the owner after each run. Any single run over $25 is asked about first.
 
 ---
 
@@ -920,6 +920,7 @@ Each row becomes one line in `docs/graph/catalog.tsv` with status `not-started`.
 | CHT-03 | Not-covered reply with "Ask the teaching team" button | US2 |
 | CHT-04 | Notice at first use, history, delete | US9 |
 | CHT-05 | Accessibility: keyboard, labels, status not shown by colour alone | — |
+| CHT-06 | Bring your own OpenAI key: a visitor may enter their own key, which is used for that session only, never stored or logged, and never replaces the passkey check | OWNER D-45 |
 
 **E2.1 Golden set**
 
@@ -977,6 +978,7 @@ Each row becomes one line in `docs/graph/catalog.tsv` with status `not-started`.
 | RPL-01 | `make demo-cache`: about 20 curated questions, at least two per status | FR12 |
 | RPL-02 | Guard: passcode, session-token rate limit, per-request cap, persistent daily KV counter; one cost number (L-39) | FR12, D-16 |
 | RPL-03 | Separate demo OpenAI project with a hard spend limit | NFR6 |
+| RPL-04 | Passkey gate on every page and API route: no question is answered without a valid passkey, including for visitors who bring their own OpenAI key; passkeys are stored hashed, can be revoked, and failed attempts are rate-limited | OWNER D-45 |
 
 **D3.2 Demo deploy**
 
@@ -1007,6 +1009,7 @@ Each row becomes one line in `docs/graph/catalog.tsv` with status `not-started`.
 | OSS-06 | Privacy statement: no telemetry; learner and course data go only to the OpenAI project the operator configures | NFR3 |
 | OSS-07 | Example GitHub Action that runs the course-ta gate and fails the job when a threshold fails | FR11 |
 | OSS-08 | Tag v0.1.0, semver policy, a clean-venv install of the published package runs `--version`, `doctor` and the sample-course replay | D-21 |
+| OSS-09 | README with screenshots of both pages, a step-by-step guide, and every important link (PyPI, docs, live demo, EvalKit, sample course licence, issue tracker, security policy) | OWNER D-46 |
 
 **T3.2 Project page and video**
 

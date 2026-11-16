@@ -82,3 +82,6 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [A2.5] — verifier pass 2: stronger leak normalisation, no numeric pid false positives (D-43); mid-turn delete leaves no trace lines
 - [FEAT] [A2.5] — live smoke run: p95 17.3 s (NFR5 missed, D-44), $0.0069/question; leak scan uses wildcard matching for non-ASCII letters
 - [FIX] [B2.2] — verifier pass 13: every turn settles its trace lines in a finally block
+- [FIX] [B2.2] — verifier pass 14: a mid-turn delete re-runs privacy.delete for what the turn wrote
+- [FIX] [A2.5] — verifier pass 4: pid next to hex-ending words caught; look-alikes mapped after casefold
+- [DOC] OWNER D-45 passkey protection with bring-your-own-key (RPL-04, CHT-06); OWNER D-46 README with screenshots, guide and links (OSS-09)
