@@ -119,3 +119,5 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [E2.3] — verifier pass 3: held-out calibration guarded per case id across samples; CI full history with LOG_BASE_SHA for the append-only tuning log check; D-55
 - [FIX] [W0.1] — CI core-only job installs and runs without the dev group (uv sync/run --no-dev); it had failed since the dev group gained the optional extras
 - [GREEN] [B2.5] — learner chat page; verifier pass 2 confirmed all six criteria
+- [FIX] [E2.3] — verifier pass 4: only scripts/calibrate.py score certifies; an EvalKit-certified bypass reads as uncalibrated; held-out ids from the MANIFEST; merge-base for new-branch pushes
+- [FIX] [W0.1] — CI green again: sample course build committed (build/ ignore rule), core-only job without the dev group, import order; L-31
