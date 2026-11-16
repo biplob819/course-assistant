@@ -5,6 +5,8 @@ from __future__ import annotations
 import functools
 from typing import Any
 
+from course_assistant.answer.hint import Hint, HintStep
+from course_assistant.answer.integrity import IntegrityResult, IntegrityStep
 from course_assistant.answer.route import CATEGORIES, Responder, RouteParseError, RouteStep
 from course_assistant.llm import respond
 
@@ -14,4 +16,14 @@ def responder(**kw: Any) -> Responder:
     return functools.partial(respond, **kw)
 
 
-__all__ = ["CATEGORIES", "Responder", "RouteParseError", "RouteStep", "responder"]
+__all__ = [
+    "CATEGORIES",
+    "Hint",
+    "HintStep",
+    "IntegrityResult",
+    "IntegrityStep",
+    "Responder",
+    "RouteParseError",
+    "RouteStep",
+    "responder",
+]

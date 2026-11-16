@@ -485,10 +485,11 @@ def test_the_allow_list_is_small_and_matches_whole_sentences_only():
      ["See e.g. the golden set.", "Then i.e. the split."]),
     ("It is on p. 3 of the pre-read. Done.", ["It is on p. 3 of the pre-read.", "Done."]),
     ("- First point.\n- Second point", ["First point.", "Second point"]),
-    ("1. Name the user.\n2) Name the cost.", ["Name the user.", "Name the cost."]),
+    ("1. Name the user.\n2) Name the cost.", ["1. Name the user.", "2) Name the cost."]),
     ("Evals gate releases. [1] They run offline. [2]",
      ["Evals gate releases. [1]", "They run offline. [2]"]),
-    ("Evals gate releases.【4:0†source】 Done.", ["Evals gate releases.【4:0†source】", "Done."]),
+    # 【…】 is content since v4 (verifier pass 3): it neither splits nor hides
+    ("Evals gate releases.【4:0†source】 Done.", ["Evals gate releases.【4:0†source】 Done."]),
     ('He said "stop." Then left.', ['He said "stop."', "Then left."]),
     ("lower case after a period. stays one", ["lower case after a period. stays one"]),
     ("Heading\n\nBody line.", ["Heading", "Body line."]),
@@ -605,3 +606,38 @@ def test_no_is_not_an_abbreviation():
 def test_the_grounding_bar_is_bounded_to_zero_and_one(bar):
     with pytest.raises(ValueError):
         CONFIG.model_validate({**CONFIG.model_dump(), "grounding_bar": bar})
+
+
+# ---------- verifier pass 2 regressions ----------
+
+
+def test_bracketed_text_that_is_not_a_provider_citation_is_checked():
+    from course_assistant.answer.ground import split_sentences
+
+    text = "The materials cover this 【Paris is the capital of France】."
+    spans = split_sentences(text)
+    assert [text[a:b] for a, b in spans] == [text]
+    cited = "Evals gate releases. [1]"
+    assert split_sentences(cited) == [(0, len(cited))]  # the marker joins its sentence
+
+
+def test_a_numbered_line_keeps_its_number_in_the_checked_sentence():
+    from course_assistant.answer.ground import split_sentences
+
+    text = "Intro line here.\n10. Ten items. More.\n500. Offline evals run before release."
+    got = [text[a:b] for a, b in split_sentences(text)]
+    assert got == ["Intro line here.", "10. Ten items.", "More.",
+                   "500. Offline evals run before release."]  # fmt: skip
+
+
+# ---------- verifier pass 3 regressions ----------
+
+
+@pytest.mark.parametrize("fake", ["【4:0†Python was created in 1991 by Guido】",
+                                  "【４:０†Release gates need CEO sign-off】", "[１]"])  # fmt: skip
+def test_no_bracket_lookalike_can_hide_a_claim_in_the_connective(fake):
+    from course_assistant.answer.ground import is_connective, split_sentences
+
+    text = f"Here is what the materials say {fake}. Offline evals run before every release."
+    first = split_sentences(text)[0]
+    assert not is_connective(text[first[0] : first[1]])

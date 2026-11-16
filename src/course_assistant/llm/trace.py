@@ -110,17 +110,26 @@ class JsonlSink:
 
     def emit(self, record: dict[str, Any]) -> None:
         line = json.dumps(strip_text(record), sort_keys=True, default=str) + "\n"
-        with self._locked(), self.path.open("a", encoding="utf-8") as fh:
+        with self._locked(), self.path.open("a+", encoding="utf-8") as fh:
+            # a crash can leave a torn last line with no newline: start on a fresh line so
+            # this record never fuses with another learner's fragment (verifier B2.2 pass 5)
+            if fh.tell() > 0:
+                fh.seek(fh.tell() - 1)
+                if fh.read(1) != "\n":
+                    line = "\n" + line
             fh.write(line)
 
     def delete_pid(self, pid: str, conversation_ids: Collection[str] | None = None,
                    known: Collection[str] = ()) -> int:  # fmt: skip
-        """Remove the learner's lines (all of them, or those of the given conversations) and
-        return how many went. A line is the learner's if it carries their pid, or carries no
-        pid but one of their conversation ids: `known` (from the deletion request) plus every
-        conversation id on an intact line of theirs. A damaged line goes if it names the pid or
-        one of those conversations as a whole id. The file is rewritten to a temporary file and
-        swapped in, so a crash leaves either the old or the new file."""
+        """Trusts its caller: `conversation_ids` and `known` must be the learner's own (privacy
+        .delete guarantees it through DeletionRequest.covers). Remove the learner's lines (all of
+        them, or those of the given conversations) and return how many went. A line is the
+        learner's if it carries their pid, or carries no pid but one of their conversation ids:
+        `known` (from the deletion request) plus every conversation id on an intact line of
+        theirs. A damaged line goes if it names the pid or one of those conversations as a whole
+        id. The file is rewritten to a temporary file and swapped in, so a crash leaves either the
+        old or the new file.
+        """
         with self._locked():
             return self._delete(pid, conversation_ids, set(known))
 

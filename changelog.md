@@ -63,3 +63,7 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [B2.2] — verifier pass 4: store refuses another learner's conversation; trace deletion uses covers only
 - [DOC] OWNER D-39 — D-38 and D-14 confirmed
 - [GREEN] [A2.1] — scope check; verifier pass 2 confirmed all five criteria incl. the live run
+- [FIX] [A2.3] — verifier pass 2: only provider citation brackets are markers; list numbers checked
+- [FIX] [B2.2] — verifier pass 5: torn trace lines never fuse; legacy requests stay open; [N1.5] WAL switch retried on concurrent open
+- [FIX] [A2.3] — verifier pass 3: only ASCII [n] markers; bracket look-alikes are checked content
+- [FEAT] [A2.4] — integrity guard and hints: Luna integrity check over every assistant reply in the conversation (up to 20, never cut; only `clear` passes, unsure and unreadable fail closed), hint step on the brief's title and sessions with file search limited to them, Ground L1 and integrity on the hint, fixed hint naming the sessions; decomposition fixtures from the public B3 multi-turn cases; D-40

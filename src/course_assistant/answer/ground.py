@@ -59,12 +59,20 @@ SPLITTER = (
     "or brackets plus text citation markers, before whitespace and an upper-case letter, digit, "
     "quote or bracket, or at line end; not after a listed abbreviation; a connective followed "
     "by ': ' is its own sentence; a piece with no letter joins the sentence before it (the "
-    "one after it at the start); 'no' is not an abbreviation; v2"
+    "one after it at the start); 'no' is not an abbreviation; "
+    "only [n] with ASCII digits is a marker; "
+    "numbered-list numbers stay in the sentence; v4"
 )
 ABBREVIATIONS = frozenset({"e.g", "i.e", "etc", "vs", "p", "pp", "fig", "dr", "mr", "mrs",
                            "ms"})  # fmt: skip
-_MARKER = r"(?:\[\d+(?:\s*[,;]\s*\d+)*\]|【[^】\n]*】)"
-_LIST_MARKER = re.compile(r"[ \t]*(?:[-*•]|\d{1,3}[.)])[ \t]+")
+# Only "[1]"-style markers (ASCII digits) are markers. Text in 【…】 is always content and is
+# checked: the Responses API reports citations as annotations, not in-text brackets, so a
+# bracket in the text is something the model wrote (verifier A2.3 passes 2 and 3)
+_MARKER = r"(?:\[[0-9]+(?:\s*[,;]\s*[0-9]+)*\])"
+# only bullet markers are dropped; a number at the start of a line stays in the sentence, so
+# "500. Offline evals..." is checked with its number (verifier A2.3 pass 2)
+_LIST_MARKER = re.compile(r"[ \t]*[-*•][ \t]+")
+_NUMBERED = re.compile(r"[ \t]*\d{1,3}[.)][ \t]+")
 _BOUNDARY = re.compile(
     r"[.!?]+[\"'”’)\]]*(?:[ \t]*" + _MARKER + r")*(?=[ \t]+[A-Z0-9\"'“‘(\[]|[ \t]*$)"
 )
@@ -319,8 +327,10 @@ def split_sentences(text: str, connectives: Sequence[str] = CONNECTIVES) -> list
         pos = stop + 1
         lead = _LIST_MARKER.match(line)
         cur = start + (lead.end() if lead else 0)
+        number = _NUMBERED.match(line)
+        keep_until = start + number.end() if number else cur  # "10. " is not a sentence end
         for m in _BOUNDARY.finditer(text, cur, stop):
-            if m.start() < cur:
+            if m.start() < cur or m.end() <= keep_until:
                 continue
             if text[m.start()] == "." and _is_abbreviation(text[cur : m.start()]):
                 continue

@@ -90,8 +90,25 @@ class Store:
         self._con.execute("pragma foreign_keys = on")
         self._con.execute("pragma secure_delete = on")  # deleted text is overwritten, not left
         if str(path) != ":memory:":
-            self._con.execute("pragma journal_mode = wal")
+            self._wal(timeout)
         self._migrate()
+
+    def _wal(self, timeout: float) -> None:
+        """Switch to WAL. The switch needs a moment of exclusive access and SQLite can refuse
+        it at once ("database is locked") when another process opens the file at the same
+        time, without waiting on the busy timeout; retry until the timeout (verifier B2.2
+        pass 5 traced the flaky N1.5 concurrent-open test to this)."""
+        import time
+
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                self._con.execute("pragma journal_mode = wal")
+                return
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc) or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.02)
 
     def close(self) -> None:
         self._con.close()

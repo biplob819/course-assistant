@@ -19,6 +19,10 @@ def _delete_traces(pid: str, pending: Sequence[DeletionRequest],
     """Delete the lines every open request of this learner covers: all of them if any request
     is for the whole history, else those of the named conversations. True only if every sink
     supports deletion and none failed."""
+    if any(d.conversation_id is not None and not d.covers for d in pending):
+        # a legacy conversation request that never recorded what it covers: nothing can be
+        # deleted safely, so it stays open and purge flags it (verifier B2.2 pass 5)
+        return False
     whole = any(d.conversation_id is None for d in pending)
     # conversation ids come only from `covers`, which names only the learner's own
     # conversations; a request naming another learner's conversation covers nothing (pass 4)

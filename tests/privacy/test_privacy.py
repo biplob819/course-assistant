@@ -575,3 +575,28 @@ def test_an_empty_leftover_tmp_directory_does_not_block_deletion(tmp_path):
     sink = traced(tmp_path)
     (tmp_path / "trace.jsonl.tmp").mkdir()
     assert sink.delete_pid(A) > 0
+
+
+# ---------- verifier pass 5 regressions ----------
+
+
+@pytest.mark.privacy
+def test_a_torn_line_never_fuses_with_the_next_learners_record(store, tmp_path):
+    fill(store)
+    sink = JsonlSink(tmp_path / "t.jsonl")
+    with sink.path.open("a", encoding="utf-8") as fh:
+        fh.write('{"conversation_id": "c-aaaaaaaaaaa2", "learner_pid": "' + A + '", "sta')
+    sink.emit({"learner_pid": B, "conversation_id": "c-bbbbbbbbbbb1", "step": "finalize"})
+    delete(A, store=store, traces=[sink], at=at(100))
+    assert [r["step"] for r in read(sink)] == ["finalize"]
+
+
+@pytest.mark.privacy
+def test_a_legacy_conversation_request_without_covers_stays_open(store, tmp_path):
+    fill(store)
+    sink = traced(tmp_path)
+    legacy = S.DeletionRequest(learner_pid=A, conversation_id="c-aaaaaaaaaaa1",
+                               requested_at=at(90), app_deleted_at=at(90))  # fmt: skip
+    store._put("deletion", f"{A}:legacy", legacy, pid=A, at=at(90))  # a row from before covers
+    assert retry_trace_deletion(store, [sink], at=at(100)) == 0
+    assert any(d.traces_deleted_at is None for d in store.deletions() if d.learner_pid == A)
