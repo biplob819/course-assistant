@@ -59,9 +59,11 @@ from harness_lib import (
     spec_dir,
 )
 
-# Commands run inside the clean venv by gate 10. Later nodes add `ingest --dry-run`
-# (N1.4) and `eval-replay` (A2.5), which must succeed with no API key.
+# Commands run inside the clean venv by gate 10, with no API key (D-22). SMOKE_COMMANDS run on
+# the bare wheel; SMOKE_OPENAI_COMMANDS run after installing the wheel's `openai` extra, since
+# the answer path imports N1.2's client (A2.5: `eval-replay` replays the golden requests).
 SMOKE_COMMANDS: list[list[str]] = [["course-assistant", "--version"]]
+SMOKE_OPENAI_COMMANDS: list[list[str]] = [["course-assistant", "eval-replay"]]
 PYTEST_UNIT_MARKERS = "not golden and not evalreg and not safety and not privacy"
 NA_MIN_REASON = 10
 NA_FORBIDDEN = {"logical"}  # every capability needs at least a real unit test
@@ -304,8 +306,10 @@ def _venv_bin(venv: Path, exe: str) -> Path:
     return venv / sub / f"{exe}{suffix}"
 
 
-def gate_build(ctx: Ctx, smoke: list[list[str]] | None = None) -> Result:
+def gate_build(ctx: Ctx, smoke: list[list[str]] | None = None,
+               smoke_openai: list[list[str]] | None = None) -> Result:  # fmt: skip
     smoke = SMOKE_COMMANDS if smoke is None else smoke
+    smoke_openai = SMOKE_OPENAI_COMMANDS if smoke_openai is None else smoke_openai
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "dist"
         code, log = _run(["uv", "build", "--wheel", "--out-dir", str(out)], ctx.root)
@@ -329,8 +333,19 @@ def gate_build(ctx: Ctx, smoke: list[list[str]] | None = None) -> Result:
             code, log = _run([str(exe), *cmd[1:]], Path(tmp))
             if code != 0:
                 return Result("FAIL", f"{' '.join(cmd)}: {_tail(log)}")
+        if smoke_openai:
+            code, log = _run(["uv", "pip", "install", "-q", "--python", str(py),
+                              f"{wheels[0]}[openai]"], ctx.root)  # fmt: skip
+            if code != 0:
+                return Result("FAIL", "install wheel[openai]: " + _tail(log))
+            for cmd in smoke_openai:
+                exe = _venv_bin(venv, cmd[0])
+                code, log = _run([str(exe), *cmd[1:]], Path(tmp))
+                if code != 0:
+                    return Result("FAIL", f"{' '.join(cmd)} (with openai): {_tail(log)}")
+        ran = [*smoke, *smoke_openai]
         return Result(
-            "PASS", f"{wheels[0].name} installs; smoke: {', '.join(' '.join(c) for c in smoke)}"
+            "PASS", f"{wheels[0].name} installs; smoke: {', '.join(' '.join(c) for c in ran)}"
         )
 
 
@@ -600,7 +615,7 @@ def self_test() -> int:
         broken = root / "broken"
         broken.mkdir()
         (broken / "pyproject.toml").write_text("[project\nname=", encoding="utf-8")
-        r = gate_build(Ctx("W0.1", broken, graph, [], specs), smoke=[])
+        r = gate_build(Ctx("W0.1", broken, graph, [], specs), smoke=[], smoke_openai=[])
         check(
             "10 build fails naming the broken pyproject (not a missing uv)",
             r.status == "FAIL" and "unclosed table" in r.detail,

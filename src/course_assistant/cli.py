@@ -1,6 +1,7 @@
 """Command line entry point. Make targets call these subcommands (Tech Spec §4).
 
-Exit codes: 0 passed, 2 config or runtime error (including a failed reconcile).
+Exit codes: 0 passed, 1 a gate failed (a replay mismatch), 2 config or runtime error
+(including a failed reconcile).
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
     from course_assistant.ingest import VectorStoreAPI
 
 EXIT_OK = 0
+EXIT_GATE = 1
 EXIT_CONFIG = 2
 
 
@@ -35,7 +37,41 @@ def build_parser() -> argparse.ArgumentParser:
     ing.add_argument("--root", type=Path, help="corpus root the manifest paths are relative to")
     ing.add_argument("--store", type=Path, help="corpus store folder (default: corpus_store/)")
     ing.add_argument("--dry-run", action="store_true", help="print the plan; make no API call")
+    rep = sub.add_parser(
+        "eval-replay",
+        help="replay the golden requests through ask() with no API calls",
+        description="Replay the recorded sample-course requests through ask() and compare "
+        "each Answer with the stored one. Exit 0 when all match, 1 on a mismatch.",
+    )
+    rep.add_argument("--fixture", type=Path, help="default: the packaged golden replay file")
+    rep.add_argument("--json", action="store_true", help="machine-readable output")
     return ap
+
+
+def _eval_replay(args: argparse.Namespace) -> int:
+    import json
+
+    try:
+        from course_assistant.answer import golden
+        from course_assistant.answer.replay import ReplayError
+    except ImportError as exc:
+        print(f"eval-replay: {exc.name} is not installed: pip install "
+              "'course-assistant[openai]'", file=sys.stderr)  # fmt: skip
+        return EXIT_CONFIG
+    try:
+        results = golden.run(args.fixture or golden.FIXTURE)
+    except (OSError, ValueError, ReplayError) as exc:
+        print(f"eval-replay: {type(exc).__name__}: {str(exc)[:200]}", file=sys.stderr)
+        return EXIT_CONFIG
+    failed = [cid for cid, ok, _ in results if not ok]
+    if args.json:
+        print(json.dumps({"requests": len(results), "matched": len(results) - len(failed),
+                          "mismatched": failed}))  # fmt: skip
+    else:
+        print(f"golden replay: {len(results) - len(failed)}/{len(results)} requests match")
+        for cid in failed:
+            print(f"  mismatch: {cid}")
+    return EXIT_GATE if failed or not results else EXIT_OK
 
 
 def _vector_store_api() -> VectorStoreAPI:
@@ -84,6 +120,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "ingest":
         return _ingest(args)
+    if args.command == "eval-replay":
+        return _eval_replay(args)
     return EXIT_OK
 
 

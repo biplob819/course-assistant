@@ -76,3 +76,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [B2.2] — verifier pass 8: retired-id markers back-filled by migration; neutral marker time
 - [FIX] [B2.2] — verifier pass 9: back-fill from conversation_id too; malformed rows skipped
 - [FIX] [B2.2] — verifier pass 10: fused trace lines split into records; D-41 scopes pre-release data
+- [FEAT] [A2.5] — ask() orchestration: pause check, conversation window (this learner and conversation, 6 turns, 3,000 tokens, 2-hour idle close), route and answer in parallel with the draft discarded unless course, Finalize table (property-tested), leak scan, hint step, NFR8 message; replay injection by request id and step, 40-request golden replay fixture and `course-assistant eval-replay` (gate 10 smoke); scripts/smoke_live.py for the live run (pending); D-42
