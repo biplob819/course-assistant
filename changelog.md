@@ -95,3 +95,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [A2.5] — verifier pass 8: token-level pid detection (D-49)
 - [GREEN] [B2.2] — notice, consent, history, delete; verifier pass 18 confirmed all four criteria
 - [FIX] [A2.5] — verifier pass 9: separator-blind rules comparison; D-50
+- [FIX] [A2.5] — verifier pass 10: stream check reversed and wildcard-anchored

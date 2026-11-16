@@ -1379,3 +1379,20 @@ def test_ordinary_long_answers_do_not_trip_the_stream_check():
     text = ("Offline evaluation runs a fixed golden set before every release, and online "
             "evaluation samples live traffic after it, so drift is noticed early.")  # fmt: skip
     assert "rules" not in scan(text)
+
+
+# ---------- verifier pass 10 regressions ----------
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("disguise", [
+    lambda t: "‮" + t.replace("questions", "ques-tions")[::-1],
+    lambda t: "‮" + t.replace(" ", "")[::-1],
+    lambda t: t.replace("h", "Η").replace(" ", ""),
+    lambda t: t.replace("u", "υ").replace("questions", "ques-tions"),
+    lambda t: t.replace("o", "ო").replace(" ", ""),   # an unmapped letter as a wildcard
+])  # fmt: skip
+def test_disguise_pairs_with_separators_are_caught(disguise):
+    from course_assistant.answer.leak import scan
+
+    assert "rules" in scan(disguise(_nine_rule_words()))
