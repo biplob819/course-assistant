@@ -36,21 +36,18 @@ def _seps(found: str) -> set[str]:
 
 
 def _continues(text: str, at: int, step: int, seps: set[str]) -> bool:
-    """Does the hex run carry on past `at` (forwards for step 1, backwards for -1)? Only with
-    the same separator the match used inside it, or with no separator if it used none, so a
-    UUID's next group counts and an ordinary neighbouring word or number never does."""
+    """Does the hex run carry on past `at` (forwards for step 1, backwards for -1)? Only if
+    the next character is a separator the match used (or '-' or ':' when it used none) and
+    the token beyond it is a whole all-hex group of 4 or more, as in a UUID. A label ("id",
+    "code"), a number or a short hex word beside the pid never counts (verifier A2.5 pass 6)."""
     i = at if step == 1 else at - 1
-    if not (0 <= i < len(text)):
+    if not (0 <= i < len(text)) or text[i] not in (seps or {"-", ":"}):
         return False
-    if text[i] in seps:
-        j = i + step
-        return 0 <= j < len(text) and text[j] in "0123456789abcdef"
-    return (
-        not seps
-        and text[i] in "-:"
-        and 0 <= i + step < len(text)
-        and (text[i + step] in "0123456789abcdef")
-    )
+    j, token = i + step, []
+    while 0 <= j < len(text) and text[j].isalnum():
+        token.append(text[j])
+        j += step
+    return len(token) >= 4 and all(c in "0123456789abcdef" for c in token)
 
 
 def _pid_like(folded: str) -> bool:

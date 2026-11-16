@@ -385,11 +385,17 @@ class Assistant:
             scoped = conversation_id is not None and any(conversation_id in d.covers for d in new)
             if not (whole or scoped):
                 return
+            now = self._now()
             owned = {c.conversation_id for c in self.store.conversations_for(pid)}
             if whole and owned:
-                self.store.delete_history(pid, None, at=self._now())
+                self.store.delete_history(pid, None, at=now)
             elif scoped and conversation_id in owned:
-                self.store.delete_history(pid, conversation_id, at=self._now())
+                self.store.delete_history(pid, conversation_id, at=now)
+            # always leave an open copy of each new request, so purge's retry clears any line
+            # this turn wrote after the first request closed, even if this sink fails or the
+            # app rows were already gone (verifier B2.2 pass 16)
+            for d in new:
+                self.store.reopen_traces(d, at=max(now, d.requested_at))
             remove = getattr(self.sink, "delete_pid", None)
             if callable(remove):
                 remove(pid, None if whole else {conversation_id})

@@ -479,6 +479,18 @@ class Store:
                 out.append(self._load(DeletionRequest, row[0]))
         return out
 
+    def reopen_traces(self, request: DeletionRequest, *, at: dt.datetime) -> DeletionRequest:
+        """Record an open copy of the learner's own request (same conversation and covers, app
+        rows done, traces not), so purge's retry deletes trace lines written after the first
+        request closed. Ids only; it deletes nothing itself (verifier B2.2 pass 16)."""
+        with self._tx():
+            pid = request.learner_pid
+            copy = DeletionRequest(learner_pid=pid, conversation_id=request.conversation_id,
+                                   covers=request.covers, requested_at=at,
+                                   app_deleted_at=at)  # fmt: skip
+            self._put("deletion", f"{pid}:{self._next('deletion'):012d}", copy, pid=pid, at=at)
+        return copy
+
     def deletions(self) -> list[DeletionRequest]:
         rows = self._con.execute(
             "select pid, json from records where kind = 'deletion' order by at, key"

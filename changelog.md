@@ -89,3 +89,5 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [A2.5] — verifier pass 5: pid detection in any grouping, UUID-aware
 - [FIX] [B2.2] — verifier pass 15: new deletions found by key; the turn never marks traces complete
 - [DOC] OWNER D-48 — the passkey is a numeric passcode only the owner knows
+- [FIX] [A2.5] — verifier pass 6: only whole hex groups continue a pid
+- [FIX] [B2.2] — verifier pass 16: open trace request always left after a mid-turn delete

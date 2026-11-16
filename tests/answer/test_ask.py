@@ -1206,3 +1206,59 @@ def test_longer_ids_and_ordinary_numbers_are_not_pids(ok):
     from course_assistant.answer.leak import scan
 
     assert "pid" not in scan(ok)
+
+
+# ---------- verifier pass 6 regressions ----------
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize(
+    "text",
+    [
+        "learner id:3f9a0c1d7e2b4a68",
+        "ref:3f9a0c1d7e2b4a68",
+        "pid-3f9a0c1d7e2b4a68",
+        "code-3f9a0c1d7e2b4a68",
+        "Your learner id 3f9a 0c1d 7e2b 4a68 was logged.",
+        "3f9a 0c1d 7e2b 4a68 a learner",
+        "3f9a 0c1d 7e2b 4a68 2 times",
+        "took 1.5 3f9a 0c1d 7e2b 4a68 ok",
+    ],
+)
+def test_labels_and_short_neighbours_never_hide_a_pid(text):
+    from course_assistant.answer.leak import scan
+
+    assert "pid" in scan(text)
+
+
+@pytest.mark.privacy
+def test_a_failing_sink_after_a_mid_turn_delete_leaves_an_open_request(tmp_path, monkeypatch):
+    from course_assistant.llm.trace import JsonlSink
+    from course_assistant.privacy import delete
+
+    class FailsAfterFirst(JsonlSink):
+        calls = 0
+
+        def delete_pid(self, *args, **kwargs):
+            type(self).calls += 1
+            if type(self).calls > 1:
+                raise OSError("disk")
+            return super().delete_pid(*args, **kwargs)
+
+    store = Store(tmp_path / "app.sqlite")
+    sink = FailsAfterFirst(tmp_path / "trace.jsonl")
+    rsp = responder(client=s.StepClient(**happy()), prices=PRICES, sleep=lambda _: None)
+    a = Assistant(CONFIG, CORPUS, ASSESSMENTS, store, rsp, sink=sink, now=Clock(),
+                  timer=lambda: 0.0, new_id=ids())  # fmt: skip
+    real = store.put_question
+
+    def then_delete(*args, **kwargs):
+        out = real(*args, **kwargs)
+        delete(PID, store=store, traces=[sink])
+        return out
+
+    monkeypatch.setattr(store, "put_question", then_delete)
+    with contextlib.suppress(Exception):
+        a.ask(QUESTION, PID)
+    assert any(d.traces_deleted_at is None for d in store.deletions() if d.learner_pid == PID)
+    store.close()
