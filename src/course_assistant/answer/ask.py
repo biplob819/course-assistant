@@ -299,65 +299,102 @@ class Assistant:
         now = self._now()
         calls = _Calls(self.source, rid)
 
-        if self.store.is_paused(session):  # a read failure counts as paused (N1.5)
-            answer = self._fixed(qid, "not_covered", self.PAUSED_MESSAGE, None, now, calls, start)
-            self._trace(rid, learner_pid, None, qid, None, "pause", now, error=None)
-            self._trace_final(rid, learner_pid, None, qid, None, None, answer, now)
-            return Turn(answer=answer, request_id=rid, conversation_id=None, paused=True,
-                        discarded=False, handover=False, injection=False, leak=(), draft=None,
-                        steps=())  # fmt: skip
-
-        if conversation_id is not None:  # after the pause check: a paused app reads nothing
-            self._owned(conversation_id, learner_pid, session)  # (verifier A2.5 pass 1)
-        if self.store.get_question(qid) is not None:  # never replace an earlier turn
-            raise ValueError("request_id already used")
-        conv = self._conversation(learner_pid, session, conversation_id, now)
-        earlier, count = self._earlier(learner_pid, conv.conversation_id)
-        window = build_window(earlier, self.config.window_turns, self.config.window_tokens,
-                              RouteStep.CHARS_PER_TOKEN)  # fmt: skip
-        replies = [a for _, a in earlier]
-        turn_index = count + 1
-        self.store.put_question(Question(question_id=qid, conversation_id=conv.conversation_id,
-                                         turn_index=turn_index, learner_pid=learner_pid,
-                                         session_scope=session, text=question,
-                                         asked_at=now))  # fmt: skip
-        self._trace(rid, learner_pid, conv.conversation_id, qid, turn_index, "window", now,
-                    error=None)  # fmt: skip
-
+        # a delete this learner files while the turn runs must take every line the turn writes,
+        # whenever it lands; the turn notices it by the count of their deletion requests (no
+        # clock involved) and removes its own lines last (verifier B2.2 passes 12 and 13)
+        before = self._deletions_of(learner_pid)
+        touched: list[str | None] = [None]
         try:
-            result = self._run(question, session, window, replies, qid, calls)
-        except Exception:
-            # an unexpected bug still propagates, but the stored question never stands without
-            # an answer: it gets the NFR8 error answer first (verifier A2.5 pass 1)
-            self.store.put_answer(self._fixed(qid, "error", self.ERROR_MESSAGE, None, now, calls,
-                                              start))  # fmt: skip
-            raise
-        answer = self._answer(qid, result, now, calls, start)
-        self.store.put_answer(answer)
-        for t in calls.timings():
-            self._trace(rid, learner_pid, conv.conversation_id, qid, turn_index, t.step, now,
-                        error=t.error, cost=t.cost_usd, latency=t.latency_ms,
-                        calls_made=t.calls)  # fmt: skip
-        self._trace_final(rid, learner_pid, conv.conversation_id, qid, turn_index,
-                          result.get("route"), answer, now)  # fmt: skip
-        self._settle(learner_pid, conv.conversation_id, qid)
-        return Turn(answer=answer, request_id=rid, conversation_id=conv.conversation_id,
-                    paused=False, discarded=result["discarded"],
-                    handover=answer.status == "handed_over",
-                    injection=result.get("route") == "injection" and answer.status != "error",
-                    leak=result["leak"], draft=result["kept_draft"],
-                    steps=calls.timings())  # fmt: skip
+            if self.store.is_paused(session):  # a read failure counts as paused (N1.5)
+                answer = self._fixed(
+                    qid, "not_covered", self.PAUSED_MESSAGE, None, now, calls, start
+                )
+                self._trace(rid, learner_pid, None, qid, None, "pause", now, error=None)
+                self._trace_final(rid, learner_pid, None, qid, None, None, answer, now)
+                return Turn(answer=answer, request_id=rid, conversation_id=None, paused=True,
+                            discarded=False, handover=False, injection=False, leak=(), draft=None,
+                            steps=())  # fmt: skip
 
-    def _settle(self, pid: str, conversation_id: str, qid: str) -> None:
-        """If the learner deleted this conversation (or their history) while the turn ran, the
-        trace lines this turn wrote after the delete must go too: the delete has already
-        been marked complete (verifier B2.2 pass 12). Ids only; the sink trusts the pid and
-        conversation, which are this learner's own."""
-        if self.store.get_question(qid) is not None:
-            return
+            if conversation_id is not None:  # after the pause check: a paused app reads nothing
+                self._owned(conversation_id, learner_pid, session)  # (verifier A2.5 pass 1)
+            if self.store.get_question(qid) is not None:  # never replace an earlier turn
+                raise ValueError("request_id already used")
+            conv = self._conversation(learner_pid, session, conversation_id, now)
+            touched[0] = conv.conversation_id
+            earlier, count = self._earlier(learner_pid, conv.conversation_id)
+            window = build_window(earlier, self.config.window_turns, self.config.window_tokens,
+                                  RouteStep.CHARS_PER_TOKEN)  # fmt: skip
+            replies = [a for _, a in earlier]
+            turn_index = count + 1
+            self.store.put_question(Question(question_id=qid, conversation_id=conv.conversation_id,
+                                             turn_index=turn_index, learner_pid=learner_pid,
+                                             session_scope=session, text=question,
+                                             asked_at=now))  # fmt: skip
+            self._trace(rid, learner_pid, conv.conversation_id, qid, turn_index, "window", now,
+                        error=None)  # fmt: skip
+
+            try:
+                result = self._run(question, session, window, replies, qid, calls)
+            except Exception:
+                # an unexpected bug still propagates, but the stored question never stands without
+                # an answer: it gets the NFR8 error answer first (verifier A2.5 pass 1)
+                failed = self._fixed(qid, "error", self.ERROR_MESSAGE, None, now, calls, start)
+                self._store_answer(failed, qid)
+                raise
+            answer = self._answer(qid, result, now, calls, start)
+            if not self._store_answer(answer, qid):
+                # the learner deleted this turn's question while it ran: nothing more is written
+                return Turn(answer=answer, request_id=rid, conversation_id=conv.conversation_id,
+                            paused=False, discarded=result["discarded"], handover=False,
+                            injection=False, leak=result["leak"], draft=None,
+                            steps=calls.timings())  # fmt: skip
+            for t in calls.timings():
+                self._trace(rid, learner_pid, conv.conversation_id, qid, turn_index, t.step, now,
+                            error=t.error, cost=t.cost_usd, latency=t.latency_ms,
+                            calls_made=t.calls)  # fmt: skip
+            self._trace_final(rid, learner_pid, conv.conversation_id, qid, turn_index,
+                              result.get("route"), answer, now)  # fmt: skip
+            return Turn(answer=answer, request_id=rid, conversation_id=conv.conversation_id,
+                        paused=False, discarded=result["discarded"],
+                        handover=answer.status == "handed_over",
+                        injection=result.get("route") == "injection" and answer.status != "error",
+                        leak=result["leak"], draft=result["kept_draft"],
+                        steps=calls.timings())  # fmt: skip
+        finally:
+            self._settle(learner_pid, touched[0], before)
+
+    def _deletions_of(self, pid: str) -> int | None:
+        try:
+            return sum(1 for d in self.store.deletions() if d.learner_pid == pid)
+        except Exception:
+            return None  # unreadable: the turn cannot tell, so it removes nothing
+
+    def _settle(self, pid: str, conversation_id: str | None, before: int | None) -> None:
+        """Remove this turn's trace lines if the learner filed a delete while it ran: all
+        their lines for a whole-history delete, else the turn's conversation. Ids only. If the
+        store cannot be read, nothing is removed (never a guess that deletes data)."""
         remove = getattr(self.sink, "delete_pid", None)
-        if callable(remove):
+        if not callable(remove) or before is None:
+            return
+        try:
+            mine = [d for d in self.store.deletions() if d.learner_pid == pid]
+        except Exception:
+            return
+        new = mine[before:]
+        if any(d.conversation_id is None for d in new):
+            remove(pid, None)
+        elif conversation_id is not None and any(conversation_id in d.covers for d in new):
             remove(pid, {conversation_id})
+
+    def _store_answer(self, answer: Answer, qid: str) -> bool:
+        """Store the answer; False (not an error) when the question was deleted meanwhile."""
+        try:
+            self.store.put_answer(answer)
+        except KeyError:
+            if self.store.get_question(qid) is None:
+                return False
+            raise
+        return True
 
     # ---------- the graph ----------
 

@@ -161,6 +161,19 @@ Every money value is checked finite and non-negative before it is recorded (Eval
 
 These are planning numbers. A 30-question smoke run (A2.5) replaces them with measured percentiles, and `reasoning.effort` is chosen from that run (decision logged).
 
+**Measured (A2.5 smoke run, 16 Nov 2026, sample course, 30 public questions, Sol `medium` / Luna `low`, provisional bar 0.4):**
+
+| Step | p50 | p95 | n |
+| --- | --- | --- | --- |
+| Route (Luna) | 1.9 s | 3.5 s | 30 |
+| Answer (Sol, file search) | 6.4 s | 8.8 s | 30 |
+| Ground L2 (Luna) | 1.7 s | 3.1 s | 9 |
+| Integrity (Luna) | 1.7 s | 3.1 s | 12 |
+| Hint (Sol) | 9.1 s | 10.5 s | 4 |
+| **Whole turn** | **7.5 s** | **17.3 s** | 30 |
+
+**NFR5 is not met: p95 is 17.3 s against 8 s.** The answer call alone uses the whole budget at p95, and the checks run after it rather than inside it; hint turns add a second Sol call. The answer-model choice and effort in E2.5 must close this (D-44): candidates are `reasoning.effort` low on Sol, Luna for the answer, running L2 and integrity in parallel, and streaming the answer while the checks run (shown only once they pass).
+
 ---
 
 ## 3. Schemas (pydantic)
@@ -532,6 +545,10 @@ eval_run     = n_cases × per_question(model) + EvalKit judging (claims × 2 jud
 | Pilot month: 1,000 questions on Sol + 6 full runs (4 weekly, 2 manifest changes) at 430 cases | ≈ $27 + $114 = **≈ $141** |
 
 **OWNER D-20 (15 Nov): the pilot cap is raised from $50 to $100 a month.** The cap was set before OWNER D-6 (multi-turn) and OWNER D-19 (the extension). Together, those rulings bring the estimate to about $141, over the new cap. **Open, OWNER?** There are two ways to fit under $100 without weakening any gate: (a) run the 150-case extension only on change runs, not weekly, for about $117; or (b) also run the weekly regression on the 280-case set and the extension monthly, for about $112. The other option is a cap of $150, which keeps everything weekly. I recommend $150: the extension is where the zero-tolerance claims get their statistical weight. All of these numbers are replaced by measurements after the A2.5 smoke run (30 questions) and the E2.5 full run, as EvalKit's D-46 did.
+
+**OWNER D-37 (15 Nov): the cap is $150 a month.**
+
+**Measured (A2.5 smoke run, 16 Nov 2026):** $0.0069 per question on average over 30 public questions (route, answer, checks and hints), $0.21 for the 30; the full smoke run, including 5 planted questions, 20 decomposition conversations and 15 recall comparisons, cost about $0.73 of an estimated $2.55. All live spend to date (route runs, ingest and smoke): $0.81. At 600 learners asking 10 questions a month, the answer path costs about $41 a month, well inside the cap; E2.5's full runs replace this with the golden-set measurement.
 
 Every real-API run appends to `docs/measurements/spend-ledger.jsonl`, and totals are reported to the owner after each run. Any single run over $25 is asked about first.
 

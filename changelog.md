@@ -80,3 +80,5 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [B2.2] — verifier pass 11: trace path resolved (symlinks)
 - [FIX] [A2.5] — verifier pass 1: leak scan normalises invisibles and look-alikes; pause first; no unanswered question
 - [FIX] [A2.5] — verifier pass 2: stronger leak normalisation, no numeric pid false positives (D-43); mid-turn delete leaves no trace lines
+- [FEAT] [A2.5] — live smoke run: p95 17.3 s (NFR5 missed, D-44), $0.0069/question; leak scan uses wildcard matching for non-ASCII letters
+- [FIX] [B2.2] — verifier pass 13: every turn settles its trace lines in a finally block

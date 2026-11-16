@@ -1002,3 +1002,70 @@ def test_a_delete_during_a_turn_leaves_none_of_its_trace_lines(tmp_path, monkeyp
     a.ask(QUESTION, PID)
     assert PID not in sink.path.read_text(encoding="utf-8")
     store.close()
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("hook", ["put_question", "is_paused"])
+def test_a_delete_at_any_point_of_a_turn_leaves_none_of_its_trace_lines(tmp_path, monkeypatch,
+                                                                       hook):  # fmt: skip
+    from course_assistant.llm.trace import JsonlSink
+    from course_assistant.privacy import delete
+
+    store = Store(tmp_path / "app.sqlite")
+    sink = JsonlSink(tmp_path / "trace.jsonl")
+    rsp = responder(client=s.StepClient(**happy()), prices=PRICES, sleep=lambda _: None)
+    a = Assistant(CONFIG, CORPUS, ASSESSMENTS, store, rsp, sink=sink, now=Clock(),
+                  timer=lambda: 0.0, new_id=ids())  # fmt: skip
+    real = getattr(store, hook)
+
+    def then_delete(*args, **kwargs):
+        out = real(*args, **kwargs)
+        delete(PID, store=store, traces=[sink])
+        return True if hook == "is_paused" else out
+
+    monkeypatch.setattr(store, hook, then_delete)
+    a.ask(QUESTION, PID)
+    text = sink.path.read_text(encoding="utf-8") if sink.path.exists() else ""
+    assert PID not in text
+    store.close()
+
+
+# ---------- verifier pass 3 regressions ----------
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("disguise", [
+    lambda t: t.replace("h", "Η").replace("u", "υ"),   # Greek Eta, upsilon
+    lambda t: t.replace("a", "\u10d0", 2).replace("e", "\u13ac"),  # any script lines up
+    lambda t: t.replace("course", "co[12]urse"),                   # a marker inside a word
+    lambda t: t.replace(" ", " [1, 2] ", 2).replace(" the", " 【1】 the", 1),
+    lambda t: "‮" + t[::-1],                                   # reversed fragment
+    lambda t: t.replace("questions", "quesㅤtions").replace("about", "ab\x01out"),
+])  # fmt: skip
+def test_pass3_disguises_of_rule_fragments_are_caught(disguise):
+    from course_assistant.answer.leak import scan
+
+    assert "rules" in scan(disguise(_nine_rule_words()))
+
+
+@pytest.mark.safety
+def test_a_canary_with_greek_look_alikes_is_caught():
+    from course_assistant.answer.leak import scan
+
+    disguised = AnswerStep.CANARY.replace("C", "Ϲ").replace("c", "ϲ")
+    assert "canary" in scan(disguised)
+
+
+@pytest.mark.parametrize(
+    "ok",
+    [
+        "learning rates 1e-3, 3e-4, 1e-4, 5e-5, 1e-5 and 2e-5",
+        "request 123e4567-e89b-12d3-a456-426614174000 failed",
+        "A bad decade: face a dead cafe, add a bead.",
+        "Le cours explique les métriques garde-fous en détail.",
+    ],
+)
+def test_ordinary_text_trips_no_finding(ok):
+    from course_assistant.answer.leak import scan
+
+    assert scan(ok) == ()

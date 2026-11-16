@@ -25,8 +25,23 @@ FRAGMENT_WORDS = 9  # "more than 8 words" (§5 point 7)
 # 16 hex characters, also when split by short runs of separators (verifier A2.5 passes 1, 2).
 # A pid is a hash, so it holds at least one letter a-f: an all-digit run (a list of numbers,
 # a long figure) is not a pid and never turns a good answer into not_covered
-_PID = re.compile(r"(?<![0-9a-f])(?:[0-9a-f][^0-9a-z]{0,3}){15}[0-9a-f](?![0-9a-f])")
-_CITE = re.compile(r"\[[0-9]{1,3}\]|\((?:unit|session|slide|p\.)[^)]{0,30}\)")
+# a pid as it is written: 16 hex characters in one run, or in groups of 4 or 8 joined by up to
+# three separator characters, not part of a longer hex run or group (so a UUID, a list of
+# learning rates or hex-looking words are not a pid), holding both a digit and a letter a-f
+_PID = re.compile(
+    r"(?<![0-9a-f])(?<![0-9a-f][^0-9a-z])(?<![0-9a-f][^0-9a-z]{2})(?<![0-9a-f][^0-9a-z]{3})"
+    r"(?:[0-9a-f]{16}|[0-9a-f]{8}(?:[^0-9a-z]{1,3}[0-9a-f]{4}){2}|[0-9a-f]{4}"
+    r"(?:[^0-9a-z]{1,3}[0-9a-f]{4}){3}|[0-9a-f]{8}[^0-9a-z]{1,3}[0-9a-f]{8})"
+    r"(?![0-9a-f])(?![^0-9a-z]{1,3}[0-9a-f])"
+)
+# citation markers in every form the app or a model writes; removed (not spaced) so one inside
+# a word cannot split it
+_CITE = re.compile(
+    r"\[[0-9]{1,3}(?:\s*[,;]\s*[0-9]{1,3})*\]|【[^】]{0,40}】"
+    r"|\((?:unit|session|slide|p\.)[^)]{0,30}\)"
+)
+# letters that render as nothing (Hangul fillers, braille blank) and control characters
+_BLANKS = dict.fromkeys(map(ord, "\u115f\u1160\u3164\uffa0\u2800"), None)
 # Cherokee and Armenian letters that render as Latin ones (verifier A2.5 pass 2)
 _MORE_CONFUSABLES = str.maketrans({
     "Ꭺ": "a", "Ᏼ": "b", "Ꮯ": "c", "Ꭰ": "d", "Ꭼ": "e", "Ꮐ": "g", "Ꮋ": "h", "Ꭵ": "i",
@@ -102,16 +117,49 @@ _CONFUSABLES = str.maketrans(
 
 
 def normalise(text: str) -> str:
-    """The text as the scan compares it: accents, combining marks and format characters
-    removed, compatibility forms folded, look-alikes mapped to Latin, case folded, citation
-    markers dropped."""
-    # NFKD splits accents off their letters; combining marks (Mn, Me) and format characters
-    # (Cf) are then dropped, so neither can split a word or hide a letter (pass 2)
-    folded = unicodedata.normalize("NFKD", text)
-    folded = "".join(ch for ch in folded if unicodedata.category(ch) not in ("Cf", "Mn", "Me"))
+    """The text as the scan compares it: accents, combining marks, format and control
+    characters and blank letters removed, compatibility forms folded, known look-alikes mapped
+    to Latin, case folded, citation markers removed. Any other non-ASCII letter is left for
+    the wildcard comparison below (D-43)."""
+    folded = unicodedata.normalize("NFKD", text).translate(_BLANKS)
+    folded = "".join(
+        ch for ch in folded
+        if unicodedata.category(ch) not in ("Cf", "Mn", "Me")
+        and (unicodedata.category(ch) != "Cc" or ch in "\n\t")
+    )  # fmt: skip
     folded = unicodedata.normalize("NFKC", folded)
     folded = folded.translate(_CONFUSABLES).translate(_MORE_CONFUSABLES).casefold()
-    return _CITE.sub(" ", folded)  # a citation marker dropped inside a fragment hides nothing
+    return _CITE.sub("", folded)
+
+
+def _skeleton(text: str) -> str:
+    """Letters and digits only; an ASCII one stays, any other letter becomes '?', a wildcard
+    that matches any one character (so a look-alike from any script still lines up)."""
+    out = []
+    for ch in normalise(text):
+        if ch.isascii() and ch.isalnum():
+            out.append(ch)
+        elif ch.isalnum():
+            out.append("?")
+    return "".join(out)
+
+
+def _like(window: str, target: str, min_exact: float = 0.7) -> bool:
+    """Same length, every position equal or a wildcard, and most positions exact."""
+    if len(window) != len(target):
+        return False
+    exact = 0
+    for a, b in zip(window, target, strict=True):
+        if a == b:
+            exact += 1
+        elif a != "?":
+            return False
+    return exact >= min_exact * len(target)
+
+
+def _contains_like(haystack: str, needle: str) -> bool:
+    n = len(needle)
+    return any(_like(haystack[i : i + n], needle) for i in range(len(haystack) - n + 1))
 
 
 def _alnum(text: str) -> str:
@@ -125,31 +173,50 @@ def rules_texts() -> tuple[str, ...]:
 
 
 def words(text: str) -> list[str]:
-    folded = normalise(text).replace("’", "'")
-    return _WORD.findall(folded.replace("'", ""))
+    """Words as runs of letters and digits; a non-ASCII letter is a '?' wildcard."""
+    folded = normalise(text).replace("’", "").replace("'", "")
+    out = []
+    for w in _WORD.findall(folded):
+        out.append("".join(c if c.isascii() else "?" for c in w))
+    return out
 
 
 @functools.cache
-def _fragments(texts: tuple[str, ...]) -> frozenset[tuple[str, ...]]:
-    grams: set[tuple[str, ...]] = set()
+def _fragments(texts: tuple[str, ...]) -> dict[tuple[int, ...], list[tuple[str, ...]]]:
+    """Every 9-word run of the rules, indexed by its word lengths for the wildcard match."""
+    grams: dict[tuple[int, ...], list[tuple[str, ...]]] = {}
     for text in texts:
         w = words(text)
-        grams.update(tuple(w[i : i + FRAGMENT_WORDS]) for i in range(len(w) - FRAGMENT_WORDS + 1))
-    return frozenset(grams)
+        for i in range(len(w) - FRAGMENT_WORDS + 1):
+            gram = tuple(w[i : i + FRAGMENT_WORDS])
+            grams.setdefault(tuple(map(len, gram)), []).append(gram)
+    return grams
+
+
+def _copies_rules(w: list[str]) -> bool:
+    grams = _fragments(rules_texts())
+    for i in range(len(w) - FRAGMENT_WORDS + 1):
+        window = tuple(w[i : i + FRAGMENT_WORDS])
+        for gram in grams.get(tuple(map(len, window)), ()):
+            if _like("".join(window), "".join(gram)):
+                return True
+    return False
 
 
 def scan(text: str) -> tuple[Finding, ...]:
     """What the text leaks, in a fixed order; empty when it is clean."""
     found: list[Finding] = []
+    canary = AnswerStep.CANARY.casefold()
+    canary = "".join(c for c in canary if c.isalnum())
+    flat = _skeleton(text)
+    if _contains_like(flat, canary) or _contains_like(flat[::-1], canary):
+        found.append("canary")  # reversed too (right-to-left override)
     folded = normalise(text)
-    # the canary on letters and digits only, so separators or invisibles cannot split it
-    canary, flat = _alnum(AnswerStep.CANARY.casefold()), _alnum(folded)
-    if canary in flat or canary in flat[::-1]:  # reversed too (right-to-left override)
-        found.append("canary")
-    if any(re.search(r"[a-f]", m.group(0)) for m in _PID.finditer(folded)):
+    if any(re.search(r"[a-f]", m.group(0)) and re.search(r"[0-9]", m.group(0))
+           for m in _PID.finditer(folded)):  # fmt: skip
         found.append("pid")
     w = words(text)
-    grams = _fragments(rules_texts())
-    if any(tuple(w[i : i + FRAGMENT_WORDS]) in grams for i in range(len(w) - FRAGMENT_WORDS + 1)):
+    reversed_words = words(normalise(text)[::-1])
+    if _copies_rules(w) or _copies_rules(reversed_words):
         found.append("rules")
     return tuple(found)
