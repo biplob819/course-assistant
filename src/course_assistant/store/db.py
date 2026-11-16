@@ -94,9 +94,19 @@ class Store:
         f"""insert or ignore into records
                select 'cid', key, null, null, '{RETIRED_AT}', '{{}}' from records
                where kind = 'conversation'""",
+        # ids a deletion request names, in `covers` or (rows from before covers existed) in
+        # `conversation_id`; only text ids, and a malformed row is skipped, not fatal
+        # (verifier B2.2 pass 9)
         f"""insert or ignore into records
                select 'cid', j.value, null, null, '{RETIRED_AT}', '{{}}'
-               from records r, json_each(r.json, '$.covers') j where r.kind = 'deletion'""",
+               from records r, json_each(r.json, '$.covers') j
+               where r.kind = 'deletion' and json_valid(r.json) and j.type = 'text'
+               union
+               select 'cid', json_extract(r.json, '$.conversation_id'), null, null,
+                      '{RETIRED_AT}', '{{}}'
+               from records r
+               where r.kind = 'deletion' and json_valid(r.json)
+                 and json_type(r.json, '$.conversation_id') = 'text'""",
     )
 
     def __init__(self, path: Path | str, timeout: float = 30.0) -> None:

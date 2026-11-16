@@ -74,3 +74,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [GREEN] [A2.4] — integrity guard and hints; verifier passes 1 and 2 confirmed all five criteria
 - [FIX] [B2.2] — verifier pass 7: conversation ids never reused; newline-only trace splitting
 - [FIX] [B2.2] — verifier pass 8: retired-id markers back-filled by migration; neutral marker time
+- [FIX] [B2.2] — verifier pass 9: back-fill from conversation_id too; malformed rows skipped

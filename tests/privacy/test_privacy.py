@@ -681,3 +681,43 @@ def test_the_retired_marker_keeps_a_neutral_time(store):
     store.put_conversation(conv("c-aaaaaaaaaaa1", A, minute=5))
     at_ = store._con.execute("select at from records where kind = 'cid'").fetchone()[0]
     assert at_ == RETIRED_AT
+
+
+# ---------- verifier pass 9 regressions ----------
+
+
+def _make_old(path, mutate) -> None:
+    old = Store(path)
+    fill(old)
+    old.delete_history(A, "c-aaaaaaaaaaa2", at=at(100))
+    n = len(Store.MIGRATIONS)
+    mutate(old)
+    old._con.execute("delete from records where kind = 'cid'")
+    old._con.execute("delete from schema_migrations where version > ?", (n - 2,))
+    old.close()
+
+
+@pytest.mark.privacy
+def test_a_legacy_request_without_covers_still_retires_its_conversation(tmp_path):
+    def strip_covers(st):
+        st._con.execute("update records set json = json_remove(json, '$.covers') "
+                        "where kind = 'deletion'")  # fmt: skip
+
+    _make_old(tmp_path / "old.sqlite", strip_covers)
+    st = Store(tmp_path / "old.sqlite")
+    try:
+        with pytest.raises(KeyError):
+            st.put_conversation(conv("c-aaaaaaaaaaa2", B))
+    finally:
+        st.close()
+
+
+def test_a_malformed_deletion_row_does_not_stop_the_store_opening(tmp_path):
+    from course_assistant.store.db import RETIRED_AT
+
+    def corrupt(st):
+        st._con.execute("insert into records values ('deletion', 'bad', null, null, ?, '{x')",
+                        (RETIRED_AT,))  # fmt: skip
+
+    _make_old(tmp_path / "old.sqlite", corrupt)
+    Store(tmp_path / "old.sqlite").close()
