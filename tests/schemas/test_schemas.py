@@ -74,7 +74,7 @@ def golden(**kw):
         schema_version="1.0",
         id="ta-b1-001",
         rule="B1",
-        question="Why do we need both offline and online evals?",
+        question="Example question for the schema test?",
         expected_status="answered",
         gold_units=("s02:slides:9",),
         split="tuning",

@@ -246,9 +246,14 @@ def to_line(c: dict) -> str:
     return json.dumps(clean, sort_keys=True, ensure_ascii=False)
 
 
+# held-out cases whose text became public (D-54): left out of the held-out file and manifest,
+# never moved to the public split (that would change the tuning groups)
+RETIRED = frozenset({"ta-b1-065"})
+
+
 def write(cases: list[dict]) -> None:
     pub = [to_line(c) for c in cases if c["split"] == "tuning"]
-    held = [to_line(c) for c in cases if c["split"] == "heldout"]
+    held = [to_line(c) for c in cases if c["split"] == "heldout" and c["id"] not in RETIRED]
     PUBLIC.parent.mkdir(parents=True, exist_ok=True)
     PUBLIC.write_text("\n".join(pub) + "\n", encoding="utf-8")
     HELDOUT.write_text("\n".join(held) + "\n", encoding="utf-8")

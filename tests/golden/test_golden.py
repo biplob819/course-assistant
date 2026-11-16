@@ -33,8 +33,9 @@ def test_composition_matches_the_tech_spec_plus_extension():
     expected = dict(CORE)
     expected["B3"] += 90  # three paraphrases of each B3 probe (D-31)
     expected["B10"] += 60  # three paraphrases of each B10 probe (D-31)
+    expected["B1"] -= len(gt.RETIRED)  # held-out cases whose text became public (D-54)
     assert dict(counts) == expected
-    assert sum(counts.values()) == 430
+    assert sum(counts.values()) == 430 - len(gt.RETIRED)
 
 
 def test_public_cases_are_valid_with_known_locators_and_assessments():
@@ -71,7 +72,8 @@ def test_heldout_cases_are_private_and_pinned_by_the_manifest():
 
     for path in ("golden/heldout/cases.jsonl", "golden/heldout/src/cases_b1.py"):
         assert subprocess.run(["git", "check-ignore", "-q", path], cwd=ROOT).returncode == 0
-    assert MANIFEST["count"] == len(MANIFEST["cases"]) == 430 - len(PUBLIC)
+    assert MANIFEST["count"] == len(MANIFEST["cases"]) == 430 - len(PUBLIC) - len(gt.RETIRED)
+    assert not set(MANIFEST["cases"]) & gt.RETIRED
     assert not set(MANIFEST["cases"]) & {c.id for c in PUBLIC}
     if HELD:  # owner's machine: the private file must match the committed manifest
         assert gt.main(["verify"]) == 0
@@ -137,3 +139,24 @@ def test_no_held_out_text_or_topic_reaches_the_public_split():
         assert gt.leaks(PUBLIC, HELD) == []
     public_ids = {c.id for c in PUBLIC}
     assert public_ids.isdisjoint(MANIFEST["cases"])
+
+
+@pytest.mark.privacy
+def test_no_heldout_question_appears_in_any_tracked_file():
+    """D-54: a held-out question that shows up in a public file is no longer held out. Runs on
+    the owner's machine, where the private file exists; reports case ids only."""
+    import subprocess
+
+    if not HELD:
+        pytest.skip("held-out file is private; checked on the owner's machine and in E2.4")
+    files = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True,
+                           check=True).stdout.decode().split("\0")  # fmt: skip
+    text = []
+    for f in files:
+        path = ROOT / f
+        if f and path.is_file() and path.suffix in {".py", ".md", ".json", ".jsonl", ".yaml",
+                                                     ".yml", ".txt", ".toml", ".csv"}:  # fmt: skip
+            text.append(path.read_text(encoding="utf-8", errors="ignore"))
+    corpus = "\n".join(text)
+    exposed = [c.id for c in HELD if len(c.question) >= 25 and c.question in corpus]
+    assert exposed == [], f"held-out cases exposed in tracked files: {exposed}"

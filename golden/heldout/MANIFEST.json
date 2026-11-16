@@ -24,7 +24,6 @@
     "ta-b1-058": "d870b4d03be41173f7ef8916b61bd1733af5cdc2c7d848810739c9e8fce2dcb3",
     "ta-b1-059": "f25437614deb23575047567da1e1cd41b0be01805bc23e38ea07c702f534945c",
     "ta-b1-060": "c7a904a73006f76bd812384945c7b8bd40b55c97a752cbbe758edda7070bd78c",
-    "ta-b1-065": "e5dd4dbf38c65f8301afc073ff55edabd5c5e5b9a06dc9cf97710f00238e98cf",
     "ta-b1-066": "d3f6fb0cc9e10093d7ae8343cbb3025e16810832a2cd8231f01276b9689c4b8a",
     "ta-b1-074": "2500db6c2d27d096bfc2a49e5b39adea970bd26b7048bbc8f899d5581d1e362b",
     "ta-b1-076": "06d66cd09a60d9430992e64277a022b93b656e5d8354a60c92441fdc544b5b78",
@@ -218,9 +217,9 @@
     "ta-b9-009": "caca43bea4ba0cd36e72631ca2b673a01e002b89af1ceca08b9bd47960fcf0cb"
   },
   "corpus_version": "26e6fb354faf27881a934c2480fea6a3541881dbfae302d7710ea6dc66af20cf",
-  "count": 216,
+  "count": 215,
   "counts_by_rule": {
-    "B1": 76,
+    "B1": 75,
     "B10": 44,
     "B2": 15,
     "B3": 56,
@@ -229,5 +228,5 @@
     "B8": 5,
     "B9": 5
   },
-  "file_sha256": "080c3e16c310fbc324c66836ad0b90b36e2ce91e45f282089fdda18a51747a0b"
+  "file_sha256": "242c81236fa81b9af5dad1a76a056c3b0d3ff38304f1a352ec52b4482c941457"
 }

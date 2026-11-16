@@ -112,3 +112,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [D3.1] — verifier pass 1: lockout counts attempts before the check; global cap; caller confirms the paid run
 - [GREEN] [D3.1] — demo cache, passkey gate and spend guard; verifier pass 2 confirmed all four criteria
 - [FIX] [E2.3] — verifier pass 1: held-out digest over case ids and rubric hash on probe verdicts (CAL-01); solution-digest cache keys so a live fixture replays; fixture marked scripted with no local path; tuning log hash chain; heldout_scored logged and honoured; public support kappa wording
+- [FIX] [E2.1] — D-54: held-out case ta-b1-065 retired after its text was found in a public test; exposure guard test
