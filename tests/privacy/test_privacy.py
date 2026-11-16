@@ -621,3 +621,32 @@ def test_a_broken_utf8_tail_never_blocks_emit_or_delete(tmp_path):
     assert sink.delete_pid(A) > 0
     text = sink.path.read_text(encoding="utf-8", errors="replace")
     assert A not in text and '"finalize"' in text
+
+
+# ---------- verifier pass 7 regressions ----------
+
+
+@pytest.mark.privacy
+def test_a_conversation_id_removed_by_retention_is_never_reused(store):
+    fill(store)
+    store.purge(at(0) + dt.timedelta(days=4000), RetentionPolicy(pilot_end=T0.date()))
+    assert store.conversations_for(A) == []
+    with pytest.raises(KeyError):
+        store.put_conversation(conv("c-aaaaaaaaaaa1", B))
+
+
+def test_the_retired_id_marker_holds_no_learner_and_no_text(store):
+    store.put_conversation(conv("c-aaaaaaaaaaa1", A))
+    row = store._con.execute(
+        "select pid, conversation_id, json from records where kind = 'cid'"
+    ).fetchone()
+    assert row == (None, None, "{}")
+
+
+def test_a_damaged_line_with_a_record_separator_is_never_split(tmp_path):
+    sink = traced(tmp_path)
+    damaged = '{"learner_pid": "' + B + '", "x": "\x1c c-bbbbbbbbbbb1 '
+    with sink.path.open("ab") as fh:
+        fh.write(damaged.encode() + b"\n")
+    sink.delete_pid(A)
+    assert damaged in sink.path.read_text(encoding="utf-8").split("\n")

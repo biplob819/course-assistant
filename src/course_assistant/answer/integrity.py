@@ -127,9 +127,9 @@ the brief you suspect, or null; for clear, null.
             raise TypeError("new_reply must be a string")
         if not new_reply.strip():
             raise ValueError("new_reply must not be empty")
-        if isinstance(earlier_replies, str | bytes | dict) or not isinstance(
+        if isinstance(earlier_replies, str | bytes | dict | set | frozenset) or not isinstance(
             earlier_replies, Iterable
-        ):
+        ):  # an unordered set loses the conversation order (verifier A2.4 pass 2)
             raise TypeError("earlier_replies must be a sequence of strings")
         earlier = tuple(earlier_replies)
         if not all(isinstance(r, str) for r in earlier):

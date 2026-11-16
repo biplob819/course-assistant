@@ -657,3 +657,21 @@ def test_strict_json_refuses_duplicate_keys_at_any_depth():
     with pytest.raises(ValueError):
         strict_loads('{"a": {"b": 1, "b": 2}}')
     assert strict_loads('{"a": 1}') == {"a": 1}
+
+
+# ---------- verifier pass 2 regressions ----------
+
+
+@pytest.mark.parametrize("earlier", [{"a": 1}, {"one reply"}, frozenset({"x"}), "text"])
+def test_unordered_or_mapped_earlier_replies_are_refused_before_any_call(earlier):
+    step, client = hint_with([hint_reply()])
+    with pytest.raises(TypeError):
+        step.run(BRIEFS["s01-a1"], earlier, ASSESSMENTS)  # type: ignore[arg-type]
+    assert client.responses.calls == []
+
+
+def test_earlier_replies_at_the_character_cap_skip_the_paid_hint_call():
+    step, client = hint_with([hint_reply()])
+    earlier = ["x" * IntegrityStep.MAX_CHARS]  # no room left for even a one-character hint
+    hint = step.run(BRIEFS["s01-a1"], earlier, ASSESSMENTS)
+    assert hint.fixed and client.responses.calls == []

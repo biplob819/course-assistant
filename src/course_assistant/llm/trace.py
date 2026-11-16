@@ -142,7 +142,9 @@ class JsonlSink:
         if not self.path.is_file():
             return 0
         raw = self.path.read_bytes().decode("utf-8", errors="replace")  # a torn byte is kept
-        lines = [x for x in raw.splitlines() if x.strip()]
+        # split on "\n" only: str.splitlines also breaks on \x1c-\x1e and others, which would
+        # cut one learner's damaged line into fragments (verifier B2.2 pass 7)
+        lines = [x.rstrip("\r") for x in raw.split("\n") if x.strip()]
         mine = set(known)
         for line in lines:
             rec = _record(line)

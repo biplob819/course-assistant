@@ -71,3 +71,5 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [A2.4] — verifier pass 1: strict JSON for replies, hint pre-checks
 - [FIX] [B2.2] — verifier pass 6: deleted conversation ids retired; byte-safe emit
 - [GREEN] [X1.1] — evalkit-harness 0.2.0 released (EvalKit B4.1) and pinned; import contract test
+- [GREEN] [A2.4] — integrity guard and hints; verifier passes 1 and 2 confirmed all five criteria
+- [FIX] [B2.2] — verifier pass 7: conversation ids never reused; newline-only trace splitting

@@ -192,11 +192,20 @@ class Store:
             existing = self.get_conversation(c.conversation_id)
             if existing is not None and existing.learner_pid != c.learner_pid:
                 raise KeyError(f"conversation {c.conversation_id} belongs to another learner")
-            if existing is None and any(c.conversation_id in d.covers
-                                        for d in self.deletions()):  # fmt: skip
-                # a deleted conversation id is never handed out again: an open deletion
-                # request still trusts it (verifier B2.2 pass 6)
-                raise KeyError(f"conversation {c.conversation_id} was deleted and is retired")
+            if existing is None:
+                # a conversation id is used once, ever: deleted, purged or live, it is never
+                # handed to anyone again, because open deletion requests and old trace lines
+                # still name it (verifier B2.2 passes 6 and 7). The marker is the bare id: no
+                # learner, no text, and no purge or delete removes it.
+                seen = self._con.execute(
+                    "select 1 from records where kind = 'cid' and key = ?", (c.conversation_id,)
+                ).fetchone()
+                if seen or any(c.conversation_id in d.covers for d in self.deletions()):
+                    raise KeyError(f"conversation {c.conversation_id} was used before")
+                self._con.execute(
+                    "insert into records values ('cid', ?, null, null, ?, '{}')",
+                    (c.conversation_id, _iso(c.started_at)),
+                )
             self._put("conversation", c.conversation_id, c, pid=c.learner_pid,
                       conversation_id=c.conversation_id, at=c.started_at)  # fmt: skip
 
