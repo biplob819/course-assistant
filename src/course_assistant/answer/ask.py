@@ -363,38 +363,36 @@ class Assistant:
         finally:
             self._settle(learner_pid, touched[0], before)
 
-    def _deletions_of(self, pid: str) -> int | None:
+    def _deletions_of(self, pid: str) -> frozenset[str] | None:
         try:
-            return sum(1 for d in self.store.deletions() if d.learner_pid == pid)
+            return self.store.deletion_keys(pid)
         except Exception:
             return None  # unreadable: the turn cannot tell, so it removes nothing
 
-    def _settle(self, pid: str, conversation_id: str | None, before: int | None) -> None:
+    def _settle(self, pid: str, conversation_id: str | None, before: frozenset[str] | None) -> None:
         """If the learner filed a delete while this turn ran, whatever the turn wrote after it
-        (app rows as well as trace lines) goes too, through the same privacy.delete: a whole
-        delete runs again for the learner, a conversation delete again for this turn's
-        conversation if the turn wrote it back. Any failure leaves that new request open for
-        purge to flag, and never replaces the turn's result (verifier B2.2 passes 12-14). If
-        the store cannot be read, nothing is removed (never a guess that deletes data)."""
+        goes too: app rows through Store.delete_history (a new, open request) and this sink's
+        lines. New requests are found by key, never by time. The turn never marks trace
+        deletion complete: purge's retry_trace_deletion closes the open request with every
+        configured sink, so a sink this turn cannot see is never skipped (verifier B2.2
+        passes 12-15). Any failure leaves the request open for purge to flag, and never
+        replaces the turn's result. If the store cannot be read, nothing is removed."""
         if before is None:
             return
-        from course_assistant.privacy import delete  # privacy imports the store, not ask
-
-        sink = self.sink
-        traces: list[TraceSink] = (
-            [sink] if sink is not None and callable(getattr(sink, "delete_pid", None)) else []
-        )
         try:
-            mine = [d for d in self.store.deletions() if d.learner_pid == pid]
-            new = mine[before:]
-            if any(d.conversation_id is None for d in new):
-                delete(pid, store=self.store, traces=traces)
-            elif conversation_id is not None and any(conversation_id in d.covers for d in new):
-                owned = {c.conversation_id for c in self.store.conversations_for(pid)}
-                if conversation_id in owned:
-                    delete(pid, conversation_id, store=self.store, traces=traces)
-                elif traces:
-                    traces[0].delete_pid(pid, {conversation_id})  # type: ignore[attr-defined]
+            new = self.store.deletions_by_key(self.store.deletion_keys(pid) - before)
+            whole = any(d.conversation_id is None for d in new)
+            scoped = conversation_id is not None and any(conversation_id in d.covers for d in new)
+            if not (whole or scoped):
+                return
+            owned = {c.conversation_id for c in self.store.conversations_for(pid)}
+            if whole and owned:
+                self.store.delete_history(pid, None, at=self._now())
+            elif scoped and conversation_id in owned:
+                self.store.delete_history(pid, conversation_id, at=self._now())
+            remove = getattr(self.sink, "delete_pid", None)
+            if callable(remove):
+                remove(pid, None if whole else {conversation_id})
         except Exception:  # an open request is flagged by purge (US9, 7 days)
             return
 

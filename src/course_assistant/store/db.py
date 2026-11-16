@@ -461,6 +461,24 @@ class Store:
         finally:
             self._con.execute(f"pragma busy_timeout = {int(old)}")
 
+    def deletion_keys(self, pid: str) -> frozenset[str]:
+        """The record keys of this learner's deletion requests: unique and never reused, so a
+        caller can tell which requests are new whatever their times (verifier B2.2 pass 15)."""
+        rows = self._con.execute(
+            "select key from records where kind = 'deletion' and pid = ?", (pid,)
+        ).fetchall()
+        return frozenset(r[0] for r in rows)
+
+    def deletions_by_key(self, keys: frozenset[str]) -> list[DeletionRequest]:
+        out = []
+        for key in sorted(keys):
+            row = self._con.execute(
+                "select json from records where kind = 'deletion' and key = ?", (key,)
+            ).fetchone()
+            if row is not None:
+                out.append(self._load(DeletionRequest, row[0]))
+        return out
+
     def deletions(self) -> list[DeletionRequest]:
         rows = self._con.execute(
             "select pid, json from records where kind = 'deletion' order by at, key"

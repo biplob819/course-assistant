@@ -85,3 +85,7 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [B2.2] — verifier pass 14: a mid-turn delete re-runs privacy.delete for what the turn wrote
 - [FIX] [A2.5] — verifier pass 4: pid next to hex-ending words caught; look-alikes mapped after casefold
 - [DOC] OWNER D-45 passkey protection with bring-your-own-key (RPL-04, CHT-06); OWNER D-46 README with screenshots, guide and links (OSS-09)
+- [GREEN] [G0.1] — sign-off attested by the owner (OWNER D-47)
+- [FIX] [A2.5] — verifier pass 5: pid detection in any grouping, UUID-aware
+- [FIX] [B2.2] — verifier pass 15: new deletions found by key; the turn never marks traces complete
+- [DOC] OWNER D-48 — the passkey is a numeric passcode only the owner knows

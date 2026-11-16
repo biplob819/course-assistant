@@ -1113,3 +1113,96 @@ def test_a_pid_next_to_a_word_ending_in_a_hex_letter_is_caught(text):
     from course_assistant.answer.leak import scan
 
     assert "pid" in scan(text)
+
+
+@pytest.mark.privacy
+def test_a_whole_delete_dated_earlier_than_older_requests_is_still_seen(tmp_path, monkeypatch):
+    from course_assistant.llm.trace import JsonlSink
+    from course_assistant.privacy import delete, history
+
+    store = Store(tmp_path / "app.sqlite")
+    sink = JsonlSink(tmp_path / "trace.jsonl")
+    rsp = responder(client=s.StepClient(**{k: v * 2 for k, v in happy().items()}),
+                    prices=PRICES, sleep=lambda _: None)  # fmt: skip
+    a = Assistant(CONFIG, CORPUS, ASSESSMENTS, store, rsp, sink=sink, now=Clock(),
+                  timer=lambda: 0.0, new_id=ids())  # fmt: skip
+    a.ask(QUESTION, PID)
+    first = store.conversations_for(PID)[0].conversation_id
+    late = dt.datetime(2030, 1, 1, tzinfo=dt.UTC)
+    delete(PID, first, store=store, traces=[sink], at=late)
+    real = store.is_paused
+
+    def then_delete(*args, **kwargs):
+        out = real(*args, **kwargs)
+        delete(PID, store=store, traces=[sink], at=late - dt.timedelta(hours=1))
+        return out
+
+    monkeypatch.setattr(store, "is_paused", then_delete)
+    a.ask(QUESTION, PID)
+    assert history(PID, store) == ()
+    store.close()
+
+
+@pytest.mark.privacy
+def test_a_sink_that_cannot_delete_leaves_the_request_open_for_purge(tmp_path, monkeypatch):
+    from course_assistant.privacy import delete
+
+    class EmitOnly:
+        def __init__(self):
+            self.lines = []
+
+        def emit(self, record):
+            self.lines.append(record)
+
+    store = Store(tmp_path / "app.sqlite")
+    sink = EmitOnly()
+    rsp = responder(client=s.StepClient(**happy()), prices=PRICES, sleep=lambda _: None)
+    a = Assistant(CONFIG, CORPUS, ASSESSMENTS, store, rsp, sink=sink, now=Clock(),
+                  timer=lambda: 0.0, new_id=ids())  # fmt: skip
+    real = store.is_paused
+
+    def then_delete(*args, **kwargs):
+        out = real(*args, **kwargs)
+        delete(PID, store=store, traces=[sink])
+        return out
+
+    monkeypatch.setattr(store, "is_paused", then_delete)
+    a.ask(QUESTION, PID)
+    assert any(d.traces_deleted_at is None for d in store.deletions() if d.learner_pid == PID)
+    store.close()
+
+
+# ---------- verifier pass 5 regressions ----------
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Student #1042: a1b2c3d4e5f60718",
+        "Learner in cohort 2024: a1b2c3d4e5f60718",
+        "a1b2c3d4e5f60718, 2024",
+        "The record added a1b2c3d4e5f60718",
+        "#ff8800 a1b2c3d4e5f60718",
+        "a1:b2:c3:d4:e5:f6:07:18",
+        "a1b-2c3-d4e-5f6-071-8",
+    ],
+)
+def test_pids_beside_numbers_or_in_any_grouping_are_caught(text):
+    from course_assistant.answer.leak import scan
+
+    assert "pid" in scan(text)
+
+
+@pytest.mark.parametrize(
+    "ok",
+    [
+        "request 123e4567-e89b-12d3-a456-426614174000 failed",
+        "colour #ff8800 and #00aa11 on the slide",
+        "learning rates 1e-3, 3e-4, 1e-4, 5e-5, 1e-5 and 2e-5",
+    ],
+)
+def test_longer_ids_and_ordinary_numbers_are_not_pids(ok):
+    from course_assistant.answer.leak import scan
+
+    assert "pid" not in scan(ok)

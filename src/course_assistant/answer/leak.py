@@ -26,16 +26,31 @@ FRAGMENT_WORDS = 9  # "more than 8 words" (§5 point 7)
 # 16 hex characters, also when split by short runs of separators (verifier A2.5 passes 1, 2).
 # A pid is a hash, so it holds at least one letter a-f: an all-digit run (a list of numbers,
 # a long figure) is not a pid and never turns a good answer into not_covered
-# a pid as it is written: 16 hex characters in one run, or in groups of 4 or 8 joined by up to
-# three separator characters, standing as its own word; it holds a digit and a letter a-f
-_PID = re.compile(
-    r"(?<![0-9a-z])(?:[0-9a-f]{16}|[0-9a-f]{8}(?:[^0-9a-z]{1,3}[0-9a-f]{4}){2}|[0-9a-f]{4}"
-    r"(?:[^0-9a-z]{1,3}[0-9a-f]{4}){3}|[0-9a-f]{8}[^0-9a-z]{1,3}[0-9a-f]{8})(?![0-9a-z])"
-)
-# a neighbouring all-hex word of 4+ characters means the match is part of a longer id (a
-# UUID): checked on whole words, so "pid:", "id", "and" or "code" never hide a pid (pass 4)
-_HEX_BEFORE = re.compile(r"(?<![0-9a-z])[0-9a-f]{4,}[^0-9a-z]{1,3}$")
-_HEX_AFTER = re.compile(r"^[^0-9a-z]{1,3}[0-9a-f]{4,}(?![0-9a-z])")
+# a pid: 16 hex characters standing as one token, in any grouping, with up to three separator
+# characters between any two of them (verifier A2.5 passes 1-5)
+_PID = re.compile(r"(?<![0-9a-z])[0-9a-f](?:[^0-9a-z\n]{0,3}[0-9a-f]){15}(?![0-9a-z])")
+
+
+def _seps(found: str) -> set[str]:
+    return {c for c in found if not c.isalnum()}
+
+
+def _continues(text: str, at: int, step: int, seps: set[str]) -> bool:
+    """Does the hex run carry on past `at` (forwards for step 1, backwards for -1)? Only with
+    the same separator the match used inside it, or with no separator if it used none, so a
+    UUID's next group counts and an ordinary neighbouring word or number never does."""
+    i = at if step == 1 else at - 1
+    if not (0 <= i < len(text)):
+        return False
+    if text[i] in seps:
+        j = i + step
+        return 0 <= j < len(text) and text[j] in "0123456789abcdef"
+    return (
+        not seps
+        and text[i] in "-:"
+        and 0 <= i + step < len(text)
+        and (text[i + step] in "0123456789abcdef")
+    )
 
 
 def _pid_like(folded: str) -> bool:
@@ -43,10 +58,9 @@ def _pid_like(folded: str) -> bool:
         found = m.group(0)
         if not (re.search(r"[a-f]", found) and re.search(r"[0-9]", found)):
             continue
-        if _HEX_BEFORE.search(folded[max(0, m.start() - 40) : m.start()]):
-            continue
-        if _HEX_AFTER.search(folded[m.end() : m.end() + 40]):
-            continue
+        seps = _seps(found)
+        if _continues(folded, m.end(), 1, seps) or _continues(folded, m.start(), -1, seps):
+            continue  # part of a longer id, such as a UUID
         return True
     return False
 
