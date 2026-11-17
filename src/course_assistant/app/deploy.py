@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from course_assistant.demo._errors import PasskeyConfigError
-from course_assistant.demo.passkey import _parse, read_secret
+from course_assistant.demo.passkey import _parse, read_secret, same_hash
 from course_assistant.store.db import Store
 
 LOG = logging.getLogger("course_assistant.demo")
@@ -88,7 +88,7 @@ def startup_problem(env: Mapping[str, str] | None = None,
         return "not a passkey hash: " + ", ".join(bad)
     if not (values["DEMO_KV_REST_URL"] or "").startswith("https://"):
         return "DEMO_KV_REST_URL is not an https URL"
-    if values["DEMO_PASSKEY_HASH"] == values["STAFF_PASSKEY_HASH"]:
+    if same_hash(values["DEMO_PASSKEY_HASH"] or "", values["STAFF_PASSKEY_HASH"] or ""):
         return "DEMO_PASSKEY_HASH and STAFF_PASSKEY_HASH are equal"
     return None
 

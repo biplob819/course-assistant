@@ -34,7 +34,11 @@ uv run course-assistant passkey-hash
 It asks for the code twice, without showing it, and prints one line beginning
 `pbkdf2_sha256$`. That line is the hash. Use the learner hash as `DEMO_PASSKEY_HASH` and the
 teaching-team hash as `STAFF_PASSKEY_HASH`. The app stores only these salted hashes, never
-the codes. If the two hashes are equal, the app will not start.
+the codes. The two codes must differ: if the two hashes are equal (by value, however they
+are written), the app will not start, and if the same code was hashed twice under two salts,
+the teaching-team page refuses that code, so the staff page cannot be opened at all. Paste
+each hash exactly as printed; a hash with a changed spelling (such as a leading zero) is
+refused.
 
 ## 3. Create the hosted KV store
 
@@ -54,7 +58,9 @@ is still open). Run `make demo-cache YES=--yes` with your config. It prints the 
 cost first. Then check it offline with
 `uv run python scripts/demo_cache.py --check`, and commit `demo/replay.json`. The file holds
 only sample-course text, which is public under CC BY 4.0. The learner page opens on these
-worked examples, with no live call. Until the file exists, the page offers live questions only.
+worked examples, with no live call. Until `demo/replay.json` is committed, the app shows only
+the locked page (its log says the course is missing), because the hosted app takes the
+sample course from that file.
 
 ## 6. Create the app on Community Cloud
 
@@ -75,7 +81,7 @@ worked examples, with no live call. Until the file exists, the page offers live 
    pause every new unlock for 15 minutes. Set 1 only if the host's own proxy appends the real
    client address. A wrong number lets a guesser pose as many addresses.
 6. Choose **Deploy**. If a secret is missing, a hash is malformed or the two hashes are equal,
-   the app shows only a fixed "not available" page. The log names the missing secret, never
+   the app shows only a fixed "not available" locked page. The log names the missing secret, never
    its value.
 
 ## 7. Run the post-deploy smoke check

@@ -262,14 +262,6 @@ def test_client_ip_trusts_only_the_configured_proxy_hops_from_the_right():
         assert "ip_address" not in src and "deploy.client_ip" in src, page
 
 
-def test_requirements_are_the_core_dependencies_plus_the_app_and_openai_extras():
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
-    want = [*project["dependencies"], *project["optional-dependencies"]["app"],
-            *project["optional-dependencies"]["openai"]]  # fmt: skip
-    lines = [x.split("#")[0].strip() for x in REQUIREMENTS.read_text(encoding="utf-8").splitlines()]
-    assert sorted(x for x in lines if x) == sorted(want)
-
-
 @pytest.mark.safety
 def test_streamlit_config_hides_error_details_and_usage_stats():
     cfg = tomllib.loads(CONFIG_TOML.read_text(encoding="utf-8"))
@@ -486,3 +478,153 @@ def test_spec_names_the_owner_attest_row_and_the_catalog_marks_it():
     assert rows["DEM-04"].status != "green" or rows["DEM-04"].proof.startswith("attest=OWNER")
     assert "owner attest" in SPEC.read_text(encoding="utf-8")
     assert json.dumps(deploy.DEFAULTS)  # plain names and paths only
+
+
+# ======================= verifier pass 1 should-fix ================================
+
+
+def _other_encoding(stored: str) -> str:
+    """The same hash with its salt written in a non-canonical base64 (unused bits set)."""
+    import base64
+
+    scheme, n, salt, digest = stored.split("$")
+    raw = base64.b64decode(salt)
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    body, pad = salt.rstrip("="), "=" * (len(salt) - len(salt.rstrip("=")))
+    for c in alphabet:
+        other = body[:-1] + c + pad
+        if other != salt and base64.b64decode(other) == raw:
+            return "$".join((scheme, n, other, digest))
+    raise AssertionError("no other encoding")  # pragma: no cover
+
+
+@pytest.mark.safety
+def test_equal_hashes_are_compared_by_value_and_hashes_must_be_canonical():
+    from course_assistant.demo import passkey
+    from course_assistant.demo._errors import PasskeyConfigError
+
+    padded = HASH.replace("$100000$", "$0100000$")
+    assert padded != HASH
+    for staff in (padded, " " + HASH + "\n"):
+        problem = deploy.startup_problem({}, good_secrets(STAFF_PASSKEY_HASH=staff))
+        assert problem is not None and "STAFF_PASSKEY_HASH" in problem
+    # a non-canonical hash is refused everywhere, so the gate stays closed on it
+    for bad in (padded, _other_encoding(HASH)):
+        assert bad != HASH
+        with pytest.raises(PasskeyConfigError):
+            passkey.verify_passcode(CODE, bad)
+    assert passkey.same_hash(HASH, HASH) and not passkey.same_hash(HASH, STAFF_HASH)
+    assert passkey.verify_passcode(CODE, HASH)  # canonical hashes still work
+    from course_assistant.app.team import staff_hash
+
+    gate = passkey.PasskeyGate(staff_hash({}, good_secrets(STAFF_PASSKEY_HASH=padded)))
+    with pytest.raises(Exception, match="closed"):  # the staff page stays closed on it
+        gate.unlock(CODE, session="s")
+
+
+@pytest.mark.safety
+def test_the_same_code_under_another_salt_never_opens_the_staff_page(tmp_path):
+    from course_assistant.demo import passkey
+    from tests.demo.test_demo import FAST
+
+    rig = TeamRig(tmp_path)
+    rig.staff_secret.value = passkey.hash_passcode(CODE, iterations=FAST)  # same code, new salt
+    assert (
+        deploy.startup_problem({}, good_secrets(STAFF_PASSKEY_HASH=rig.staff_secret.value)) is None
+    )
+    st = TeamState.new()
+    with pytest.raises(Exception, match="passkey"):
+        rig.team.unlock(st, CODE)
+    assert rig.team.locked_reason(st) is not None
+    assert "must differ" in GUIDE.read_text(encoding="utf-8")
+
+
+def _lock_versions() -> dict[str, set[str]]:
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    out: dict[str, set[str]] = {}
+    for pkg in lock["package"]:
+        if "version" in pkg:
+            out.setdefault(pkg["name"], set()).add(pkg["version"])
+    return out
+
+
+def _pins() -> dict[str, str]:
+    pins: dict[str, str] = {}
+    for line in REQUIREMENTS.read_text(encoding="utf-8").splitlines():
+        line = line.split("#")[0].strip()
+        if not line:
+            continue
+        req = line.split(";")[0].strip()
+        m = re.fullmatch(r"([A-Za-z0-9_.-]+)==([A-Za-z0-9_.+-]+)", req)
+        assert m, f"not an exact pin: {line}"
+        pins[m[1].lower()] = m[2]
+    return pins
+
+
+# third-party top-level modules of the deployed code -> distribution in the lock
+DIST = {"yaml": "pyyaml", "pydantic": "pydantic", "openai": "openai", "streamlit": "streamlit",
+        "httpx2": "httpx2", "websockets": "websockets"}  # fmt: skip
+NOT_DEPLOYED = {"evalkit", "pypdf", "pptx"}  # eval and ingest extras: never on the demo path
+
+
+def _deployed_imports() -> set[str]:
+    import ast
+
+    std = set(sys.stdlib_module_names) | {"course_assistant", "__future__"}
+    files = [p for p in (ROOT / "src" / "course_assistant").rglob("*.py") if "eval" not in p.parts]
+    files += [ROOT / "deploy" / "streamlit_app.py"]
+    mods: set[str] = set()
+    for f in files:
+        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                mods |= {a.name.split(".")[0] for a in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                mods.add(node.module.split(".")[0])
+    return mods - std
+
+
+def test_deploy_requirements_pin_the_lock_and_cover_every_direct_import():
+    pins, lock = _pins(), _lock_versions()
+    for name, version in pins.items():
+        assert version in lock.get(name, set()), f"{name}=={version} is not the uv.lock version"
+    imports = _deployed_imports() - NOT_DEPLOYED
+    assert imports <= set(DIST), f"map these imports to a distribution: {imports - set(DIST)}"
+    for mod in imports:
+        assert DIST[mod] in pins, f"{mod} ({DIST[mod]}) is imported but not in requirements"
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    for spec in [*project["dependencies"], *project["optional-dependencies"]["app"],
+                 *project["optional-dependencies"]["openai"]]:  # fmt: skip
+        assert re.split(r"[<>=!~ \[]", spec)[0].lower() in pins, spec
+    # the demo's import closure never pulls an extra that is not installed on the host
+    extras = sorted(NOT_DEPLOYED)
+    code = ("import sys; import course_assistant.app.wiring, course_assistant.app.team_wiring, "
+            "course_assistant.app.deploy, course_assistant.demo.cache, course_assistant.llm.client;"
+            f" print(sorted(m for m in {extras!r} if m in sys.modules))")  # fmt: skip
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                         check=True, cwd=ROOT)  # fmt: skip
+    assert out.stdout.strip() == "[]"
+
+
+def test_deploy_requirements_equal_a_fresh_uv_export():
+    import shutil
+
+    uv = shutil.which("uv")
+    if uv is None:
+        pytest.skip("uv is not on PATH; the lock check above still runs")
+    out = subprocess.run([uv, "export", "--frozen", "--no-hashes", "--no-dev", "--extra", "app",
+                          "--extra", "openai", "--no-emit-project", "--no-header"],
+                         capture_output=True, text=True, check=True, cwd=ROOT)  # fmt: skip
+
+    def lines(text: str) -> list[str]:
+        return [
+            x.strip() for x in text.splitlines() if x.strip() and not x.lstrip().startswith("#")
+        ]
+
+    assert lines(REQUIREMENTS.read_text(encoding="utf-8")) == lines(out.stdout)
+
+
+def test_guide_says_the_app_is_locked_until_the_demo_cache_is_committed(tmp_path):
+    guide = GUIDE.read_text(encoding="utf-8")
+    assert "offers live questions only" not in guide
+    assert "demo/replay.json" in guide and "locked page" in guide
+    assert deploy.course_problem({"CA_REPLAY": str(tmp_path / "replay.json")}) is not None

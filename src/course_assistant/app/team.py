@@ -28,7 +28,7 @@ from course_assistant.answer.measure import percentile
 from course_assistant.app.chat import MISSING_UNIT, STATUS_LABELS, SourceChip, _session_label
 from course_assistant.demo._errors import GuardRefused
 from course_assistant.demo.passkey import SECRET_NAME as LEARNER_SECRET
-from course_assistant.demo.passkey import PasskeyGate, read_secret, verify_passcode
+from course_assistant.demo.passkey import PasskeyGate, read_secret, same_hash, verify_passcode
 from course_assistant.digest import K_MIN, week_window
 from course_assistant.escalation import EscalationError, close, flag_gap, reply, team_queue
 from course_assistant.escalation.queue import STATUSES, QueueItem
@@ -99,7 +99,9 @@ def staff_hash(
     def load() -> str | None:
         staff = read_secret(STAFF_SECRET, env=env, secrets_store=secrets_store)
         learner = read_secret(LEARNER_SECRET, env=env, secrets_store=secrets_store)
-        if staff is None or (learner is not None and staff == learner):
+        if staff is None or (
+            learner is not None and (staff == learner or same_hash(staff, learner))
+        ):
             return None
         return staff
 

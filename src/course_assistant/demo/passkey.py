@@ -80,7 +80,21 @@ def _parse(stored: str) -> tuple[int, bytes, bytes]:
     iterations = int(m[1])
     if iterations < MIN_ITERATIONS or len(salt) < SALT_BYTES or len(digest) != 32:
         raise PasskeyConfigError(f"{SECRET_NAME} is not a passkey hash")
+    # one text per hash (D3.2 verifier): no leading zeros, canonical base64 only, so two
+    # spellings of one hash can never pass a text comparison as different hashes
+    b64 = base64.b64encode
+    if m[1] != str(iterations) or b64(salt).decode() != m[2] or b64(digest).decode() != m[3]:
+        raise PasskeyConfigError(f"{SECRET_NAME} is not a passkey hash")
     return iterations, salt, digest
+
+
+def same_hash(a: str, b: str) -> bool:
+    """True when two stored hashes are the same hash by value (iterations, salt, digest);
+    a malformed one is never the same as anything."""
+    try:
+        return _parse(a) == _parse(b)
+    except PasskeyConfigError:
+        return False
 
 
 def verify_passcode(code: str, stored: str) -> bool:
