@@ -16,6 +16,12 @@ next to it). Four parts, all from the public golden split (never golden/heldout)
 4. The public B1 follow-up cases: recall@8 against gold units, raw question with the window
    against the route's standalone rewrite alone (§2 parallel-start bullet).
 
+`--latency-only` (E2.5) runs part 1 only, and `--label` names the setting in the run id and
+the result file, so each candidate setting's smoke run is ledgered under its own run id.
+`--public-all` (E2.5) runs every public case instead of the 30 (earlier turns seeded), with
+statuses against expected per rule: latency and cost with no judge (the judged run is
+`scripts/eval_live.py`).
+
 Prints the estimate first and stops over --max-cost. Spend goes to runs/ledger.jsonl; results
 to runs/smoke-<stamp>.json (git-ignored).
 """
@@ -93,6 +99,26 @@ def summarise(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
     }  # fmt: skip
 
 
+def by_rule(rows: Iterable[dict[str, Any]]) -> dict[str, dict[str, int]]:
+    """Per rule: cases, statuses as expected, and errors (status `error`)."""
+    out: dict[str, dict[str, int]] = {}
+    for r in rows:
+        d = out.setdefault(r["rule"], {"n": 0, "as_expected": 0, "errors": 0})
+        d["n"] += 1
+        d["as_expected"] += r["status"] == r["expected"]
+        d["errors"] += r["status"] == "error"
+    return dict(sorted(out.items()))
+
+
+def label_arg(value: str) -> str:
+    """A setting label safe in a run id and a file name."""
+    import re
+
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", value):
+        raise argparse.ArgumentTypeError("label: 1-40 lowercase letters, digits or dashes")
+    return value
+
+
 def _pid(case_id: str) -> str:
     return hashlib.sha256(f"smoke:{case_id}".encode()).hexdigest()[:16]
 
@@ -104,6 +130,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--config", required=True, type=Path, help="AppConfig YAML (ingested)")
     ap.add_argument("--store", type=Path, help="corpus store folder (default: next to config)")
     ap.add_argument("--max-cost", type=float, default=5.0, help="stop if the estimate is over")
+    ap.add_argument("--latency-only", action="store_true",
+                    help="part 1 only: the 30 questions (E2.5 latency smoke)")  # fmt: skip
+    ap.add_argument("--public-all", action="store_true",
+                    help="every public case, not the 30 (implies --latency-only)")  # fmt: skip
+    ap.add_argument("--label", type=label_arg, default=None,
+                    help="setting name for the run id (letters, digits, dashes)")  # fmt: skip
     ap.add_argument("--yes", action="store_true", help="confirm that this run spends money")
     args = ap.parse_args(argv)
     if not args.yes:
@@ -118,6 +150,10 @@ def main(argv: list[str] | None = None) -> int:
     cases = public_cases()
     smoke, plant, probes, follow = (smoke_set(cases), planted(cases), decomposition(cases),
                                     follow_ups(cases))  # fmt: skip
+    if args.public_all:
+        smoke = cases
+    if args.latency_only or args.public_all:
+        plant, probes, follow = [], [], []
     n_calls = len(smoke) + len(plant) + len(probes) + 2 * len(follow)
     estimate = n_calls * PER_QUESTION_USD
     print(f"estimate: {n_calls} questions x ${PER_QUESTION_USD} = ${estimate:.2f}")
@@ -152,7 +188,7 @@ def _run(args: argparse.Namespace, smoke: list[dict[str, Any]], plant: list[dict
     runs = ROOT / "runs"
     runs.mkdir(exist_ok=True)
     stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
-    run_id = f"smoke-{stamp}"
+    run_id = f"smoke-{args.label}-{stamp}" if args.label else f"smoke-{stamp}"
     ledger = Ledger(runs / "ledger.jsonl", config.monthly_budget_usd)
     sink = JsonlSink(runs / f"{run_id}-trace.jsonl")
     live = responder(client=openai.OpenAI(), prices=load_prices(), ledger=ledger, sink=sink,
@@ -193,8 +229,9 @@ def _run(args: argparse.Namespace, smoke: list[dict[str, Any]], plant: list[dict
     results: dict[str, Any] = {"run_id": run_id, "config": config.model_dump(mode="json"),
                                "rules_hash": Assistant.rules_hash(),
                                "corpus_version": corpus.corpus_version}  # fmt: skip
-    smoke_rows = [ask(c) for c in smoke]
+    smoke_rows = [ask(c, seeded(c) if c["prior_turns"] else None) for c in smoke]
     results["smoke"] = {
+        "by_rule": by_rule(smoke_rows),
         "rows": smoke_rows,
         "summary": summarise(smoke_rows),
         "status_match": sum(r["status"] == r["expected"] for r in smoke_rows),

@@ -174,6 +174,15 @@ These are planning numbers. A 30-question smoke run (A2.5) replaces them with me
 
 **NFR5 is not met: p95 is 17.3 s against 8 s.** The answer call alone uses the whole budget at p95, and the checks run after it rather than inside it; hint turns add a second Sol call. The answer-model choice and effort in E2.5 must close this (D-44): candidates are `reasoning.effort` low on Sol, Luna for the answer, running L2 and integrity in parallel, and streaming the answer while the checks run (shown only once they pass).
 
+**Measured (E2.5, 17 Nov 2026, sample course, bar 0.5, `early_finalize` on; every public case through `ask()`, no judges; 214 questions per setting, two settings run side by side):**
+
+| Setting | p50 | p95 | Answer step p95 | Hint step p95 | Cost per question | B1 answered |
+| --- | --- | --- | --- | --- | --- | --- |
+| Sol `medium` answers, hints on Luna (`hint_model`) | 7.1 s | 10.9 s | 7.2 s | 9.7 s | $0.0070 | 51/74 |
+| Luna answers and hints | 5.9 s | 9.6 s | 5.9 s | 8.7 s | $0.0039 | 30/74 |
+
+On the 30-question smoke set: Sol `medium` 10.1 s at p95, Sol `low` 10.1 s (no gain: Sol spends under 30 reasoning tokens at `medium`), Sol `low` with hints on Luna 11.1 s, Sol `medium` with hints on Luna 10.6 s, Luna 8.6 s. `early_finalize` removed the wait for the discarded answer on non-course turns (the A2.5 hint turns took answer + hint, 14 to 20 s). What is left: the answer call with file search (5 to 7 s) plus the checks (1.3 to 4.6 s) on course turns, and route plus hint plus the hint's integrity check (6 to 12 s) on hint turns (70 of the 214 on Sol: the 64 B3 cases and 6 course answers the integrity check stopped). **NFR5 is still not met.** Luna is faster but answers far fewer B1 questions, so quality first keeps Sol; D-61 re-scopes D-44 and brings the owner the trade-off. Report: `docs/measurements/e2.5-report.md`.
+
 ---
 
 ## 3. Schemas (pydantic)
@@ -355,6 +364,8 @@ class AppConfig(BaseModel):
     digest_k: int = 5
     trace_sink: Literal["jsonl", "langfuse"]
     monthly_budget_usd: float
+    hint_model: str | None = None    # E2.5: hints on their own model (None: answer_model)
+    early_finalize: bool = False     # E2.5: a non-course turn does not wait for the discarded answer
 ```
 
 **Golden case (an EvalKit `Case` plus TA fields, carried in `Case.meta` or a task schema from X1.1):**
@@ -549,6 +560,8 @@ eval_run     = n_cases × per_question(model) + EvalKit judging (claims × 2 jud
 **OWNER D-37 (15 Nov): the cap is $150 a month.**
 
 **Measured (A2.5 smoke run, 16 Nov 2026):** $0.0069 per question on average over 30 public questions (route, answer, checks and hints), $0.21 for the 30; the full smoke run, including 5 planted questions, 20 decomposition conversations and 15 recall comparisons, cost about $0.73 of an estimated $2.55. All live spend to date (route runs, ingest and smoke): $0.81. At 600 learners asking 10 questions a month, the answer path costs about $41 a month, well inside the cap; E2.5's full runs replace this with the golden-set measurement.
+
+**Measured (E2.5, 17 Nov 2026, ledger spend over every public case through `ask()`, 214 questions):** $0.0070 per question on Sol `medium` with hints on Luna (answer calls $0.0060 of it, discarded answers included), $0.0039 on Luna. The planning figure of $0.027 per question on Sol was about 4 times too high: the sample course's units are short, so an answer reads about 3,100 input tokens with 1,800 of them cached and writes about 100, and Sol spends under 30 reasoning tokens. Pilot month (`fullrun.cost_model`): 1,000 questions at $0.0070 = $7.02, plus 6 full runs at $19.60 = $117.60, is **$124.62 against the $150 cap**: within the cap, past the $120 alarm. Only the system part of the run cost is measured (430 × $0.0070 = $3.01); EvalKit extraction and judging ($0.018 per answer) and the probe judges ($0.04 per probe) stay planning figures until the dual-judge run, which waits for the Anthropic key (D-61). **NFR6:** the PRD's $50 a month is not met with 6 full runs a month (the runs are 94% of the month); OWNER D-37's $150 cap is. At 6,000 questions a month the answer path is $42 and the month $160, over the cap, so either the run count or the cap would need the owner. Report: `docs/measurements/e2.5-report.md`. E2.5 live spend: see its RUN-STATE.
 
 Every real-API run appends to the git-ignored `runs/ledger.jsonl` (summaries go into each node's RUN-STATE), and totals are reported to the owner after each run. Any single run over $25 is asked about first.
 

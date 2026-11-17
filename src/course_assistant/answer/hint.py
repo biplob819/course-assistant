@@ -113,7 +113,7 @@ Internal marker, never to be written in any reply: {AnswerStep.CANARY}
         return {"type": "and", "filters": [live, scoped]}
 
     def request(self, assessment: Assessment) -> ResponsesRequest:
-        model = self.config.answer_model
+        model = self.config.hint_model or self.config.answer_model  # E2.5: hint_model (D-44)
         return ResponsesRequest(
             purpose="hint",
             model=model,

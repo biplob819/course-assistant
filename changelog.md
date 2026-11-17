@@ -150,3 +150,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [D3.2] — verifier pass 1: canonical passkey hashes compared by value (equal-hash check and staff loader), deploy requirements pinned from uv.lock with drift and direct-import tests, guide matches the locked startup without a demo cache
 - [GREEN] [E2.4] — release gate; verifier pass 10 confirmed all four criteria; config and assessments hashes recorded for the removal shortcut
 - [GREEN] [D3.2] — demo deploy DEM-01..03 (verifier pass 2); DEM-04 live deploy pending owner attest; iteration cap
+- [FEAT] [E2.5] — full run and model choice: early_finalize and hint_model latency settings (D-44 candidates), fullrun summaries/choice/cost model/report, latency smoke and public-all modes, judging spend ledgered by eval_live

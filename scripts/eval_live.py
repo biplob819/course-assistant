@@ -155,6 +155,25 @@ def prepare(out_dir: Path, cases: list[Any], corpus: Any) -> Path:
     return task
 
 
+def ledger_judging(ledger: Any, out_dir: Path) -> tuple[float, float]:
+    """Append the run's judging spend to the ledger (E2.5), so every live dollar of a run is
+    in runs/ledger.jsonl under its run id: EvalKit's extraction and judging (its spend less the
+    system costs already ledgered call by call) and the probe judges. Returns both amounts;
+    nothing is written for a run with no EvalKit folder yet."""
+    from course_assistant.eval.fullrun import FullRunError, judging_spend
+
+    try:
+        evalkit, probe = judging_spend(out_dir)
+    except FullRunError:
+        return 0.0, 0.0
+    for purpose, cost in (("eval_judging", evalkit), ("probe_judging", probe)):
+        if cost > 0:
+            ledger.append(purpose=purpose, model="unknown", tokens_in=0, tokens_cached=0,
+                          tokens_out=0, file_search_calls=0, cost_usd=cost,
+                          run_id=out_dir.name)  # fmt: skip
+    return evalkit, probe
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -299,6 +318,8 @@ def _run(args: argparse.Namespace, config: Any, corpus: Any, out_dir: Path, task
         summary = {"probe_judge_calls": panel.calls, "probe_judge_usd": panel.spent_usd}
         (out_dir / "probe-judges.json").write_text(json.dumps(summary, indent=1) + "\n",
                                                    encoding="utf-8")  # fmt: skip
+        judged, probed = ledger_judging(ledger, out_dir)
+        print(f"judging ledgered: EvalKit ${judged:.4f}, probe judges ${probed:.4f}")
     print(f"probe judges: {panel.calls} calls, ${panel.spent_usd:.4f}")
     return code
 

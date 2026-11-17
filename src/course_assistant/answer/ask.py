@@ -149,6 +149,7 @@ class _Calls:
         self._lock = threading.Lock()
         self.results: dict[str, list[ResponsesResult]] = {}
         self.errors: dict[str, ErrorKind] = {}
+        self._ignored: set[str] = set()
 
     def bind(self, label: Label) -> Responder:
         def call(request: ResponsesRequest) -> ResponsesResult:
@@ -156,14 +157,25 @@ class _Calls:
                 result = self.source.call(self.request_id, request)
             except LLMError as exc:
                 with self._lock:
-                    self.errors[label] = exc.kind
+                    if label not in self._ignored:
+                        self.errors[label] = exc.kind
                 raise
             _money(result.cost_usd)
             with self._lock:
-                self.results.setdefault(label, []).append(result)
+                if label not in self._ignored:
+                    self.results.setdefault(label, []).append(result)
             return result
 
         return call
+
+    def ignore(self, label: Label) -> None:
+        """Leave a step out of this turn's cost, latency and steps, whether its call already
+        finished or finishes later (E2.5 `early_finalize`: the discarded answer call). Its
+        spend still went through the Source, so the ledger and the demo guard count it."""
+        with self._lock:
+            self._ignored.add(label)
+            self.results.pop(label, None)
+            self.errors.pop(label, None)
 
     def latency(self, label: str) -> int:
         return sum(r.latency_ms for r in self.results.get(label, ()))
@@ -196,6 +208,14 @@ def _money(value: float) -> float:
     if not math.isfinite(value) or value < 0:
         raise ValueError("cost must be finite and non-negative")
     return float(value)
+
+
+def _note_late_failure(future: Future[Any]) -> None:
+    """A discarded answer call that failed after its turn finalized (E2.5 `early_finalize`):
+    an `LLMError` is expected and quiet; anything else is logged by exception type only."""
+    exc = future.exception()
+    if exc is not None and not isinstance(exc, LLMError):
+        _ALERT_LOG.warning("discarded answer call failed late (%s)", type(exc).__name__)
 
 
 def _outcome(future: Future[T]) -> tuple[T | None, LLMError | None]:
@@ -456,12 +476,26 @@ class Assistant:
             res = answer_step.responder(answer_step.request(question, window, session))
             return answer_step.draft(res), res.citations
 
-        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="ask") as pool:
+        early = False
+        pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ask")
+        try:
             f_route = pool.submit(route_step.run, question, window, self.assessments,
                                   question_id=qid)  # fmt: skip
             f_answer = pool.submit(answer_call)
             route, route_err = _outcome(f_route)
-            drafted, answer_err = _outcome(f_answer)
+            # E2.5 (D-44): a non-course or failed route never uses the draft (D-9), so with
+            # early_finalize the turn goes on without waiting for the answer call
+            early = self.config.early_finalize and (
+                route_err is not None or route is None or route.category != "course"
+            )
+            if early:
+                calls.ignore("answer")
+                f_answer.add_done_callback(_note_late_failure)
+                drafted, answer_err = None, None
+            else:
+                drafted, answer_err = _outcome(f_answer)
+        finally:
+            pool.shutdown(wait=not early)
 
         if route_err is not None or route is None:
             out["api_error"] = True

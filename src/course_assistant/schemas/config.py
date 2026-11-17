@@ -11,7 +11,13 @@ from types import MappingProxyType
 from typing import Annotated, Any, Literal, TypeVar
 
 import yaml
-from pydantic import BaseModel, StringConstraints, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    StringConstraints,
+    ValidationError,
+    model_serializer,
+    model_validator,
+)
 
 from course_assistant.schemas._base import (
     Fraction,
@@ -66,11 +72,29 @@ class AppConfig(Versioned):
     window_tokens: PosInt = 3000
     trace_sink: Literal["jsonl", "langfuse"] = "jsonl"
     monthly_budget_usd: NonNegFloat
+    # E2.5 (D-44) latency settings: hints on their own model (None: the answer model), and a
+    # non-course turn finalized without waiting for the discarded answer call (D-9)
+    hint_model: Name | None = None
+    early_finalize: bool = False
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_latency_settings(self, handler: Any) -> Any:
+        """The E2.5 settings appear in a dump only when set, so a config that does not use
+        them dumps and hashes exactly as before (replay fixtures, cache keys, LIVE.json)."""
+        data = handler(self)
+        if isinstance(data, dict):
+            if data.get("hint_model") is None:
+                data.pop("hint_model", None)
+            if data.get("early_finalize") is False:
+                data.pop("early_finalize", None)
+        return data
 
     @model_validator(mode="after")
     def _effort_is_explicit(self) -> AppConfig:
         missing = [
-            m for m in (self.answer_model, self.check_model) if m not in self.reasoning_effort
+            m
+            for m in (self.answer_model, self.check_model, self.hint_model)
+            if m is not None and m not in self.reasoning_effort
         ]
         if missing:
             raise ValueError(f"reasoning_effort must name every model explicitly: {missing}")
