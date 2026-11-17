@@ -144,3 +144,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [B2.3] — verifier pass 2: queue widgets keyed by question id; actions carry the seen status and refuse a deleted or changed question; a queue row that cannot be built is refused; `weeks` audit exemption in the criterion
 - [FIX] [B2.3] — verifier pass 3: shown status bound at render by button callbacks; `seen` required and compared inside B2.1's transaction (B2.1 `expect=`, `changed` code); clicks on gone rows show the fixed refusal
 - [FIX] [E2.4] — verifier pass 8: every number the gate reads checked to its written domain (baseline and task scores 0..1, latency, cost, kappa, seed), without float conversion so huge integers are input errors; one table-driven test over every numeric input under complete, capped and pending
+- [GREEN] [B2.3] — teaching-team view; verifier pass 4 confirmed every criterion
