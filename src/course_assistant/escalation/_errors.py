@@ -15,12 +15,13 @@ from typing import Literal, ParamSpec, TypeVar
 
 P = ParamSpec("P")
 R = TypeVar("R")
-Code = Literal["invalid", "not_found", "refused", "failed"]
+Code = Literal["invalid", "not_found", "refused", "changed", "failed"]
 
 _MESSAGES: dict[Code, str] = {
     "invalid": "the escalation request was refused: an id or value is not valid",
     "not_found": "no such question or escalation for this request",
     "refused": "this escalation cannot change that way",
+    "changed": "this escalation changed since it was shown",
     "failed": "the escalation request could not be completed",
 }
 
@@ -43,6 +44,10 @@ class Refused(Exception):
     """Internal: the reason does not fit the stored answer, or the transition is not allowed."""
 
 
+class Changed(Exception):
+    """Internal: the escalation's status is not the one the caller was shown (B2.3)."""
+
+
 def boundary(fn: Callable[P, R]) -> Callable[P, R]:
     """Single exit: any exception inside becomes an EscalationError raised outside the handler.
     A call that does not match the signature is a programming error and stays a TypeError."""
@@ -60,6 +65,8 @@ def boundary(fn: Callable[P, R]) -> Callable[P, R]:
             code = "not_found"
         except Refused:
             code = "refused"
+        except Changed:
+            code = "changed"
         except Exception:
             code = "failed"
         raise EscalationError(code)

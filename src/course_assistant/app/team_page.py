@@ -130,16 +130,38 @@ def _row(team: TeachingTeam, state: TeamState, row: QueueRow, n: int) -> None:
             st.text(row.reply)
         if row.can_reply:
             with st.form(f"reply-{qid}", clear_on_submit=True):
-                text = st.text_area("Reply to the learner", key=f"reply-text-{qid}",
-                                    help="The learner sees it in their history, marked as "
-                                         "from the teaching team.")  # fmt: skip
-                send = st.form_submit_button("Send reply", key=f"send-{qid}")
-            if send:
-                _done(lambda: team.reply(state, qid, text, seen=seen), "Reply sent.")
-        if row.can_flag and st.button("Flag a gap in the materials", key=f"gap-{qid}"):
-            _done(lambda: team.flag_gap(state, qid, seen=seen), "Flagged as a gap.")
-        if row.can_close and st.button("Close", key=f"close-{qid}"):
-            _done(lambda: team.close(state, qid, seen=seen), "Closed.")
+                st.text_area("Reply to the learner", key=f"reply-text-{qid}",
+                             help="The learner sees it in their history, marked as from the "
+                                  "teaching team.")  # fmt: skip
+                st.form_submit_button("Send reply", key=f"send-{qid}", on_click=_act,
+                                      args=(team, state, "reply", qid, seen))  # fmt: skip
+        if row.can_flag:
+            st.button("Flag a gap in the materials", key=f"gap-{qid}", on_click=_act,
+                      args=(team, state, "flag_gap", qid, seen))  # fmt: skip
+        if row.can_close:
+            st.button("Close", key=f"close-{qid}", on_click=_act,
+                      args=(team, state, "close", qid, seen))  # fmt: skip
+
+
+DONE = {"reply": "Reply sent.", "flag_gap": "Flagged as a gap.", "close": "Closed."}
+
+
+def _act(team: TeachingTeam, state: TeamState, action: str, qid: str, seen: str) -> None:
+    """A row's button callback. Its arguments were bound when the row was drawn, so `seen` is
+    the status the row showed, and the click runs even if the row is gone on the next run: a
+    deleted or changed question then shows the fixed refusal (verifier B2.3 pass 3)."""
+    try:
+        if action == "reply":
+            text = st.session_state.get(f"reply-text-{qid}") or ""
+            team.reply(state, qid, text, seen=seen)
+        elif action == "flag_gap":
+            team.flag_gap(state, qid, seen=seen)
+        else:
+            team.close(state, qid, seen=seen)
+    except GuardRefused as exc:
+        st.session_state[FLASH] = ("error", exc.reason)
+        return
+    st.session_state[FLASH] = ("success", DONE[action])
 
 
 def _queue(team: TeachingTeam, state: TeamState) -> None:

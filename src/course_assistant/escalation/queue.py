@@ -21,7 +21,7 @@ from pydantic import TypeAdapter, ValidationError
 from course_assistant.answer.ask import Assistant, Turn
 from course_assistant.answer.leak import scan
 from course_assistant.answer.measure import percentile
-from course_assistant.escalation._errors import Invalid, NotFound, Refused, boundary
+from course_assistant.escalation._errors import Changed, Invalid, NotFound, Refused, boundary
 from course_assistant.privacy import history
 from course_assistant.schemas import Answer, Escalation, Question
 from course_assistant.schemas._base import (
@@ -250,14 +250,21 @@ def escalate(question_id: str, reason: str, *, learner_pid: str, store: Store,
 
 
 def _change(question_id: str, actor: str, action: str, at: dt.datetime | None,
-            update: dict[str, object], store: Store) -> Escalation:  # fmt: skip
+            update: dict[str, object], store: Store,
+            expect: str | None = None) -> Escalation:  # fmt: skip
     qid = _check(_QID, question_id)
     role = _check(_ROLE, actor)
     when = _when(at)
+    if expect is not None and expect not in STATUSES:
+        raise Invalid
     if store.get_escalation(qid) is None:
         raise NotFound
 
     def apply(current: Escalation) -> Escalation:
+        # compared inside the store's transaction: nothing can change between this check and
+        # the write (B2.3 verifier pass 3)
+        if expect is not None and current.status != expect:
+            raise Changed
         if current.status not in _FROM[action]:
             raise Refused
         if action == "reply" and current.reply_text is not None:
@@ -280,28 +287,30 @@ def _change(question_id: str, actor: str, action: str, at: dt.datetime | None,
 
 @boundary
 def reply(question_id: str, text: str, *, instructor: str, store: Store,
-          at: dt.datetime | None = None) -> Escalation:  # fmt: skip
+          at: dt.datetime | None = None, expect: str | None = None) -> Escalation:  # fmt: skip
     """Send the teaching team's reply. It waits in the learner's history, labelled as from the
-    teaching team; audited `reply` in the same transaction."""
+    teaching team; audited `reply` in the same transaction. With `expect`, the change is
+    refused (`changed`) unless the current status is the one the caller was shown."""
     if not isinstance(text, str) or len(text) > MAX_REPLY_CHARS or not _visible(text):
         raise Invalid
     return _change(question_id, instructor, "reply", at,
                    {"status": "replied", "reply_text": text, "replied_by": instructor},
-                   store)  # fmt: skip
+                   store, expect)  # fmt: skip
 
 
 @boundary
 def flag_gap(question_id: str, *, instructor: str, store: Store,
-             at: dt.datetime | None = None) -> Escalation:  # fmt: skip
+             at: dt.datetime | None = None, expect: str | None = None) -> Escalation:  # fmt: skip
     """Mark the question as showing a gap in the materials (for the digest); a reply stays."""
-    return _change(question_id, instructor, "flag_gap", at, {"status": "material_gap"}, store)
+    return _change(question_id, instructor, "flag_gap", at, {"status": "material_gap"}, store,
+                   expect)  # fmt: skip
 
 
 @boundary
 def close(question_id: str, *, instructor: str, store: Store,
-          at: dt.datetime | None = None) -> Escalation:  # fmt: skip
+          at: dt.datetime | None = None, expect: str | None = None) -> Escalation:  # fmt: skip
     """End the escalation; a reply stays and still shows in the learner's history."""
-    return _change(question_id, instructor, "close", at, {"status": "closed"}, store)
+    return _change(question_id, instructor, "close", at, {"status": "closed"}, store, expect)
 
 
 @boundary

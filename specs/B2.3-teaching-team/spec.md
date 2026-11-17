@@ -42,9 +42,11 @@ tested with `AppTest`. Deploying it next to the learner page is D3.2.
   - `reply(state, question_id, text)`, `flag_gap(state, question_id)`,
     `close(state, question_id)` (TTV-01): B2.1's functions with the staff role as instructor
     (each audited by B2.1); an `EscalationError` becomes a readable refusal and nothing changes.
-    Each takes `seen=` (the status the page showed): a question deleted since is refused
-    (`GONE`), one whose status changed since is refused (`CHANGED`). The page keys every
-    per-row widget by the question id (verifier pass 2). A queue row that cannot be built
+    Each requires `seen=` (the status the page showed, bound by the button's `on_click`
+    arguments when the row is drawn). B2.1 compares it inside `update_escalation`'s
+    transaction (`expect=`): a question deleted since is refused (`GONE`), one whose status
+    changed since is refused (`CHANGED`), before any write or audit. The page keys every
+    per-row widget by the question id (verifier passes 2 and 3). A queue row that cannot be built
     after the `view_queue` audit gives `READ_FAILED`.
   - `weeks(state, n=8)` and `digest(state, week)` (TTV-02): the current ISO week and the
     `n - 1` before it (no audit: it reads nothing from the store); the stored B2.4 rows of a week (N1.5 `Store.digest`), filtered again to
@@ -96,6 +98,8 @@ tested with `AppTest`. Deploying it next to the learner page is D3.2.
 ### Changes to green nodes (additive, behaviour unchanged)
 - N1.1: `AUDIT_ACTIONS` and `AuditAction` gain `view_ops`, `view_pauses`, `staff_unlock`,
   `staff_sign_out`.
+- B2.1: `reply`, `flag_gap` and `close` take `expect=None`; when given, the current status
+  must equal it inside the compare-and-set transaction, else `EscalationError("changed")`.
 - N1.5: `Store.pause_state(scope) -> PauseState | None` (the scope's own row; the key and
   record must agree).
 

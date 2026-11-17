@@ -284,7 +284,7 @@ MARKERS = ("evil.example", "$y$", "$z$", ":smile:", ":material/home:", "===", "*
 def test_every_learner_and_team_text_reaches_the_page_literally(make_rig):
     rig = make_rig(owner=KINDS["not_covered"])
     qid = rig.escalated(HOSTILE_QUESTION)
-    rig.team.reply(rig.unlock(), qid, HOSTILE_REPLY)
+    rig.team.reply(rig.unlock(), qid, HOSTILE_REPLY, seen="open")
     at = unlock(page())
     labelled(at.selectbox, "Show").select("All")
     at.run()
@@ -327,7 +327,8 @@ def test_page_buttons_act_on_their_own_question_when_rows_move(make_rig):
     for qid in q:
         assert {f"gap-{qid}", f"close-{qid}"} <= keys  # keyed by question, never position
     assert {f.key for f in at.text_area} == {f"reply-text-{qid}" for qid in q}
-    rig.team.close(rig.unlock(TeamState.new()), q[0])  # another staff session, meanwhile
+    other = rig.unlock(TeamState.new())  # another staff session, meanwhile
+    rig.team.close(other, q[0], seen="open")
     labelled_key(at.button, f"close-{q[1]}").click()
     at.run()
     store = rig.store()
@@ -346,3 +347,55 @@ def labelled_key(widgets: Any, key: str) -> Any:
     found = [w for w in widgets if w.key == key]
     assert found, f"no widget keyed {key!r}"
     return found[0]
+
+
+# the verifier's pass-3 probe, under both filters: the status the row showed at render time
+# is what the click compares, so a change by another session in between is refused
+@pytest.mark.safety
+@pytest.mark.parametrize("shown", ["Waiting for a reply", "All"])
+@pytest.mark.parametrize("button", ["close", "gap"])
+def test_page_a_stale_click_is_refused_whatever_the_filter(make_rig, shown, button):
+    from course_assistant.app.team import CHANGED
+
+    rig = make_rig(owner={k: list(v) * 3 for k, v in KINDS["not_covered"].items()})
+    q = rig.escalated("Is there a session on pricing models?")
+    at = unlock(page())
+    labelled(at.selectbox, "Show").set_value(shown)
+    at.run()
+    assert f"{button}-{q}" in {b.key for b in at.button}
+    rig.team.reply(rig.unlock(TeamState.new()), q, "Answer from colleague", seen="open")
+    labelled_key(at.button, f"{button}-{q}").click()
+    at.run()
+    assert CHANGED in [e.value for e in at.error], "stale action was applied"
+    assert rig.store().get_escalation(q).status == "replied"  # type: ignore[union-attr]
+    assert [e.action for e in rig.audits() if e.action in ("close", "flag_gap")] == []
+    assert not at.exception
+
+
+@pytest.mark.safety
+def test_page_a_stale_reply_form_is_refused(make_rig):
+    from course_assistant.app.team import CHANGED
+
+    rig = make_rig(owner={k: list(v) * 3 for k, v in KINDS["not_covered"].items()})
+    q = rig.escalated("Is there a session on pricing models?")
+    at = unlock(page())
+    rig.team.close(rig.unlock(TeamState.new()), q, seen="open")
+    labelled_key(at.text_area, f"reply-text-{q}").input("My late reply.")
+    labelled_key(at.button, f"send-{q}").click()
+    at.run()
+    assert CHANGED in [e.value for e in at.error]
+    assert rig.store().get_escalation(q).reply_text is None  # type: ignore[union-attr]
+
+
+@pytest.mark.safety
+def test_page_a_click_on_a_row_that_is_gone_shows_the_fixed_refusal(make_rig):
+    from course_assistant.app.team import GONE
+
+    rig = make_rig(owner={k: list(v) * 3 for k, v in KINDS["not_covered"].items()})
+    q = rig.escalated("Is there a session on pricing models?")
+    at = unlock(page())
+    rig.learners.chat.delete(rig.learners.state)  # the learner deletes it meanwhile
+    labelled_key(at.button, f"close-{q}").click()
+    at.run()
+    assert GONE in [e.value for e in at.error] and not at.exception
+    assert [e for e in rig.audits() if e.action == "close"] == []

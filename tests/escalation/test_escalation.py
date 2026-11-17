@@ -599,3 +599,19 @@ def test_a_reply_of_only_invisible_characters_is_refused(store, text):
     _, e = escalated("not_covered", store)
     assert code(reply, e.question_id, text, instructor="instructor-1", store=store,
                 at=NOW + dt.timedelta(hours=1)) == "invalid"  # fmt: skip
+
+
+def test_expect_is_compared_with_the_status_inside_the_transaction(store):
+    """B2.3 pass 3: a teaching-team change may name the status it was shown; any other current
+    status is refused with the `changed` code, and nothing is written or audited."""
+    t, _ = escalated("admin", store)
+    qid = t.answer.question_id
+    reply(qid, REPLY, instructor=TEAM, store=store, at=LATER, expect="open")
+    before, audits = store.get_escalation(qid), len(store.audit_events())
+    assert code(close, qid, instructor=TEAM, store=store, expect="open") == "changed"
+    assert code(flag_gap, qid, instructor=TEAM, store=store, expect="closed") == "changed"
+    assert code(reply, qid, "again", instructor=TEAM, store=store, expect="open") == "changed"
+    assert code(close, qid, instructor=TEAM, store=store, expect="nonsense") == "invalid"
+    assert store.get_escalation(qid) == before and len(store.audit_events()) == audits
+    assert close(qid, instructor=TEAM, store=store, expect="replied").status == "closed"
+    assert close.__name__ == "close"  # default expect=None keeps the old behaviour elsewhere

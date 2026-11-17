@@ -56,8 +56,9 @@ CHANGED = "That question changed since you opened it. Look at the queue again."
 GONE = "That question is no longer in the queue."
 ESCALATION_REASONS: dict[str, str] = {
     "invalid": "A reply needs visible text, up to 4,000 characters.",
-    "not_found": "That question is no longer in the queue.",
+    "not_found": GONE,
     "refused": "That question cannot change that way: it may have a reply or be closed.",
+    "changed": CHANGED,
     "failed": "That could not be done just now. Please try again.",
 }
 
@@ -351,44 +352,37 @@ class TeachingTeam:
             LOG.warning("teaching team: queue row failed (%s)", type(exc).__name__)
             raise GuardRefused(READ_FAILED) from None
 
-    def _seen(self, store: Store, question_id: str, seen: str | None) -> None:
-        """The page acts only on the question it showed, in the status it showed: a question
-        deleted since is refused, and one another session changed since is refused (verifier
-        B2.3 pass 2). B2.1's own transition rules still guard the change itself."""
-        if seen is None:
-            return
-        try:
-            e = store.get_escalation(question_id)
-            q = store.get_question(question_id)
-        except Exception as exc:
-            LOG.warning("teaching team: escalation read failed (%s)", type(exc).__name__)
-            raise GuardRefused(READ_FAILED) from None
-        if e is None or q is None:
-            raise GuardRefused(GONE)
-        if e.status != seen:
-            raise GuardRefused(CHANGED)
+    def _check_seen(self, seen: object) -> str:
+        if not isinstance(seen, str) or seen not in STATUSES:
+            raise GuardRefused(BAD_STATUS)
+        return seen
 
-    def reply(self, state: TeamState, question_id: str, text: str, *,
-              seen: str | None = None) -> None:  # fmt: skip
+    # Each action names `seen`, the status the page showed when it drew the row (bound at
+    # render time by the page's callback). B2.1 compares it with the current status inside
+    # the store's compare-and-set transaction, so a change by another session in between is
+    # refused (CHANGED) and a deleted question is refused (GONE), before any write or audit
+    # (verifier B2.3 passes 2 and 3).
+
+    def reply(self, state: TeamState, question_id: str, text: str, *, seen: str) -> None:
         self._require(state)
+        expect = self._check_seen(seen)
         store = self._connect()
-        self._seen(store, question_id, seen)
         self._escalation(lambda: reply(question_id, text, instructor=self.role, store=store,
-                                       at=self.now()))  # fmt: skip
+                                       at=self.now(), expect=expect))  # fmt: skip
 
-    def flag_gap(self, state: TeamState, question_id: str, *, seen: str | None = None) -> None:
+    def flag_gap(self, state: TeamState, question_id: str, *, seen: str) -> None:
         self._require(state)
+        expect = self._check_seen(seen)
         store = self._connect()
-        self._seen(store, question_id, seen)
         self._escalation(lambda: flag_gap(question_id, instructor=self.role, store=store,
-                                          at=self.now()))  # fmt: skip
+                                          at=self.now(), expect=expect))  # fmt: skip
 
-    def close(self, state: TeamState, question_id: str, *, seen: str | None = None) -> None:
+    def close(self, state: TeamState, question_id: str, *, seen: str) -> None:
         self._require(state)
+        expect = self._check_seen(seen)
         store = self._connect()
-        self._seen(store, question_id, seen)
         self._escalation(lambda: close(question_id, instructor=self.role, store=store,
-                                       at=self.now()))  # fmt: skip
+                                       at=self.now(), expect=expect))  # fmt: skip
 
     @staticmethod
     def _escalation(fn: Callable[[], Any]) -> None:

@@ -56,7 +56,9 @@ def calls_for(name: str, rig: TeamRig, st: TeamState) -> Any:
         "close": ("q-0123456789abcdef",), "weeks": (), "digest": (WEEK,), "manifest_view": (),
         "pauses": (), "set_pause": ("all", True), "ops": (),
     }  # fmt: skip
-    kw = {"confirmed": True} if name == "set_pause" else {}
+    kw: dict[str, Any] = {"confirmed": True} if name == "set_pause" else {}
+    if name in ("reply", "flag_gap", "close"):
+        kw["seen"] = "open"
     return lambda: getattr(rig.team, name)(st, *args[name], **kw)
 
 
@@ -179,7 +181,7 @@ def test_reply_reaches_the_learner_labelled_from_the_teaching_team(tmp_path):
     rig = TeamRig(tmp_path, owner=KINDS["not_covered"])
     qid = rig.escalated()
     st = rig.unlock()
-    rig.team.reply(st, qid, REPLY)
+    rig.team.reply(st, qid, REPLY, seen="open")
     e = rig.store().get_escalation(qid)
     assert e.status == "replied" and e.reply_text == REPLY  # type: ignore[union-attr]
     assert e.replied_by == "instructor-1"  # type: ignore[union-attr]
@@ -191,8 +193,8 @@ def test_reply_reaches_the_learner_labelled_from_the_teaching_team(tmp_path):
     assert rig.team.queue(st) == ()  # no longer waiting
     row = rig.team.queue(st, None)[0]
     assert row.reply == REPLY and not row.can_reply and row.status == "replied"
-    rig.team.flag_gap(st, qid)
-    rig.team.close(st, qid)
+    rig.team.flag_gap(st, qid, seen="replied")
+    rig.team.close(st, qid, seen="material_gap")
     assert rig.store().get_escalation(qid).status == "closed"  # type: ignore[union-attr]
     assert [a for a in actions(rig) if a in ("reply", "flag_gap", "close")] == [
         "reply", "flag_gap", "close"]  # fmt: skip
@@ -204,13 +206,13 @@ def test_a_blank_too_long_or_second_reply_is_refused_and_nothing_changes(tmp_pat
     st = rig.unlock()
     for bad in ("", "   ", "​", "x" * (MAX_REPLY_CHARS + 1)):
         with pytest.raises(GuardRefused, match="visible text"):
-            rig.team.reply(st, qid, bad)
+            rig.team.reply(st, qid, bad, seen="open")
     assert rig.store().get_escalation(qid).status == "open"  # type: ignore[union-attr]
-    rig.team.reply(st, qid, REPLY)
+    rig.team.reply(st, qid, REPLY, seen="open")
     with pytest.raises(GuardRefused, match="cannot change"):
-        rig.team.reply(st, qid, "A second reply.")
+        rig.team.reply(st, qid, "A second reply.", seen="replied")
     with pytest.raises(GuardRefused, match="no longer in the queue"):
-        rig.team.reply(st, "q-0123456789abcdef", REPLY)
+        rig.team.reply(st, "q-0123456789abcdef", REPLY, seen="open")
     assert rig.store().get_escalation(qid).reply_text == REPLY  # type: ignore[union-attr]
     with pytest.raises(GuardRefused):
         rig.team.queue(st, "everything")
@@ -241,7 +243,7 @@ def test_queue_rows_and_audits_hold_no_learner_id_and_audits_hold_no_text(tmp_pa
     rows = rig.team.queue(team)
     assert len(rows) == 2 and rows[1].reason_label == REASON_LABELS["admin"]
     assert st.pid not in repr(rows)
-    rig.team.reply(team, qid, REPLY)
+    rig.team.reply(team, qid, REPLY, seen="open")
     rig.team.digest(team, WEEK)
     rig.team.manifest_view(team)
     rig.team.pauses(team)
@@ -487,7 +489,9 @@ def test_every_view_and_action_writes_exactly_one_audit_row(tmp_path, name):
     args: dict[str, tuple[Any, ...]] = {"reply": (qid, REPLY), "flag_gap": (qid,),
                                         "close": (qid,), "digest": (WEEK,),
                                         "set_pause": ("s01", True)}  # fmt: skip
-    kw = {"confirmed": True} if name == "set_pause" else {}
+    kw: dict[str, Any] = {"confirmed": True} if name == "set_pause" else {}
+    if name in ACTIONS and name != "set_pause":
+        kw["seen"] = "open"
     getattr(rig.team, name)(st, *args.get(name, ()), **kw)
     new = rig.audits()[before:]
     assert len(new) == 1, (name, [e.action for e in new])
@@ -559,7 +563,7 @@ def test_an_action_on_a_question_that_changed_since_it_was_seen_is_refused(tmp_p
     q2 = rig.escalated("Is there a session on hiring a team?")
     me, other = rig.unlock(), rig.unlock(TeamState.new())
     seen = {r.question_id: r.status for r in rig.team.queue(me)}
-    rig.team.reply(other, q1, REPLY)  # another staff session acts first
+    rig.team.reply(other, q1, REPLY, seen="open")  # another staff session acts first
     before = len(rig.audits())
     for act in (lambda: rig.team.close(me, q1, seen=seen[q1]),
                 lambda: rig.team.flag_gap(me, q1, seen=seen[q1]),
@@ -595,3 +599,59 @@ def test_a_queue_row_that_cannot_be_built_gives_a_fixed_refusal(tmp_path, monkey
         rig.team.queue(st)
     assert exc.value.reason == team_mod.READ_FAILED
     assert "KeyError" in caplog.text and "must not be logged" not in caplog.text
+
+
+# ============== verifier pass 3: the seen status is checked in the transaction ==============
+
+
+def test_seen_is_a_required_keyword_on_every_escalation_action():
+    for name in ("reply", "flag_gap", "close"):
+        param = inspect.signature(getattr(TeachingTeam, name)).parameters["seen"]
+        assert param.kind is inspect.Parameter.KEYWORD_ONLY
+        assert param.default is inspect.Parameter.empty, name
+
+
+@pytest.mark.safety
+def test_a_seen_status_that_is_not_a_status_is_refused(tmp_path):
+    rig = TeamRig(tmp_path, owner=KINDS["not_covered"])
+    qid = rig.escalated()
+    st = rig.unlock()
+    for bad in (None, "", "anything"):
+        with pytest.raises(GuardRefused):
+            rig.team.close(st, qid, seen=bad)  # type: ignore[arg-type]
+    assert rig.store().get_escalation(qid).status == "open"  # type: ignore[union-attr]
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("action", ["reply", "flag_gap", "close"])
+def test_a_change_between_the_read_and_the_write_is_caught_in_the_transaction(
+    tmp_path, monkeypatch, action
+):
+    """Another session changes the escalation after the view's own reads, just before the
+    compare-and-set: the seen status is compared inside `update_escalation`."""
+    from course_assistant.store import Store
+
+    rig = TeamRig(tmp_path, owner=KINDS["not_covered"])
+    qid = rig.escalated()
+    st = rig.unlock()
+    store = rig.store()
+    real = store.update_escalation
+
+    def racing(*args: Any, **kw: Any) -> Any:
+        other = Store(rig.learners.stores.path)  # another staff session, its own connection
+        other.set_escalation_status(qid, "closed", "ta-2", at=NOW)
+        other.close()
+        return real(*args, **kw)
+
+    monkeypatch.setattr(store, "update_escalation", racing)
+    before = len(rig.audits())
+    call = {"reply": lambda: rig.team.reply(st, qid, REPLY, seen="open"),
+            "flag_gap": lambda: rig.team.flag_gap(st, qid, seen="open"),
+            "close": lambda: rig.team.close(st, qid, seen="open")}[action]  # fmt: skip
+    with pytest.raises(GuardRefused) as exc:
+        call()
+    assert exc.value.reason == team_mod.CHANGED
+    e = rig.store().get_escalation(qid)
+    assert e.status == "closed" and e.reply_text is None  # type: ignore[union-attr]
+    new = [x for x in rig.audits()[before:] if x.actor == "instructor-1"]
+    assert new == []  # nothing written or audited by the refused change
