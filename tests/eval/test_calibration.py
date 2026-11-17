@@ -1024,14 +1024,15 @@ def test_calibrate_script_refuses_paid_steps_and_tunes_from_a_run_offline(tuning
     )
     log = tmp_path / "tuning-log.jsonl"
     shutil.copyfile(TUNING_LOG, log)
+    before, _ = tuning.current(tuning.read_log(log))  # the committed bar (0.4 since D-67)
     monkeypatch.setattr(calibrate, "TUNING_LOG", log)
     monkeypatch.setattr(calibrate, "_runtime", lambda args: _runtime())
     assert calibrate.main(["tune-bar", str(run), "--candidates", "0.5,0.6,0.7", "--log",
                            "--decision", "D-52"]) == 0  # fmt: skip
     out = capsys.readouterr().out
-    assert "choice: 0.6" in out and "logged 0.5 -> 0.6 under D-52" in out
+    assert "choice: 0.6" in out and f"logged {before} -> 0.6 under D-52" in out
     last = tuning.read_log(log)[-1]
-    assert (last["kind"], last["from"], last["to"], last["n_cases"]) == ("grounding_bar", 0.5,
+    assert (last["kind"], last["from"], last["to"], last["n_cases"]) == ("grounding_bar", before,
                                                                          0.6, 7)  # fmt: skip
     for c in R.read_cases(run).values():  # numbers only in the log, never case text
         assert c.question not in log.read_text(encoding="utf-8")

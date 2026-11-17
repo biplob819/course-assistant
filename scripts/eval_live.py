@@ -52,9 +52,13 @@ ASSESSMENTS = ROOT / "sample_course" / "assessments.yaml"
 JUDGES = ("claude-opus-5-5", "gpt-6.1-sol")
 EXTRACTOR = "claude-haiku-5-5"
 SYSTEM_ALIAS = "course-ta"
-JUDGE_USD_PER_PROBE = 0.04  # two judges, one probe (planning figure, replaced in E2.5)
-EVALKIT_USD_PER_CASE = 0.03  # extractor plus two groundedness judges per answer (planning)
-SUPPORT_USD_PER_ANSWER = 0.02  # two judges on an answer's few L2 sentences (planning)
+# measured on the E2.5 public tuning run (course-ta-public-20261117T060529Z: 214 cases, 110
+# probes, 98 answered; ledger): the figures below keep at least 1.5 times these
+MEASURED_E25 = {"evalkit_usd_per_case": 0.0135, "judge_usd_per_probe": 0.0065,
+                "support_usd_per_answer": 0.0101}  # fmt: skip
+JUDGE_USD_PER_PROBE = 0.02  # two judges, one probe (was 0.04 planning; 3x measured)
+EVALKIT_USD_PER_CASE = 0.025  # extractor plus two groundedness judges per answer (~1.9x measured)
+SUPPORT_USD_PER_ANSWER = 0.02  # two judges on an answer's few L2 sentences (2x measured)
 PANEL_HEADROOM = 2.0  # the judges' share covers a re-ask of every probe
 TUNING_LOG = ROOT / "docs" / "measurements" / "tuning-log.jsonl"
 
@@ -119,10 +123,32 @@ def unlogged_gate(split: str, drift: list[str], *, allow_unlogged: bool) -> str 
     return None
 
 
-def logs_heldout_score(split: str, *, replay: bool) -> bool:
-    """Every run that scores the held-out split logs it, a replayed one too."""
+def logs_heldout_score(split: str, *, replay: bool, resume: bool = False) -> bool:
+    """Every run that scores the held-out split logs it, a replayed one too; a resumed run
+    (collecting pending judge batches, E2.5) was logged when it first ran."""
     del replay  # a replay scores the held-out split just the same
-    return split in ("heldout", "both")
+    return split in ("heldout", "both") and not resume
+
+
+def resume_inputs(folder: Path) -> tuple[Path, int, str]:
+    """(task YAML, live case count, split) of an eval_live folder to resume (EvalKit exit 3
+    or 4: rerun to finish or collect batches). The folder's own cases are reused as written."""
+    task, cases = folder / "course-ta.yaml", folder / "cases.jsonl"
+    if not (task.is_file() and cases.is_file() and (folder / "drift.json").is_file()):
+        raise ValueError(f"{folder.name} is not an eval_live folder (task, cases, drift.json)")
+    # cases.jsonl holds the run's cases after drift (retired ones are already left out)
+    n = sum(1 for x in cases.read_text(encoding="utf-8").splitlines() if x.strip())
+    parts = folder.name.split("-")
+    split = parts[2] if len(parts) >= 4 and parts[:2] == ["course", "ta"] else ""
+    if split not in ("public", "heldout", "both"):
+        raise ValueError(f"{folder.name}: cannot tell the split from the folder name")
+    return task, n, split
+
+
+def merge_probe_summary(previous: dict[str, Any], calls: int, usd: float) -> dict[str, Any]:
+    """The probe panel's totals across a run and its resumes."""
+    return {"probe_judge_calls": int(previous.get("probe_judge_calls", 0)) + calls,
+            "probe_judge_usd": float(previous.get("probe_judge_usd", 0.0)) + usd}  # fmt: skip
 
 
 def plan_budget(cases: list[Any], max_cost: float) -> Any:
@@ -155,17 +181,31 @@ def prepare(out_dir: Path, cases: list[Any], corpus: Any) -> Path:
     return task
 
 
+class _Resumed(Exception):
+    """A resume with nothing new to tap: skip the support re-judging, keep the files."""
+
+    def __init__(self, code: int) -> None:
+        super().__init__(code)
+        self.code = code
+
+
 def ledger_judging(ledger: Any, out_dir: Path) -> tuple[float, float]:
     """Append the run's judging spend to the ledger (E2.5), so every live dollar of a run is
     in runs/ledger.jsonl under its run id: EvalKit's extraction and judging (its spend less the
-    system costs already ledgered call by call) and the probe judges. Returns both amounts;
-    nothing is written for a run with no EvalKit folder yet."""
-    from course_assistant.eval.fullrun import FullRunError, judging_spend
+    system costs already ledgered call by call) and the probe judges. Only what the ledger does
+    not hold yet for this run id is added, so a resumed run never ledgers twice. Returns the
+    amounts added; nothing is written for a run with no EvalKit folder yet."""
+    from course_assistant.eval.fullrun import FullRunError, judging_spend, read_ledger, spend_of
 
     try:
-        evalkit, probe = judging_spend(out_dir)
+        evalkit_total, probe_total = judging_spend(out_dir)
     except FullRunError:
         return 0.0, 0.0
+    held = spend_of(read_ledger(Path(ledger.path)), out_dir.name)
+    evalkit = max(0.0, evalkit_total - held.get("eval_judging", 0.0))
+    probe = max(0.0, probe_total - held.get("probe_judging", 0.0))
+    evalkit = 0.0 if evalkit < 1e-9 else evalkit
+    probe = 0.0 if probe < 1e-9 else probe
     for purpose, cost in (("eval_judging", evalkit), ("probe_judging", probe)):
         if cost > 0:
             ledger.append(purpose=purpose, model="unknown", tokens_in=0, tokens_cached=0,
@@ -183,6 +223,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--split", choices=("public", "heldout", "both"), default="heldout")
     ap.add_argument("--max-cost", type=float, default=40.0, help="stop if the estimate is over")
     ap.add_argument("--replay", type=Path, help="recordings.jsonl from an earlier live run")
+    ap.add_argument("--resume", type=Path,
+                    help="an eval_live folder whose EvalKit run stopped (exit 3 or 4): finish it "
+                    "in place, reusing its cases (no new held-out log line)")  # fmt: skip
     ap.add_argument("--out", type=Path, default=ROOT / "runs")
     ap.add_argument("--dry-run", action="store_true", help="write the folder, call nothing")
     ap.add_argument(
@@ -217,16 +260,26 @@ def main(argv: list[str] | None = None) -> int:
     drift = unlogged(read_log(TUNING_LOG), config.grounding_bar, GroundStep.version())
     for line in drift:
         print(f"eval_live: {line}", file=sys.stderr)
-    cases = select(args.split)
-    stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
-    out_dir = args.out / f"course-ta-{args.split}-{stamp}"
-    task = prepare(out_dir, cases, corpus)
+    if args.resume is not None:
+        try:
+            task, n_live, args.split = resume_inputs(args.resume)
+        except ValueError as exc:
+            print(f"eval_live: {exc}", file=sys.stderr)
+            return 2
+        out_dir = args.resume
+        cases = select(args.split)
+    else:
+        cases = select(args.split)
+        stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
+        out_dir = args.out / f"course-ta-{args.split}-{stamp}"
+        task = prepare(out_dir, cases, corpus)
+        n_live = -1
     cost = estimate(cases)
     print(f"course-ta: {len(cases)} cases ({probes(cases)} probes) -> {out_dir}")
     print(f"estimate: ${cost:.2f} (cap ${args.max_cost:.2f})")
     if args.dry_run:
         return 0
-    gate = heldout_gate(args.split)
+    gate = None if args.resume is not None else heldout_gate(args.split)
     if gate is not None:
         print(f"eval_live: {gate}", file=sys.stderr)
         return 2
@@ -239,9 +292,11 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"eval_live: {exc}", file=sys.stderr)
         return 3
-    retired = json.loads((out_dir / "drift.json").read_text(encoding="utf-8"))["retired"]
-    code = _run(args, config, corpus, out_dir, task, len(cases) - len(retired), budget)
-    if logs_heldout_score(args.split, replay=bool(args.replay)):
+    if n_live < 0:
+        retired = json.loads((out_dir / "drift.json").read_text(encoding="utf-8"))["retired"]
+        n_live = len(cases) - len(retired)
+    code = _run(args, config, corpus, out_dir, task, n_live, budget)
+    if logs_heldout_score(args.split, replay=bool(args.replay), resume=args.resume is not None):
         from course_assistant.eval.tuning import log_heldout_scored
 
         log_heldout_scored(TUNING_LOG, run=out_dir.name, bar=config.grounding_bar,
@@ -297,6 +352,10 @@ def _run(args: argparse.Namespace, config: Any, corpus: Any, out_dir: Path, task
         code = evalkit_cli.main(["run", str(out_dir / "evalkit.yaml"), "--task", str(task),
                                  "--n", str(n), "--out", str(out_dir / "evalkit"),
                                  "--max-cost", f"{budget.evalkit_usd:.4f}"])  # fmt: skip
+        if args.resume is not None and not tap.sentences:
+            # a resume that answered nothing new keeps the first pass's tap, support rows and
+            # agreement as they are
+            raise _Resumed(code)
         tap.save(out_dir / "support-tap.jsonl")  # private: holds answer sentences
         rows = support_rows(tap.sentences, judge_support(tap.sentences, panel, corpus))
         (out_dir / "support.jsonl").write_text(
@@ -310,12 +369,18 @@ def _run(args: argparse.Namespace, config: Any, corpus: Any, out_dir: Path, task
             print(f"support check vs dual judges: kappa {agreement.kappa.point:.2f} "
                   f"[{agreement.kappa.lo:.2f}, {agreement.kappa.hi:.2f}] over "
                   f"{agreement.n_sentences} sentences")  # fmt: skip
+    except _Resumed as done:
+        code = done.code
     finally:
-        if recorder is not None:
+        if recorder is not None and not (args.resume is not None and not recorder.recordings):
             (out_dir / "recordings.jsonl").write_text(
                 "".join(r.model_dump_json() + "\n" for r in recorder.recordings),
                 encoding="utf-8")  # fmt: skip
-        summary = {"probe_judge_calls": panel.calls, "probe_judge_usd": panel.spent_usd}
+        previous: dict[str, Any] = {}
+        summary_file = out_dir / "probe-judges.json"
+        if args.resume is not None and summary_file.is_file():
+            previous = json.loads(summary_file.read_text(encoding="utf-8"))
+        summary = merge_probe_summary(previous, panel.calls, panel.spent_usd)
         (out_dir / "probe-judges.json").write_text(json.dumps(summary, indent=1) + "\n",
                                                    encoding="utf-8")  # fmt: skip
         judged, probed = ledger_judging(ledger, out_dir)

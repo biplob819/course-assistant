@@ -485,6 +485,23 @@ def weekly_digest(week: str) -> list[DigestRow]
 
 Statistics follow EvalKit §6: bootstrap CIs over cases, paired comparisons with the Holm tie rule for Sol against Luna, and each zero-tolerance gate reported with its rule-of-three bound.
 
+**Measured (E2.5, 17 Nov 2026; dual judges, uncalibrated until the owner's labels, OWNER D-66).** Bar tuned on the public half only: a public run at bar 0.3 (hint cache off, so it replays exactly) swept 0.30 to 0.60 gave grounded 0.608 up to 0.40 and 0.581 from 0.50, handover 1.00 throughout; 0.40 was logged under OWNER D-67. One run on both splits at bar 0.4 with the chosen setting (OWNER D-67; the held-out set is now scored, `heldout_scored` logged):
+
+| Metric (target) | Public half (214) | Held-out half (215) |
+| --- | --- | --- |
+| Grounded answer rate (≥ 0.90, lower bound ≥ 0.85) | 0.541 | 0.693 |
+| Citation validity (≥ 0.95) | 1.000 | 1.000 |
+| Locator correct (≥ 0.95) | 0.679 | 0.800 |
+| Correct handover (≥ 0.95) | 1.000 | 1.000 |
+| Integrity (zero tolerance) | 64/64 | 52/56 |
+| Injection (zero tolerance) | 1.000 | 1.000 |
+| Leak (zero tolerance) | 40/41 | 1.000 |
+| Identity (zero tolerance) | 1.000 | 1.000 |
+| Latency p95 (≤ 11 s) | 10.0 s | 9.1 s |
+| Support check against the dual judges (monitor, ≥ 0.6) | kappa 0.15 [−0.01, 0.33] over 297 sentences, both halves | |
+
+The release gate on the held-out records exits 1: grounded, locator correct and integrity fail, and neither calibration is certified (the gate itself reads only a held-out run, so on the both-splits folder it exits 2; E2.5 RUN-STATE). The four integrity failures are multi-turn decomposition probes on one brief that received the same cached hint; the runtime check passed them and both uncalibrated judges flagged them. The support-check kappa is under 0.6, which opens a lesson once calibration confirms the judges. Most missed B1 answers are sentences the support rule counts as uncited (D-61). Report: `docs/measurements/e2.5-report.md`.
+
 ### 6.5 Release gate (FR11, Flow C)
 
 A change goes live (a new corpus version, a rules hash, a model snapshot or `grounding_bar`) only if, on the held-out split:
@@ -569,6 +586,8 @@ eval_run     = n_cases × per_question(model) + EvalKit judging (claims × 2 jud
 **Measured (A2.5 smoke run, 16 Nov 2026):** $0.0069 per question on average over 30 public questions (route, answer, checks and hints), $0.21 for the 30; the full smoke run, including 5 planted questions, 20 decomposition conversations and 15 recall comparisons, cost about $0.73 of an estimated $2.55. All live spend to date (route runs, ingest and smoke): $0.81. At 600 learners asking 10 questions a month, the answer path costs about $41 a month, well inside the cap; E2.5's full runs replace this with the golden-set measurement.
 
 **Measured (E2.5, 17 Nov 2026, ledger spend over every public case through `ask()`, 214 questions):** $0.0070 per question on Sol `medium` with hints on Luna (answer calls $0.0060 of it, discarded answers included), $0.0039 on Luna. The planning figure of $0.027 per question on Sol was about 4 times too high: the sample course's units are short, so an answer reads about 3,100 input tokens with 1,800 of them cached and writes about 100, and Sol spends under 30 reasoning tokens. Pilot month (`fullrun.cost_model`): 1,000 questions at $0.0070 = $7.02, plus 6 full runs at $19.60 = $117.60, is **$124.62 against the $150 cap**: within the cap, and under the spend alarm, which OWNER D-64 moved from $120 to $135 (90% of the cap) so it fires only near the cap; the owner accepted this cost (OWNER D-64). Only the system part of the run cost is measured (430 × $0.0070 = $3.01); EvalKit extraction and judging ($0.018 per answer) and the probe judges ($0.04 per probe) stay planning figures until the dual-judge run, which waits for the Anthropic key (D-61). **NFR6:** the PRD's $50 a month is not met with 6 full runs a month (the runs are 94% of the month); OWNER D-37's $150 cap is. At 6,000 questions a month the answer path is $42 and the month $160, over the cap, so either the run count or the cap would need the owner. Report: `docs/measurements/e2.5-report.md`. E2.5 live spend: see its RUN-STATE.
+
+**Measured on the full run (E2.5, 17 Nov 2026, ledger):** the 429-case run on both splits with the chosen setting and dual judges cost **$10.68** ($2.65 system, of which hints $0.03 with the hint cache; EvalKit extraction and judging $5.48; probe and support judges $2.54), about $0.025 per case; the 214-case public tuning run cost $6.10. The system part is $0.0062 per question. eval_live's planning figures were replaced with these measurements with at least 1.5 times margin (its estimate for 429 cases fell from $55.94 to $45.00, still about four times the measured cost). Pilot month with these numbers: 1,000 questions × $0.0062 = $6.18 plus 6 full runs × $10.68 = $64.07, **$70.25 a month**, under the $135 alarm and the $150 cap (OWNER D-64); with 6,000 questions, $101. The PRD's $50 is still over with 6 runs a month.
 
 Every real-API run appends to the git-ignored `runs/ledger.jsonl` (summaries go into each node's RUN-STATE), and totals are reported to the owner after each run. Any single run over $25 is asked about first.
 

@@ -251,3 +251,103 @@ def test_report_projects_cost_from_a_smoke_row_when_no_judged_run_exists(tmp_pat
     text = out.read_text(encoding="utf-8")
     assert "Cost model (x): 1000 questions a month at $0.0070 = $7.00" in text
     assert "6 full runs at $20.00 = $120.00; month $127.00" in text
+
+
+def test_eval_live_planning_figures_cover_the_e25_measurement_with_margin():
+    """E2.5 replaced eval_live's planning figures with the public tuning run's measurement
+    (214 cases, 110 probes, 98 answered): each figure stays at least 1.5 times the measured
+    cost, so a run's cap still covers what it spends."""
+    m = eval_live.MEASURED_E25
+    assert 1.5 * m["evalkit_usd_per_case"] <= eval_live.EVALKIT_USD_PER_CASE
+    assert 1.5 * m["judge_usd_per_probe"] <= eval_live.JUDGE_USD_PER_PROBE
+    assert 1.5 * m["support_usd_per_answer"] <= eval_live.SUPPORT_USD_PER_ANSWER
+    assert eval_live.PANEL_HEADROOM >= 2.0
+
+
+def test_run_summary_of_one_split_of_a_both_split_run(run_dir: Path, tmp_path: Path):
+    """D-67: one run on both splits; the report shows each split's gates (numbers only)."""
+    both = tmp_path / "both"
+    shutil.copytree(run_dir, both)
+    ids = sorted(R.read_cases(both))
+    O.mark_heldout(both, set(ids))
+    rows = ledger_rows(both.name, answer=1.3, eval_judging=2.6)
+    whole = F.run_summary(both, rows, "all")
+    held = F.run_summary(both, rows, "held-out", split="heldout")
+    assert held.n == whole.n == len(ids) and held.gates == whole.gates
+    assert held.system_usd == pytest.approx(1.3) and held.judging_usd == pytest.approx(2.6)
+    with pytest.raises(F.FullRunError, match="no case"):
+        F.run_summary(both, rows, "tuning", split="tuning")
+
+
+def test_report_script_takes_one_split_of_a_run(run_dir: Path, tmp_path: Path):
+    import full_run_report
+
+    both = tmp_path / "both"
+    shutil.copytree(run_dir, both)
+    O.mark_heldout(both, set(R.read_cases(both)))
+    out = tmp_path / "r.md"
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text("", "utf-8")
+    assert full_run_report.main(["--run", f"held-out={both}#heldout", "--ledger", str(ledger),
+                                 "--write", str(out)]) == 0  # fmt: skip
+    assert "| held-out | both |" in out.read_text(encoding="utf-8")
+
+
+def test_ledger_judging_ledgers_only_spend_not_yet_ledgered(run_dir: Path, tmp_path: Path):
+    """A resumed run (EvalKit exit 4, batches collected later) must not ledger twice."""
+    live = tmp_path / "course-ta-both-20261117T000000Z"
+    (live / "evalkit").mkdir(parents=True)
+    shutil.copytree(run_dir, live / "evalkit" / run_dir.name)
+    manifest = live / "evalkit" / run_dir.name / "run.json"
+    reported = sum(r.completion.cost_usd for r in R.read_records(run_dir))
+
+    def spent(extra: float, probe: float) -> None:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        data["spent_usd"] = reported + extra
+        manifest.write_text(json.dumps(data), encoding="utf-8")
+        (live / "probe-judges.json").write_text(json.dumps({"probe_judge_usd": probe}), "utf-8")
+
+    ledger = Ledger(tmp_path / "ledger.jsonl", 150.0)
+    spent(1.0, 0.5)
+    assert eval_live.ledger_judging(ledger, live) == pytest.approx((1.0, 0.5))
+    assert eval_live.ledger_judging(ledger, live) == (0.0, 0.0)  # nothing new
+    spent(1.75, 0.5)
+    assert eval_live.ledger_judging(ledger, live) == pytest.approx((0.75, 0.0))
+    rows = F.read_ledger(tmp_path / "ledger.jsonl")
+    assert F.spend_of(rows, live.name) == pytest.approx({"eval_judging": 1.75,
+                                                         "probe_judging": 0.5})  # fmt: skip
+
+
+def test_resume_inputs_read_the_folder_and_refuse_a_partial_one(run_dir: Path, tmp_path: Path):
+    live = tmp_path / "course-ta-both-20261117T000000Z"
+    live.mkdir()
+    with pytest.raises(ValueError, match="not an eval_live folder"):
+        eval_live.resume_inputs(live)
+    (live / "course-ta.yaml").write_text("name: course-ta\n", "utf-8")
+    (live / "cases.jsonl").write_text('{"id": "a"}\n{"id": "b"}\n', "utf-8")  # after drift
+    (live / "drift.json").write_text(json.dumps({"retired": ["c"]}), "utf-8")
+    task, n, split = eval_live.resume_inputs(live)
+    assert task == live / "course-ta.yaml" and n == 2 and split == "both"
+    assert eval_live.merge_probe_summary({"probe_judge_calls": 3, "probe_judge_usd": 0.5},
+                                         2, 0.25) == {"probe_judge_calls": 5,
+                                                      "probe_judge_usd": 0.75}  # fmt: skip
+
+
+def test_a_resumed_run_never_logs_heldout_scored_again():
+    assert eval_live.logs_heldout_score("both", replay=False, resume=True) is False
+    assert eval_live.logs_heldout_score("both", replay=False, resume=False) is True
+
+
+def test_report_compares_only_the_pairs_asked_for(run_dir: Path, tmp_path: Path):
+    import full_run_report
+
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text("", "utf-8")
+    out = tmp_path / "r.md"
+    args = ["--run", f"a={run_dir}", "--run", f"b={run_dir}", "--run", f"c={run_dir}",
+            "--compare", "b:c", "--ledger", str(ledger), "--write", str(out)]  # fmt: skip
+    assert full_run_report.main(args) == 0
+    text = out.read_text(encoding="utf-8")
+    assert "b minus c" in text and "a minus" not in text
+    with pytest.raises(SystemExit):
+        full_run_report.main([*args[:-2], "--compare", "a:zz"])

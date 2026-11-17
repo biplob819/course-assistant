@@ -107,14 +107,24 @@ def spend_of(rows: Iterable[Mapping[str, Any]], run_id: str) -> dict[str, float]
     return out
 
 
-def run_summary(run_dir: Path, ledger_rows: Sequence[Mapping[str, Any]],
-                label: str) -> RunSummary:  # fmt: skip
+def run_summary(run_dir: Path, ledger_rows: Sequence[Mapping[str, Any]], label: str,
+                split: str | None = None) -> RunSummary:  # fmt: skip
     """Gate values, latency and measured cost of one eval_live folder. Records whose system
-    call failed are counted as errors and left out; any other record without scores raises."""
+    call failed are counted as errors and left out; any other record without scores raises.
+    With `split` ("tuning" or "heldout"), only that golden split's cases count (a run on both
+    splits, D-67); the run's ledger spend is then shared out by the split's share of cases."""
     ek = evalkit_folder(run_dir)
     manifest = R.read_manifest(ek)
     cases = R.read_cases(ek)
     records = R.read_records(ek)
+    share = 1.0
+    if split is not None:
+        total = len(records)
+        cases = {k: c for k, c in cases.items() if c.meta.get("split") == split}
+        records = [r for r in records if r.case_id in cases]
+        if not records:
+            raise FullRunError(f"{run_dir.name} has no case in the {split} split")
+        share = len(records) / total
     if not records:
         raise FullRunError(f"{run_dir.name} has no records")
     ok = [r for r in records if r.completion.error is None]
@@ -127,8 +137,8 @@ def run_summary(run_dir: Path, ledger_rows: Sequence[Mapping[str, Any]],
         raise FullRunError("; ".join(errors))
     latencies = [r.completion.latency_ms for r in ok]
     by_purpose = spend_of(ledger_rows, run_dir.name)
-    system = math.fsum(v for k, v in by_purpose.items() if k not in JUDGING_PURPOSES)
-    judging = math.fsum(v for k, v in by_purpose.items() if k in JUDGING_PURPOSES)
+    system = share * math.fsum(v for k, v in by_purpose.items() if k not in JUDGING_PURPOSES)
+    judging = share * math.fsum(v for k, v in by_purpose.items() if k in JUDGING_PURPOSES)
     summary_path = ek / "summary.json"
     calibration = "unknown"
     if summary_path.is_file():
