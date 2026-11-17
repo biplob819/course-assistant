@@ -172,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Integrity labelling: {url}  ({done}/{len(sheet.rows)} done; saving to {a.out})")
     print("Press Ctrl+C here when you are finished.")
     if not a.no_browser:
-        webbrowser.open(url)
+        webbrowser.open_new_tab(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
