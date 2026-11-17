@@ -77,6 +77,15 @@ _NUMBERED = re.compile(r"[ \t]*\d{1,3}[.)][ \t]+")
 _BOUNDARY = re.compile(
     r"[.!?]+[\"'”’)\]]*(?:[ \t]*" + _MARKER + r")*(?=[ \t]+[A-Z0-9\"'“‘(\[]|[ \t]*$)"
 )
+# E2.5 quality round (OWNER D-71): the provider often puts one citation after the last sentence
+# of a paragraph. Which sentences such a citation covers (hashed into the ground version):
+ATTRIBUTION = (
+    "a sentence with no citation of its own takes the citations of the nearest later sentence "
+    "with citations of its own on the same line; a sentence ending with ':' may also reach the "
+    "first sentence after its line break; the allowed connective takes none; a sentence with "
+    "no later cited sentence in reach stays uncited (unsupported, no support call); "
+    "inherited citations are checked by L2 like any others; v1"
+)
 _ABBREV_TAIL = re.compile(r"([A-Za-z][A-Za-z.]*)$")
 _MARKERS = re.compile(_MARKER)
 _LETTER = re.compile(r"[^\W\d_]")
@@ -113,12 +122,18 @@ Fields: "units" (course material: an id and its exact text) and "sentences" (eac
 number "n", its "text", and "units": the ids of the units that sentence cites).
 
 For each sentence, decide "supported" using only the text of the units listed for that
-sentence. A sentence is supported only if every claim in it is stated in those units or
-follows directly from them. Use no outside knowledge: a claim that is true in general, or
-found in another unit not listed for that sentence, but not in the listed units, is
-unsupported. A sentence that adds a number, name, example, cause or recommendation that the
-listed units do not give is unsupported. A sentence that contradicts its units, or only
-paraphrases a different point, is unsupported. If unsure, it is unsupported.
+sentence. A sentence is supported when every claim in it is stated in those units or follows
+directly from them. Judge the meaning, not the wording: a faithful paraphrase, a summary, a
+shorter or reordered version, plain words for a term the unit uses, or crediting the point to
+the course ("the course says", "according to the slides") is supported. Formatting such as
+bold text, list markers or quotation marks does not matter.
+
+Use no outside knowledge. A claim that is true in general, or found in another unit not
+listed for that sentence, but not in the listed units, is unsupported. A sentence that adds a
+number, name, example, cause, consequence or recommendation that the listed units do not
+give is unsupported. A sentence that contradicts its units, or only paraphrases a different
+point, is unsupported. Decide each sentence on its own; if it is still unclear after reading
+the listed units, it is unsupported.
 
 Return one verdict for every sentence number given, exactly once each.
 """
@@ -145,12 +160,14 @@ Return one verdict for every sentence number given, exactly once each.
 
     CONNECTIVES: ClassVar[tuple[str, ...]] = CONNECTIVES
     SPLITTER: ClassVar[str] = SPLITTER
+    ATTRIBUTION: ClassVar[str] = ATTRIBUTION
     MAX_PARSE_ATTEMPTS: ClassVar[int] = 2  # one retry on a parse failure (Tech Spec §2.5)
 
     @classmethod
     def version(cls) -> str:
         blob = json.dumps({"rules": cls.SUPPORT_RULES, "schema": cls.JSON_SCHEMA,
-                           "connectives": list(cls.CONNECTIVES), "splitter": cls.SPLITTER},
+                           "connectives": list(cls.CONNECTIVES), "splitter": cls.SPLITTER,
+                           "attribution": cls.ATTRIBUTION},
                           sort_keys=True)  # fmt: skip
         return "ground-" + hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
 
@@ -183,19 +200,18 @@ Return one verdict for every sentence number given, exactly once each.
             return self._report(resolve, top, (), sentences, 0, 0.0, 0)
 
         owners = assign_marks(spans, marks)
-        cited: list[set[int]] = [set() for _ in spans]
+        own: list[set[int]] = [set() for _ in spans]
         for mark, owner in zip(marks, owners, strict=True):
-            cited[owner].add(self.by_file[mark.file_id].unit_index)
+            own[owner].add(self.by_file[mark.file_id].unit_index)
+        # the one allowed connective: the first sentence with no citation of its own that is one
+        connective = next((i for i, x in enumerate(sentences)
+                           if not own[i] and is_connective(x, self.CONNECTIVES)), None)  # fmt: skip
+        cited = inherit_citations(text, spans, own, exempt=connective)  # D-71 (ATTRIBUTION)
         support: list[bool | None] = [None] * len(spans)
-        connective_used = False
-        for i, sentence in enumerate(sentences):
-            if cited[i]:
-                continue
-            if not connective_used and is_connective(sentence, self.CONNECTIVES):
-                support[i] = True
-                connective_used = True
-            else:
-                support[i] = False  # an uncited sentence is unsupported (B1)
+        for i in range(len(sentences)):
+            if not cited[i]:
+                # the connective passes; any other sentence still uncited is unsupported (B1)
+                support[i] = i == connective
         checked = [i for i, s in enumerate(support) if s is None]
         if any(s is False for s in support) or not checked:
             # already failed: a cited sentence is never reported supported unless shown so
@@ -372,6 +388,26 @@ def split_sentences(text: str, connectives: Sequence[str] = CONNECTIVES) -> list
 def _is_abbreviation(before: str) -> bool:
     m = _ABBREV_TAIL.search(before)
     return bool(m) and m.group(1).lower().strip(".") in ABBREVIATIONS
+
+
+def inherit_citations(text: str, spans: Sequence[Span], own: Sequence[set[int]],
+                      exempt: int | None) -> list[set[int]]:  # fmt: skip
+    """Each sentence's citations under ATTRIBUTION: its own, else those of the nearest later
+    sentence with its own on the same line (a lead-in ending with ':' also reaches past its line
+    break). `exempt` (the allowed connective) takes none. The input is not changed."""
+    out = [set(c) for c in own]
+    for i in range(len(spans)):
+        if own[i] or i == exempt:
+            continue
+        colon = text[spans[i][0] : spans[i][1]].rstrip().endswith(":")
+        for j in range(i + 1, len(spans)):
+            gap = text[spans[j - 1][1] : spans[j][0]]
+            if "\n" in gap and not (colon and j == i + 1):
+                break
+            if own[j]:
+                out[i] = set(own[j])
+                break
+    return out
 
 
 def assign_marks(spans: Sequence[Span], marks: Sequence[FileCitation]) -> list[int]:

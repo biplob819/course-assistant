@@ -27,7 +27,7 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, ClassVar, Literal, TypeVar, get_args
 
-from course_assistant.answer.answer import AnswerDraft, AnswerStep
+from course_assistant.answer.answer import AnswerDraft, AnswerStep, resolve_inline
 from course_assistant.answer.ground import GroundReport, GroundStep
 from course_assistant.answer.hint import Hint, HintCache, HintStep
 from course_assistant.answer.integrity import IntegrityResult, IntegrityStep
@@ -481,6 +481,7 @@ class Assistant:
 
         def answer_call() -> tuple[AnswerDraft, tuple[FileCitation, ...]]:
             res = answer_step.responder(answer_step.request(question, window, session))
+            res = resolve_inline(res)  # in-text provider citations (OWNER D-71)
             return answer_step.draft(res), res.citations
 
         early = False

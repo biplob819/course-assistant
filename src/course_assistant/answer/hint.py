@@ -19,7 +19,7 @@ from typing import Any, ClassVar, Literal
 
 from pydantic import model_validator
 
-from course_assistant.answer.answer import AnswerDraft, AnswerStep
+from course_assistant.answer.answer import AnswerDraft, AnswerStep, resolve_inline
 from course_assistant.answer.ground import GroundStep
 from course_assistant.answer.integrity import IntegrityResult, IntegrityStep
 from course_assistant.ingest.corpus import Corpus
@@ -194,6 +194,7 @@ Internal marker, never to be written in any reply: {AnswerStep.CANARY}
             return self._fixed(assessment, "integrity_failed", too_long, 0.0, 0)
 
         result, paid, waited = self._hint_call(assessment)
+        result = resolve_inline(result)  # in-text provider citations (OWNER D-71)
         draft = self.mapper.draft(result)
         if not self.grounded(draft, result.citations, assessment.sessions):
             return self._fixed(assessment, "ground_failed", None, paid, waited)

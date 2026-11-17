@@ -78,6 +78,23 @@ def select(split: str, heldout_dir: Path = HELDOUT) -> list[Any]:
     return load_public(PUBLIC) + load_heldout(heldout_dir)
 
 
+RULE_NAMES = ("B1", "B2", "B3", "B4", "B7", "B8", "B9", "B10")
+
+
+def subset(cases: list[Any], split: str, rules: str | None) -> list[Any]:
+    """The cases of the named rules ("B1" or "B1,B7"), for a cheap tuning run on the public
+    split (OWNER D-71). A held-out run is always the whole set: a subset is refused."""
+    if rules is None:
+        return cases
+    if split != "public":
+        raise ValueError("--rules is for the public split only (the held-out set runs whole)")
+    wanted = {r.strip() for r in rules.split(",") if r.strip()}
+    unknown = sorted(wanted - set(RULE_NAMES))
+    if unknown or not wanted:
+        raise ValueError(f"unknown rule(s) {unknown}; use {', '.join(RULE_NAMES)}")
+    return [c for c in cases if c.rule in wanted]
+
+
 def probes(cases: list[Any]) -> int:
     """Cases a probe judge reads: B3 (integrity), B9 (identity), B8 and B10 (leak)."""
     return sum(c.rule in ("B3", "B8", "B9", "B10") for c in cases)
@@ -234,7 +251,14 @@ def main(argv: list[str] | None = None) -> int:
         help="run with a bar or support rules not in the tuning log (tuning runs)",
     )
     ap.add_argument("--yes", action="store_true", help="confirm that this run spends money")
+    ap.add_argument("--live-judges", action="store_true",
+                    help="judge at full price now instead of provider batches")  # fmt: skip
+    ap.add_argument("--rules", help="public tuning runs only: just these rules, e.g. B1 or B1,B7")
     args = ap.parse_args(argv)
+    if args.rules is not None and (args.split != "public" or args.resume is not None):
+        print("eval_live: --rules is for the public split only (the held-out set runs whole)",
+              file=sys.stderr)  # fmt: skip
+        return 2
     if not args.dry_run:
         if not args.yes:
             print("eval_live: this run makes paid API calls; pass --yes to confirm",
@@ -269,7 +293,11 @@ def main(argv: list[str] | None = None) -> int:
         out_dir = args.resume
         cases = select(args.split)
     else:
-        cases = select(args.split)
+        try:
+            cases = subset(select(args.split), args.split, args.rules)
+        except ValueError as exc:
+            print(f"eval_live: {exc}", file=sys.stderr)
+            return 2
         stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
         out_dir = args.out / f"course-ta-{args.split}-{stamp}"
         task = prepare(out_dir, cases, corpus)
@@ -302,6 +330,15 @@ def main(argv: list[str] | None = None) -> int:
         log_heldout_scored(TUNING_LOG, run=out_dir.name, bar=config.grounding_bar,
                            ground_version=GroundStep.version())  # fmt: skip
     return code
+
+
+def evalkit_args(out_dir: Path, task: Path, n: int, usd: float, *,
+                 live_judges: bool) -> list[str]:  # fmt: skip
+    """`evalkit run` arguments. `--live-judges` judges at full price now instead of waiting for
+    provider batches (used to keep tuning rounds short; a pending batch is never paid twice)."""
+    out = ["run", str(out_dir / "evalkit.yaml"), "--task", str(task), "--n", str(n),
+           "--out", str(out_dir / "evalkit"), "--max-cost", f"{usd:.4f}"]  # fmt: skip
+    return [*out, "--live-judges"] if live_judges else out
 
 
 def _run(args: argparse.Namespace, config: Any, corpus: Any, out_dir: Path, task: Path,
@@ -349,9 +386,8 @@ def _run(args: argparse.Namespace, config: Any, corpus: Any, out_dir: Path, task
                        cache=out_dir / "probe-verdicts.jsonl", budget=budget)  # fmt: skip
     scorers.configure_judges(panel, DirSolutionBook(SOLUTIONS), assessments)
     try:
-        code = evalkit_cli.main(["run", str(out_dir / "evalkit.yaml"), "--task", str(task),
-                                 "--n", str(n), "--out", str(out_dir / "evalkit"),
-                                 "--max-cost", f"{budget.evalkit_usd:.4f}"])  # fmt: skip
+        code = evalkit_cli.main(evalkit_args(out_dir, task, n, budget.evalkit_usd,
+                                             live_judges=args.live_judges))  # fmt: skip
         if args.resume is not None and not tap.sentences:
             # a resume that answered nothing new keeps the first pass's tap, support rows and
             # agreement as they are

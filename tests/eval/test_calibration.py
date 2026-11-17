@@ -775,7 +775,7 @@ def test_a_rechained_forged_log_is_still_caught(tmp_path):
     """Verifier E2.3 pass 2: an unkeyed chain can be recomputed, so continuity of the values
     and the git prefix are checked as well."""
     rows = tuning.read_log(TUNING_LOG)
-    gv = rows[-1]["ground_version"]
+    gv = tuning.current(rows)[1]  # the logged ground version (a refresh line carries none)
     forged = [
         *rows,
         {

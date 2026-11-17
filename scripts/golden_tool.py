@@ -4,6 +4,7 @@
     python scripts/golden_tool.py build     # from the private source in golden/heldout/src/
     python scripts/golden_tool.py check     # validate the case files and the coverage rule
     python scripts/golden_tool.py verify    # the private held-out file matches its manifest
+    python scripts/golden_tool.py refresh   # retire the used held-out set, write the fresh one
 
 The tuning split is public (golden/public/cases.jsonl). The held-out split
 (golden/heldout/cases.jsonl) and its authoring source are git-ignored; MANIFEST.json, which
@@ -251,6 +252,131 @@ def to_line(c: dict) -> str:
 RETIRED = frozenset({"ta-b1-065"})
 
 
+# OWNER D-71: a held-out set is scored once. A used set is retired as a set (named here with the
+# sha256 of its file, kept privately under golden/heldout/retired/<name>/) and a fresh set is
+# written from its own private source module, with the same composition, ids from 501 that never
+# reuse an earlier id, and text distinct from the public split and from every retired set.
+RETIRED_SETS = {
+    "heldout-1": "242c81236fa81b9af5dad1a76a056c3b0d3ff38304f1a352ec52b4482c941457",
+}
+HELDOUT_SOURCE = "cases_heldout2"  # the live held-out set "heldout-2" (private module in SRC)
+RETIRED_DIR = ROOT / "golden" / "heldout" / "retired"
+FRESH_START = 500  # fresh ids are ta-<rule>-501 and up
+NEAR = 0.8  # word-set overlap at which two texts of 4+ words count as the same question
+
+
+def build_fresh(mod) -> list[dict]:
+    """The fresh held-out cases of a private source module (see HELDOUT_SOURCE), as dicts with
+    their split groups. Refuses a probe without three paraphrases or a lost canary."""
+    cv = corpus_version()
+    cases: list[dict] = []
+
+    def add(rule, question, status, group, **kw):
+        n = FRESH_START + sum(c["rule"] == rule for c in cases) + 1
+        cases.append({"schema_version": "1.0", "id": f"ta-{rule.lower()}-{n:03d}", "rule": rule,
+                      "question": question, "expected_status": status, "corpus_version": cv,
+                      "group": group, "split": "heldout", **kw})  # fmt: skip
+
+    def paraphrases(rule: str, n: int, variants) -> list[str]:
+        if len(variants) != 3:
+            raise ValueError(f"{rule} probe {n} needs three paraphrases, has {len(variants)}")
+        return list(variants)
+
+    for row in mod.B1:
+        q, locs, prior = row[0], list(row[1]), row[2]
+        add("B1", q, "answered", f"topic:{locs[0]}", gold_units=locs, session_scope=None,
+            prior_turns=_turns(prior))  # fmt: skip
+    for i, (q, scope) in enumerate(mod.B2):
+        add("B2", q, "not_covered", f"fresh-b2-{i}", session_scope=scope)
+    for i, q in enumerate(mod.B7):
+        add("B7", q, "not_covered", f"fresh-b7-{i}")
+    for i, (aid, q, prior, variants) in enumerate(mod.B3):
+        for text in [q, *paraphrases("B3", i, variants)]:
+            add("B3", text, "hint_only", f"assess:{aid}", assessment_id=aid,
+                prior_turns=_turns(prior))  # fmt: skip
+    for q, theme in mod.B4:
+        add("B4", q, "handed_over", f"b4:fresh-{theme}")
+    for q, canary, theme in mod.B8:
+        add("B8", q, "not_covered", f"b8:fresh-{theme}", canary=canary)
+    for q, theme in mod.B9:
+        add("B9", q, "not_covered", f"b9:fresh-{theme}")
+    for i, (q, canary, status, prior, topic, aid, variants) in enumerate(mod.B10):
+        prior_text = " ".join(t for turn in (prior or []) for t in turn)
+        if canary not in q and canary not in prior_text:
+            raise ValueError(f"B10 probe {i}: its canary is in neither the question nor a turn")
+        texts = [q, *paraphrases("B10", i, variants)]
+        if canary in q and any(canary not in t for t in texts):
+            raise ValueError(f"B10 probe {i}: a paraphrase lost the canary")
+        extra = {"assessment_id": aid} if aid else {}
+        group = f"topic:{topic}" if topic else f"fresh-b10-{i}"
+        for text in texts:
+            add("B10", text, status, group, canary=canary, prior_turns=_turns(prior), **extra)
+    return cases
+
+
+def composition_problems(cases: list[dict], want: dict[str, int]) -> list[str]:
+    counts = Counter(c["rule"] for c in cases)
+    return [f"{rule}: {counts[rule]} cases, needs {n}" for rule, n in sorted(want.items())
+            if counts[rule] != n] + [f"{rule}: not in the set it replaces"
+                                     for rule in sorted(set(counts) - set(want))]  # fmt: skip
+
+
+def _words(text: str) -> frozenset[str]:
+    return frozenset(_norm(text).split())
+
+
+def distinct(fresh: list[GoldenCase], others: list[str]) -> list[str]:
+    """Ids of fresh cases whose question or earlier learner turn equals another text, or shares
+    at least NEAR of its words with one (texts of 4+ words). Ids only, never text."""
+    exact = {_norm(t) for t in others}
+    sets = [w for w in (_words(t) for t in others) if len(w) >= 4]
+    found = []
+    for c in fresh:
+        for text in [c.question, *(q for q, _ in c.prior_turns)]:
+            w = _words(text)
+            near = len(w) >= 4 and any(len(w & o) / len(w | o) >= NEAR for o in sets)
+            if _norm(text) in exact or near:
+                found.append(c.id)
+                break
+    return found
+
+
+def _texts(cases: list[GoldenCase]) -> list[str]:
+    return [t for c in cases for t in (c.question, *(q for q, _ in c.prior_turns))]
+
+
+def refresh(cases: list[dict]) -> list[str]:
+    """Retire the first held-out set (written from the original source, checked against its
+    hash) and write the fresh set from HELDOUT_SOURCE. Returns problems (ids and counts only);
+    nothing is written when there is one."""
+    first = [to_line(c) for c in cases if c["split"] == "heldout" and c["id"] not in RETIRED]
+    digest = hashlib.sha256(("\n".join(first) + "\n").encode()).hexdigest()
+    if digest != RETIRED_SETS["heldout-1"]:
+        return ["the original source no longer builds the retired set heldout-1"]
+    public = read(PUBLIC)
+    retired = [GoldenCase.model_validate_json(x) for x in first]
+    fresh_dicts = build_fresh(_load(HELDOUT_SOURCE))
+    want = Counter(c.rule for c in retired)
+    fresh = [GoldenCase.model_validate_json(to_line(c)) for c in fresh_dicts]
+    found = composition_problems(fresh_dicts, dict(want)) + problems(public + fresh)
+    found += leaks(public, fresh) + coverage(public + fresh)
+    found += [f"not distinct: {i}" for i in distinct(fresh, _texts(public) + _texts(retired))]
+    old_ids = {c.id for c in public} | {c.id for c in retired} | set(RETIRED)
+    found += [f"id reused: {c.id}" for c in fresh if c.id in old_ids]
+    if found:
+        return found
+    out = RETIRED_DIR / "heldout-1"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "cases.jsonl").write_text("\n".join(first) + "\n", encoding="utf-8")
+    (out / "MANIFEST.json").write_text(json.dumps(manifest_for(first), indent=2, sort_keys=True)
+                                       + "\n", encoding="utf-8")  # fmt: skip
+    held = [to_line(c) for c in fresh_dicts]
+    HELDOUT.write_text("\n".join(held) + "\n", encoding="utf-8")
+    MANIFEST.write_text(json.dumps(manifest_for(held), indent=2, sort_keys=True) + "\n",
+                        encoding="utf-8")  # fmt: skip
+    return []
+
+
 def write(cases: list[dict]) -> None:
     pub = [to_line(c) for c in cases if c["split"] == "tuning"]
     held = [to_line(c) for c in cases if c["split"] == "heldout" and c["id"] not in RETIRED]
@@ -348,13 +474,28 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("command", choices=["build", "check", "verify"])
+    ap.add_argument("command", choices=["build", "check", "verify", "refresh"])
     args = ap.parse_args(argv)
-    if args.command == "build":
+    if args.command in ("build", "refresh"):
         cases = build_cases()
         split(cases)
-        write(cases)
-        print(f"built {len(cases)} cases: {sum(c['split'] == 'tuning' for c in cases)} tuning")
+        pub = [to_line(c) for c in cases if c["split"] == "tuning"]
+        if args.command == "build" and not (SRC / f"{HELDOUT_SOURCE}.py").is_file():
+            write(cases)  # no fresh source yet: the original split, as before D-71
+        elif pub != PUBLIC.read_text(encoding="utf-8").splitlines():
+            print("the source no longer builds the committed public split; nothing written")
+            return 1
+        else:
+            found = refresh(cases)
+            for f in found:
+                print(f)
+            if found:
+                print(f"{len(found)} problems; nothing written")
+                return 1
+            held = read(HELDOUT)
+            print(f"held-out refreshed: {len(held)} cases from {HELDOUT_SOURCE}; "
+                  f"retired {', '.join(RETIRED_SETS)}")  # fmt: skip
+        print(f"built {len(cases)} cases: {len(pub)} tuning")
         return 0
     if args.command == "verify":
         if not HELDOUT.is_file():
