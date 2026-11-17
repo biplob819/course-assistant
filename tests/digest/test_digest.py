@@ -744,3 +744,13 @@ def test_a_short_question_matches_only_on_word_boundaries(q, label):
                                       ("[12] my mum died", "my mum died")])  # fmt: skip
 def test_a_citation_shaped_short_question_is_still_a_short_question(q, label):
     assert label_problem(label, [q]) == "copies a question"
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("q, label", [("I can't do this", "I cant do this"),
+                                      ("my fa­ther is sick", "my father is sick"),
+                                      ("mum's cancer came back", "mums cancer came back"),
+                                      ("I've failed twice now", "Ive failed twice"),
+                                      ("q́uit the course now", "quit the course now")])  # fmt: skip
+def test_marks_inside_a_short_question_never_split_its_words(q, label):
+    assert label_problem(label, [q]) == "copies a question"

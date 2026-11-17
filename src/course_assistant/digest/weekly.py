@@ -327,7 +327,9 @@ class QuestionIndex:
         # a 4-word one is also matched by each 3-word run of it (verifier B2.4 pass 6)
         short: set[str] = set()
         for q in qs:
-            toks = _label_tokens(display_label(q))
+            # straight into the tokeniser, where marks never split a word (pass 7: the
+            # display form turned apostrophes and soft hyphens into spaces)
+            toks = _label_tokens(q)
             if 3 <= len(toks) < QUESTION_RUN_WORDS:
                 for i in range(len(toks) - 2):
                     for j in range(i + 3, len(toks) + 1):
