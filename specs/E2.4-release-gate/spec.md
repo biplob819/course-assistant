@@ -119,7 +119,8 @@ failing recipe into exit 2, so make exits 0 or 2, and CI runs the script directl
   (the rules constants), the tuning log, `golden/**` or the eval code; a weekly schedule;
   manual dispatch.
 - `offline` job: no secrets; `release_gate.py offline --json` (its own exit code); uploads `runs/gate/` as an artifact.
-- `live` job: a step reads whether `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` and `HELDOUT_BUNDLE`
+- `live` job (main only: push, schedule or by hand; secrets from the protected `release`
+  environment, each given only to the steps that need it): a step reads whether `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` and `HELDOUT_BUNDLE`
   are set; without them every later step is skipped with a notice. With them it restores the
   held-out folder, ingests the sample course, runs `release_gate.py eval --no-flip` and uploads
   `gate.json` and `summary.json` only (never the run folder, which holds case text).

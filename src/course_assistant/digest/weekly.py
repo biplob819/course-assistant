@@ -256,11 +256,27 @@ def display_label(raw: str) -> str:
     return " ".join(kept.split())
 
 
+_LATIN_NAME = re.compile(
+    r"LATIN (?:SMALL |CAPITAL )?LETTER (?:SMALL CAPITAL |SMALL |CAPITAL )?([A-Z])"
+)
+
+
+@functools.cache
+def _latin(ch: str) -> str:
+    """A letter whose Unicode name is a plain Latin letter in another form (small capital,
+    modifier, superscript) as that ASCII letter; anything else unchanged (verifier B2.4
+    pass 10: small capitals were not mapped, by name not by list)."""
+    if ch.isascii():
+        return ch
+    m = _LATIN_NAME.fullmatch(unicodedata.name(ch, "").replace("MODIFIER LETTER ", "LATIN "))
+    return m.group(1).lower() if m else ch
+
+
 def _stream(text: str) -> str:
     """Letters and digits only, after normalisation (non-ASCII letters kept as they are);
     citation markers are not removed, so nothing in a question hides from the test."""
     return "".join(
-        c
+        _latin(c)
         for c in normalise(text, cites=False)
         if c.isalnum() and unicodedata.category(c) not in ("Lm", "Sk")  # modifier marks
     )
@@ -376,7 +392,7 @@ def _looks_like_an_id(raw: str) -> bool:
     """A topic label never needs an at sign or a long code: any '@' (in any width), or any
     token of 8+ hex characters with a digit in it, digits from any script counted (verifier
     B2.4 pass 9: spaced or ideographic emails, Arabic-Indic pids, bare 12-hex fragments)."""
-    folded = unicodedata.normalize("NFKC", raw)
+    folded = "".join(_latin(ch) for ch in unicodedata.normalize("NFKC", raw))
     if any(ch in _AT_SIGNS for ch in folded):
         return True
     ascii_digits = "".join(

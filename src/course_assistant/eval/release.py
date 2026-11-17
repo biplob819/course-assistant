@@ -209,6 +209,9 @@ class GateInputs:
     log_problems: Sequence[str]  # the tuning log's checks
     coverage_problems: Sequence[str]
     exposure: Sequence[str] | None  # D-54; None where the private held-out file is absent
+    # the expected EvalKit rows of the held-out cases after drift, built from the private file
+    # that matched the MANIFEST; None where that file is absent (the gate then cannot run)
+    expected_cases: Mapping[str, Mapping[str, Any]] | None
     retired: AbstractSet[str] = frozenset()  # drift-retired held-out ids
     baseline: Mapping[str, Mapping[str, float]] | None = None
     baseline_snapshots: Sequence[str] = ()
@@ -243,45 +246,95 @@ def _stop(v: Verdict, code: int, message: str) -> Verdict:
     return v
 
 
+def _json(value: Any) -> Any:
+    return json.loads(json.dumps(value, default=lambda v: dict(v) if isinstance(v, Mapping)
+                                 else list(v)))  # fmt: skip
+
+
+def row_content(row: Mapping[str, Any]) -> str:
+    """What the gate compares of a dataset row (`dataset.to_case`): all but the corpus text."""
+    view = {"id": row["id"], "question": row["question"], "label": row["label"],
+            "meta": row["meta"]}  # fmt: skip
+    return json.dumps(_json(view), sort_keys=True)
+
+
+def case_content(case: Case) -> str:
+    """The same view of a case as EvalKit wrote it into the run folder."""
+    view = {"id": case.id, "question": case.question, "label": case.reference_label,
+            "meta": case.meta}  # fmt: skip
+    return json.dumps(_json(view), sort_keys=True)
+
+
 def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
+    """Every check that depends only on the run's inputs (the cases, which records exist, the
+    MANIFEST, the citations present) runs before the cost-cap and pending stops, so the exit
+    code of an input error never depends on how far the run got (precedence 2 > 3 > 4 > 1)."""
     v = Verdict(exit_code=EXIT_PASS, run=run_dir.name)
     try:
         R.read_manifest(run_dir)
-        cases = R.read_cases(run_dir)
+        lines = [x for x in (run_dir / "cases.jsonl").read_text("utf-8").splitlines() if x.strip()]
+        parsed = [Case.model_validate_json(x) for x in lines]
         records = R.read_records(run_dir) if (run_dir / "records.jsonl").is_file() else []
     except Exception as exc:
         return _stop(v, EXIT_ERROR, f"not a readable run folder ({type(exc).__name__})")
+    case_counts = Counter(c.id for c in parsed)
+    twice = sorted(i for i, n in case_counts.items() if n > 1)
+    if twice:
+        return _stop(v, EXIT_ERROR, f"{len(twice)} case(s) appear more than once in the run's "
+                     f"cases: {', '.join(twice)}")  # fmt: skip
+    cases = {c.id: c for c in parsed}
     want = set(inputs.heldout_ids) - set(inputs.retired)
     ids = set(cases)
     if ids != want:
         return _stop(v, EXIT_ERROR, f"not the held-out split: {len(ids - want)} case(s) outside "
                      f"the MANIFEST held-out set, {len(want - ids)} held-out case(s) missing "
                      "(the release gate runs on the held-out split, §6.5)")  # fmt: skip
+    if inputs.expected_cases is None:
+        return _stop(v, EXIT_ERROR, "the run's cases cannot be checked against the MANIFEST: "
+                     "the private held-out file is needed")  # fmt: skip
+    if set(inputs.expected_cases) != want:
+        return _stop(v, EXIT_ERROR, "the held-out cases on file do not match the MANIFEST ids")
+    changed = sorted(c.id for c in parsed
+                     if case_content(c) != row_content(inputs.expected_cases[c.id]))  # fmt: skip
+    if changed:
+        return _stop(v, EXIT_ERROR, f"{len(changed)} run case(s) differ from the MANIFEST-checked "
+                     f"held-out cases: {', '.join(changed)}")  # fmt: skip
     versions = {str(c.meta.get("corpus_version")) for c in cases.values()}
     if len(versions) != 1:
         return _stop(v, EXIT_ERROR, "the run's cases name more than one corpus version")
     v.corpus_version = versions.pop()
-    # checks that depend only on the cases come before any stop (precedence 2 > 3 > 4)
     rules = {_rule(c) for c in cases.values()}
     absent = [m for m, need in CASE_RULES.items() if not rules & need]
-    if absent:
-        return _stop(v, EXIT_ERROR, "; ".join(f"no case for the {m} gate" for m in absent))
+    if not any(_rule(c) == "B1" and c.meta.get("gold_indices") for c in cases.values()):
+        absent.append("locator_correct")
     counts = Counter(r.case_id for r in records)
     answered = set(counts)
     summary_path = run_dir / "summary.json"
+    if not absent and not any(_rule(cases[r.case_id]) == "B1" and r.completion.answer is not None
+                              and r.completion.answer.citations
+                              for r in records if r.case_id in cases):  # fmt: skip
+        absent.append("citation_validity")
+    if absent:
+        return _stop(v, EXIT_ERROR, "; ".join(f"no case for the {m} gate" for m in absent))
     if answered - ids:
         return _stop(v, EXIT_ERROR, f"{len(answered - ids)} record(s) for cases not in the run")
     doubled = sorted(i for i, n in counts.items() if n > 1)
     if doubled:
         return _stop(v, EXIT_ERROR, f"{len(doubled)} case(s) have more than one record: "
                      f"{', '.join(doubled)}")  # fmt: skip
-    # input errors in the records written so far come first (precedence 2 > 3 > 4): a record
-    # that has scores must have every score it needs, whether or not the run finished
+    # a record that has scores must have every score it needs, whether or not the run finished
     scored = [r for r in records if r.scores is not None]
     try:
         v.values = case_values(scored, cases)
     except ReleaseError as exc:
         return _stop(v, EXIT_ERROR, str(exc))
+    support = run_dir.parent.parent / "support-agreement.json"  # eval_live: RUN/evalkit/<run>
+    if support.is_file():
+        try:
+            kappa = json.loads(support.read_text("utf-8"))["kappa"]["point"]
+            v.monitors["support_kappa"] = float(kappa)
+        except (ValueError, TypeError, KeyError):
+            return _stop(v, EXIT_ERROR, "support-agreement.json is malformed")
     summary: dict[str, Any] = {}
     if summary_path.is_file():
         try:
@@ -306,10 +359,6 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
     v.monitors["cost_per_1000_usd"] = round(
         1000 * math.fsum(r.completion.cost_usd for r in records) / len(records), 6
     )
-    support = run_dir.parent.parent / "support-agreement.json"  # eval_live: RUN/evalkit/<run>
-    if support.is_file():
-        kappa = json.loads(support.read_text("utf-8"))["kappa"]["point"]
-        v.monitors["support_kappa"] = float(kappa)
     v.failures += [f"gate {g.name}: {g.value:.4f} over {g.n} (needs {g.target})"
                    for g in v.gates if not g.passed]  # fmt: skip
     if inputs.baseline is None:

@@ -160,7 +160,7 @@ def check_run(run: Path, *, config_path: Path, store_path: Path | None,
     from evalkit import run as R
 
     from course_assistant.eval import release
-    from course_assistant.eval.dataset import load_public
+    from course_assistant.eval.dataset import load_public, to_case
     from course_assistant.eval.release import ReleaseError
     from course_assistant.eval.tuning import recorded_bar
 
@@ -173,13 +173,17 @@ def check_run(run: Path, *, config_path: Path, store_path: Path | None,
     drift_file = live_folder(run) / "drift.json"
     recorded = json.loads(drift_file.read_text(encoding="utf-8")) if drift_file.is_file() else {}
     retired = frozenset(str(x) for x in recorded.get("retired", ()))
-    held = private_heldout()
+    held = private_heldout()  # load_heldout: every line and the file match the MANIFEST
     notes = []
+    expected: dict[str, Any] | None = None
     if held is not None and len(golden_versions) == 1:  # recompute where the cases exist
-        found = release.drift(held, corpus, next(iter(golden_versions)))
+        version = next(iter(golden_versions))
+        found = release.drift(held, corpus, version)
         if set(found.retired) != {i for i in retired if i in {c.id for c in held}}:
             raise ReleaseError("drift.json does not match the drift of the held-out cases on "
-                             "this corpus: re-run the gate")  # fmt: skip
+                               "this corpus: re-run the gate")  # fmt: skip
+        retired = frozenset(found.retired)
+        expected = {c.id: to_case(c, corpus, version, context=()) for c in found.cases}
     public = load_public(PUBLIC)
     if len(golden_versions) == 1:
         public = list(release.drift(public, corpus, next(iter(golden_versions))).cases)
@@ -202,6 +206,7 @@ def check_run(run: Path, *, config_path: Path, store_path: Path | None,
         log_problems=log_problems(bar, env),
         coverage_problems=release.coverage_problems(items, corpus, assessments),
         exposure=exposure(held),
+        expected_cases=expected,
         retired=retired,
         baseline=base,
         baseline_snapshots=snapshots,
@@ -253,6 +258,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
 
     out = args.out / f"gate-{now.strftime('%Y%m%dT%H%M%SZ')}"
     out.mkdir(parents=True, exist_ok=False)
+    args.gate_json = out / "gate.json"
     argv = ["--config", str(args.config), "--split", "heldout", "--max-cost", str(args.max_cost),
             "--out", str(out)]  # fmt: skip
     if args.store:
@@ -268,6 +274,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
               file=sys.stderr)  # fmt: skip
         return 2
     run = runs[0].parent
+    args.gate_json = live_folder(run) / "gate.json"
     result = check_run(run, config_path=args.config, store_path=args.store,
                        calibration=evalkit_dir(args.calibration) if args.calibration else None,
                        baseline_path=None, env=os.environ)  # fmt: skip
@@ -387,9 +394,12 @@ def main(argv: list[str] | None = None) -> int:
 def _error_gate(args: argparse.Namespace, message: str) -> None:
     """A gate.json for a run that could not be gated: exit 2 and a fixed message, so nothing
     reads a crash as a failed or passed gate."""
-    if args.cmd != "check":
+    if args.cmd == "eval":  # the run's folder once known, else the gate folder, else --out
+        out = getattr(args, "gate_json", None) or args.out / "gate.json"
+    elif args.cmd != "check":
         return
-    out = args.out
+    else:
+        out = args.out
     if out is None:
         try:
             out = live_folder(evalkit_dir(args.run)) / "gate.json"
@@ -399,7 +409,7 @@ def _error_gate(args: argparse.Namespace, message: str) -> None:
         return
     try:
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps({"exit_code": 2, "run": args.run.name, "errors": [message],
+        out.write_text(json.dumps({"exit_code": 2, "run": out.parent.name, "errors": [message],
                                    "failures": [], "notes": []}, indent=1, sort_keys=True)
                        + "\n", encoding="utf-8")  # fmt: skip
     except OSError:

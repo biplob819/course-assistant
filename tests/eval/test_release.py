@@ -64,11 +64,36 @@ def ids(run: Path) -> frozenset[str]:
     return frozenset(R.read_cases(run))
 
 
+def rows_of(run: Path) -> dict[str, dict[str, Any]]:
+    """The run's cases as dataset rows, as they are now (the cases the run should hold)."""
+    return {c.id: {"id": c.id, "question": c.question, "label": c.reference_label,
+                   "meta": c.meta} for c in R.read_cases(run).values()}  # fmt: skip
+
+
 def inputs(run: Path, **kw: Any) -> GateInputs:
     base: dict[str, Any] = {"heldout_ids": ids(run), "calibration": CALIBRATED,
                             "fixture_problems": [], "log_problems": [],
-                            "coverage_problems": [], "exposure": []}  # fmt: skip
+                            "coverage_problems": [], "exposure": [],
+                            "expected_cases": rows_of(run)}  # fmt: skip
     return GateInputs(**{**base, **kw})
+
+
+def private(tmp_path: Path, run: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A stand-in private held-out folder: the run's public cases relabelled held-out, with a
+    MANIFEST written by E2.1's tool (tests never read golden/heldout)."""
+    import golden_tool as gt
+
+    folder = tmp_path / "private-heldout"
+    folder.mkdir(exist_ok=True)
+    lines = [json.dumps({**E.BY_ID[i].model_dump(mode="json"), "split": "heldout"},
+                        sort_keys=True) for i in sorted(ids(run))]  # fmt: skip
+    (folder / "cases.jsonl").write_text("".join(x + "\n" for x in lines), encoding="utf-8")
+    manifest = folder / "MANIFEST.json"
+    manifest.write_text(json.dumps(gt.manifest_for(lines)), encoding="utf-8")
+    monkeypatch.setattr(G, "HELDOUT_DIR", folder)
+    monkeypatch.setattr(G, "HELDOUT_MANIFEST", manifest)
+    monkeypatch.setattr(G, "exposure", lambda held: None)  # public text is public by design
+    return folder
 
 
 def edit_records(run: Path, fn: Any) -> None:
@@ -267,10 +292,7 @@ def test_release_gate_check_reads_certified_calibration_the_fixture_and_writes_g
         held_run, tmp_path, monkeypatch):  # fmt: skip
     run = fresh(held_run, tmp_path)
     config, _ = _store(tmp_path)
-    manifest = tmp_path / "MANIFEST.json"
-    manifest.write_text(json.dumps({"cases": {i: "x" for i in ids(run)}}), encoding="utf-8")
-    monkeypatch.setattr(G, "HELDOUT_MANIFEST", manifest)
-    monkeypatch.setattr(G, "HELDOUT_DIR", tmp_path / "no-private-file")
+    private(tmp_path, run, monkeypatch)
     seen: list[Path] = []
     real = G.calibration_status
     monkeypatch.setattr(G, "calibration_status", lambda d: seen.append(d) or real(d))
@@ -597,12 +619,9 @@ def test_exposure_scan_reads_every_tracked_text_file_and_skips_binaries_by_conte
 def test_check_passes_cost_cap_and_pending_codes_through(held_run, tmp_path, monkeypatch):
     """The 0-4 codes are the script's (make reports any failure as 2; Makefile says so)."""
     config, _ = _store(tmp_path)
-    monkeypatch.setattr(G, "HELDOUT_DIR", tmp_path / "no-private-file")
     for name, code in (("capped", 3), ("pending", 4)):
         run = fresh(held_run, tmp_path, name)
-        manifest = tmp_path / f"{name}.json"
-        manifest.write_text(json.dumps({"cases": {i: "x" for i in ids(run)}}), encoding="utf-8")
-        monkeypatch.setattr(G, "HELDOUT_MANIFEST", manifest)
+        private(tmp_path / name, run, monkeypatch)
         if code == 3:
             lines = (run / "records.jsonl").read_text("utf-8").splitlines()
             (run / "records.jsonl").write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")
@@ -625,10 +644,7 @@ def test_a_malformed_run_file_exits_2_with_a_fixed_message_in_gate_json(
     config, _ = _store(tmp_path)
     run = fresh(held_run, tmp_path / "live" / "evalkit", "r")  # eval_live's layout
     live = tmp_path / "live"
-    manifest = tmp_path / "MANIFEST.json"
-    manifest.write_text(json.dumps({"cases": {i: "x" for i in ids(run)}}), encoding="utf-8")
-    monkeypatch.setattr(G, "HELDOUT_MANIFEST", manifest)
-    monkeypatch.setattr(G, "HELDOUT_DIR", tmp_path / "no-private-file")
+    private(tmp_path, run, monkeypatch)
     argv = ["check", str(run), "--config", str(config)]
     if plant == "drift":
         (live / "drift.json").write_text('{"retired": 5}', encoding="utf-8")
@@ -641,7 +657,9 @@ def test_a_malformed_run_file_exits_2_with_a_fixed_message_in_gate_json(
     assert G.main(argv) == 2
     data = json.loads((live / "gate.json").read_text(encoding="utf-8"))
     assert data["exit_code"] == 2
-    assert data["errors"] == ["the gate could not run (TypeError)"]
+    want = ("support-agreement.json is malformed" if plant == "support"
+            else "the gate could not run (TypeError)")  # fmt: skip
+    assert data["errors"] == [want]
 
 
 def _without_rule(run: Path, rule: str) -> None:
@@ -677,3 +695,139 @@ def test_exposure_scan_normalises_json_escapes_case_and_whitespace():
     for text in (escaped, unicode_escaped, f"  {q.lower()}  "):
         assert release.heldout_exposure({"ta-b1-500": q}, [text]) == ["ta-b1-500"], text
     assert release.heldout_exposure({"ta-b1-500": q}, ["attention heads"]) == []
+
+
+# ============ verifier pass 3 (E2.4): every input-only check before the stops ============
+
+
+def _edit_cases(run: Path, fn: Any) -> None:
+    path = run / "cases.jsonl"
+    rows = [json.loads(x) for x in path.read_text("utf-8").splitlines() if x.strip()]
+    path.write_text("".join(json.dumps(r) + "\n" for r in fn(rows)), encoding="utf-8")
+
+
+def _strip_b1_citations(r: dict[str, Any]) -> dict[str, Any]:
+    if r["case_id"].startswith("ta-b1-") and r["completion"]["answer"]:
+        r["completion"]["answer"]["citations"] = []
+    return r
+
+
+def _swap_question(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows[0]["question"] = "A different question under a held-out id?"
+    return rows
+
+
+def _no_gold_indices(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    for r in rows:
+        r["meta"].pop("gold_indices", None)
+    return rows
+
+
+def _two_versions(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows[0]["meta"]["corpus_version"] = "f" * 64
+    return rows
+
+
+def _unknown_record(run: Path) -> None:
+    lines = (run / "records.jsonl").read_text("utf-8").splitlines()
+    extra = json.loads(lines[0])
+    extra["case_id"] = "ta-b1-999"
+    (run / "records.jsonl").write_text("\n".join([*lines, json.dumps(extra)]) + "\n", "utf-8")
+
+
+def _double_record(run: Path) -> None:
+    lines = (run / "records.jsonl").read_text("utf-8").splitlines()
+    (run / "records.jsonl").write_text("\n".join([*lines, lines[0]]) + "\n", "utf-8")
+
+
+def _double_case(run: Path) -> None:
+    lines = (run / "cases.jsonl").read_text("utf-8").splitlines()
+    (run / "cases.jsonl").write_text("\n".join([*lines, lines[0]]) + "\n", "utf-8")
+
+
+def _missing_score(run: Path) -> None:
+    b9 = first_id(run, "B9")
+
+    def drop(r: dict[str, Any]) -> dict[str, Any]:
+        if r["case_id"] == b9:
+            del r["task_scores"]["identity"]
+        return r
+
+    edit_records(run, drop)
+
+
+@pytest.mark.safety
+def test_every_input_only_check_exits_2_whether_complete_capped_or_pending(held_run, tmp_path):
+    """Each check that depends only on the run's inputs (cases, which records exist, the
+    MANIFEST-checked cases, citations present) gives the same exit under every stop."""
+    plants: dict[str, tuple[Any, str]] = {
+        "extra MANIFEST id": (None, "not the held-out split"),
+        "duplicate case line": (_double_case, "more than once"),
+        "swapped text": (lambda run: _edit_cases(run, _swap_question), "differ from the MANIFEST"),
+        "two corpus versions": (lambda run: _edit_cases(run, _two_versions), "more than one"),
+        "missing rule": (lambda run: _without_rule(run, "B9"), "no case for the identity gate"),
+        "no gold units": (lambda run: _edit_cases(run, _no_gold_indices), "differ from"),
+        "no B1 citations": (lambda run: edit_records(run, _strip_b1_citations),
+                            "no case for the citation_validity gate"),
+        "record for an unknown case": (_unknown_record, "for cases not in the run"),
+        "duplicate record": (_double_record, "more than one record"),
+        "missing score": (_missing_score, "has no identity score"),
+    }  # fmt: skip
+    for name, (plant, message) in plants.items():
+        for stop in ("complete", "capped", "pending"):
+            run = fresh(held_run, tmp_path, f"{len(name)}-{name[:6]}-{stop}".replace(" ", "_"))
+            expected = rows_of(run)  # what the MANIFEST-checked held-out file holds
+            if plant is not None:
+                plant(run)
+            if name in ("missing rule", "two corpus versions"):
+                expected = rows_of(run)  # the held-out file agrees, so this check is reached
+            if stop == "capped":
+                b4 = first_id(run, "B4")
+                lines = (run / "records.jsonl").read_text("utf-8").splitlines()
+                keep = [x for x in lines if json.loads(x)["case_id"] != b4]
+                (run / "records.jsonl").write_text("\n".join(keep) + "\n", encoding="utf-8")
+            if stop == "pending":
+                edit_json(run / "summary.json", lambda d: {**d, "judging_status": "pending"})
+            held = set(expected) | ({"ta-b1-999"} if name == "extra MANIFEST id" else set())
+            v = release.verdict(run, inputs(run, heldout_ids=frozenset(held),
+                                            expected_cases=expected))  # fmt: skip
+            assert v.exit_code == 2, (name, stop, v.exit_code, v.errors, v.notes)
+            assert any(message in e for e in v.errors), (name, stop, v.errors)
+
+
+@pytest.mark.safety
+def test_swapped_text_under_heldout_ids_exits_2_through_the_cli(held_run, tmp_path, monkeypatch):
+    """The run's cases are checked against the held-out file that matched the MANIFEST."""
+    config, _ = _store(tmp_path)
+    run = fresh(held_run, tmp_path)
+    private(tmp_path, run, monkeypatch)
+    _edit_cases(run, _swap_question)
+    out = tmp_path / "gate.json"
+    assert G.main(["check", str(run), "--config", str(config), "--out", str(out)]) == 2
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert any("differ from the MANIFEST" in e for e in data["errors"])
+    assert "A different question" not in out.read_text(encoding="utf-8")  # ids only
+    monkeypatch.setattr(G, "HELDOUT_DIR", tmp_path / "absent")  # no private file: cannot check
+    assert G.main(["check", str(fresh(held_run, tmp_path, "b")), "--config", str(config),
+                   "--out", str(out)]) == 2  # fmt: skip
+    assert "the private held-out file is needed" in out.read_text(encoding="utf-8")
+
+
+def test_a_crash_in_eval_mode_writes_gate_json(tmp_path, monkeypatch):
+    config, _ = _store(tmp_path)
+
+    def fake_eval_live(argv: list[str]) -> int:
+        out = Path(argv[argv.index("--out") + 1])
+        (out / "course-ta-heldout-x" / "evalkit" / "r1").mkdir(parents=True)
+        (out / "course-ta-heldout-x" / "evalkit" / "r1" / "run.json").write_text("{}", "utf-8")
+        return 0
+
+    def boom(*a: Any, **k: Any) -> Any:
+        raise TypeError("unexpected input")
+
+    monkeypatch.setattr(eval_live, "main", fake_eval_live)
+    monkeypatch.setattr(G, "check_run", boom)
+    assert G.main(["eval", "--config", str(config), "--yes", "--out", str(tmp_path / "o")]) == 2
+    (gate,) = (tmp_path / "o").glob("gate-*/course-ta-heldout-x/gate.json")
+    data = json.loads(gate.read_text(encoding="utf-8"))
+    assert data["exit_code"] == 2 and data["errors"] == ["the gate could not run (TypeError)"]

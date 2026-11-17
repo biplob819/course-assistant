@@ -104,8 +104,8 @@ def test_secrets_never_reach_pull_request_code():
     cond = " ".join(str(live["if"]).split())
     assert "pull_request" not in cond and "pull_request_target" not in cond
     assert cond == (
-        "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' "
-        "|| (github.event_name == 'push' && github.ref == 'refs/heads/main')"
+        "github.ref == 'refs/heads/main' && (github.event_name == 'push' || "
+        "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')"
     )
     assert live["environment"] == "release"
 

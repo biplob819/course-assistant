@@ -1,8 +1,9 @@
 name: eval-gate
 
 # The release gate (E2.4, Tech Spec §6.5): on every manifest or rules change, and weekly.
-# The offline job needs no secret. The live job runs only where the API keys and the held-out
-# bundle are configured as repository secrets; without them every live step is skipped.
+# The offline job needs no secret. The live job runs only on main (push, schedule or by hand),
+# with the API keys and the held-out bundle from the protected `release` environment; without
+# them every live step is skipped.
 on:
   push:
     paths:
@@ -74,8 +75,8 @@ jobs:
     # push to main, the weekly schedule or a manual run, with secrets from the protected
     # `release` environment
     if: >-
-      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      github.ref == 'refs/heads/main' && (github.event_name == 'push' ||
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     environment: release
     runs-on: ubuntu-latest
     steps:

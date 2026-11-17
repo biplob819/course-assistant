@@ -786,3 +786,23 @@ def test_a_mark_between_words_never_hides_a_5_word_copy(store, label):
                                    "golden set 3fa9c2d81b7e"])  # fmt: skip
 def test_spaced_emails_and_codes_are_identifiers(label):
     assert label_problem(label, [GOLDEN_Q]) == "identifier"
+
+
+# ---------- verifier pass 10 regressions: Latin letters in other forms ----------
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("q, label", [
+    ("my father is in hospital, can I get an extension", "ᴍʏ ꜰᴀᴛʜᴇʀ ɪs ɪɴ ʜᴏsᴘɪᴛᴀʟ"),
+    ("my mum died", "ᴍʏ ᴍᴜᴍ ᴅɪᴇᴅ"),
+])  # fmt: skip
+def test_small_capitals_never_hide_a_copy(store, q, label):
+    assert label_problem(label, [q]) == "copies a question"
+    cohort(store, 5, q)
+    rows, _, _ = run(store, Luna(labeler=lambda _t: label))
+    assert rows == () and store.digest(WEEK) == []
+
+
+@pytest.mark.privacy
+def test_a_small_capital_pid_is_an_identifier():
+    assert label_problem("Learner 2ᴇ345ᴀꜰd911ᴇ9ᴄ99", [GOLDEN_Q]) == "identifier"
