@@ -33,6 +33,18 @@
 Items listed as deferred in D3.1 and then closed (`max_tool_calls`, trusted client IP) are done
 in D3.2 (`specs/D3.2-demo-deploy/RUN-STATE.md`; `tests/deploy/test_deploy.py::test_hosted_tool_calls_are_capped_at_the_executors_bound`).
 
+## Owner process, no code
+
+These are duties the code does not implement. They are not presented as controls.
+
+| Item | Source |
+| --- | --- |
+| Notice to the data fiduciary after an incident (TRU-04) | catalog TRU-04; `docs/trust/incident-runbook.md` |
+| 72-hour detailed incident report (TRU-04) | catalog TRU-04 |
+| Breach intimation to the Board and affected principals (DPDP s.8(6)) | `docs/trust/dpdp-mapping.md` |
+| Processor agreement (DPDP s.8(2)) | OWNER D-47 |
+| Grievance route, nomination, age check, notice languages, fiduciary contact | `docs/trust/dpdp-mapping.md` (gaps) |
+
 ## Open owner steps
 
 Live demo deploy and attest (D-60, DEM-04); demo replay cache build (`specs/D3.1-demo-guard/tasks.md`);

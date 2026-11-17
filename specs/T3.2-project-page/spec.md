@@ -8,8 +8,8 @@ honest current results, architecture with both diagrams, links and the demo. Hos
 Cloudflare Pages (Tech Spec §11.2). Drafted under OWNER D-72; not published.
 
 ## Outputs
-- `docs/project/project-page.md` — page draft (to be organised under the nine architecture areas at build).
-- `docs/project/demo-script.md` — video script and shot list (3-minute draft; catalog asks for 90 seconds, cut noted in the script).
+- `docs/project/project-page.md` — page draft under the nine architecture areas.
+- `docs/project/demo-script.md` — video script and shot list (90-second primary per the catalog; 3-minute optional).
 - Diagrams: existing `docs/assets/architecture.svg`, `docs/assets/dataflow.svg` (PAG-02).
 
 ## Rules

@@ -14,7 +14,7 @@ E2.5 and D3.2 are green and the D-71 run exists.
 - `docs/trust/evaluation-methodology.md` — golden set, held-out discipline, judges, calibration, gate, regression, tuning log.
 - `docs/trust/known-limits.md` — scope decisions and deferred should-fix items.
 - `docs/trust/incident-runbook.md` — detect, pause, revoke, spend cap, notify, 72-hour report.
-- To write: `docs/trust/behavioral-spec.md` (TRU-01), `docs/trust/dpdp-mapping.md` (TRU-03).
+- `docs/trust/behavioral-spec.md` (TRU-01), `docs/trust/dpdp-mapping.md` (TRU-03).
 - Existing, to link: `PRIVACY.md`, `DATA_CARD.md` (TRU-02).
 
 ## Rules

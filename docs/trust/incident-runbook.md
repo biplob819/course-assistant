@@ -1,9 +1,8 @@
 # Incident and kill-switch runbook
 
 > **Draft (OWNER D-72).** Live drills on the hosted demo are an owner step (D3.2 DEM-04,
-> `docs/deploy.md` §8 and §9). The pilot's notification duties to the data fiduciary (72-hour
-> detailed report) are part of TRU-04 and are drafted below; the DPDP mapping
-> (`docs/trust/dpdp-mapping.md`, Tech Spec §7) is not yet written.
+> `docs/deploy.md` §8 and §9). Steps 1 to 3 are backed by code and tests. Step 4 (notify the
+> fiduciary, 72-hour report) is **owner process, no code** (`docs/trust/known-limits.md`).
 
 ## Detect
 
@@ -38,7 +37,7 @@
 2. Lower the daily cap, or remove the owner's key so only visitor keys work (RPL-02).
 3. Last resort: the demo OpenAI project's hard monthly limit (RPL-03, `specs/D3.1-demo-guard/spec.md`).
 
-## 4. Contain and notify (pilot)
+## 4. Contain and notify (pilot; owner process, no code)
 
 1. Pause; preserve the audit log (no question text, NFR7).
 2. Notify the data fiduciary (the programme provider; Tech Spec §7) without delay.
