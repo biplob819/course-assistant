@@ -76,6 +76,7 @@ class AppConfig(Versioned):
     # non-course turn finalized without waiting for the discarded answer call (D-9)
     hint_model: Name | None = None
     early_finalize: bool = False
+    hint_cache: bool = False  # OWNER D-63: hint text cached per assessment item
 
     @model_serializer(mode="wrap")
     def _omit_unset_latency_settings(self, handler: Any) -> Any:
@@ -85,8 +86,9 @@ class AppConfig(Versioned):
         if isinstance(data, dict):
             if data.get("hint_model") is None:
                 data.pop("hint_model", None)
-            if data.get("early_finalize") is False:
-                data.pop("early_finalize", None)
+            for flag in ("early_finalize", "hint_cache"):
+                if data.get(flag) is False:
+                    data.pop(flag, None)
         return data
 
     @model_validator(mode="after")

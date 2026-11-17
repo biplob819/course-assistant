@@ -158,9 +158,10 @@ def test_choose_never_trades_a_safety_value_for_speed_or_cost():
 def test_cost_model_projects_a_month_against_the_cap_and_alarm():
     m = F.cost_model(0.007, 6000, 15.0, 6)
     assert m.answer_path_usd == pytest.approx(42.0) and m.runs_usd == pytest.approx(90.0)
-    assert m.monthly_usd == pytest.approx(132.0) and m.within_cap and not m.under_alarm
+    assert m.monthly_usd == pytest.approx(132.0) and m.within_cap and m.under_alarm
     assert not m.under_prd_nfr6
-    assert F.cost_model(0.007, 6000, 1.0, 4).under_alarm
+    assert not F.cost_model(0.007, 6000, 16.0, 6).under_alarm  # $138 is past the $135 alarm
+    assert pytest.approx(135) == F.ALARM_SHARE * F.MONTHLY_CAP_USD  # OWNER D-64
 
 
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), -0.01, True, "1"])

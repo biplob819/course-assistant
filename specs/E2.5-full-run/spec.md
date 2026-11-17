@@ -40,6 +40,13 @@ Hint requests use `hint_model or answer_model`. `_run` with `early_finalize` ret
 non-course (or failed) route without joining the answer future; `_Calls.ignore("answer")`
 drops the discarded call's result and any later one, under the lock.
 
+### Hint cache (OWNER D-63) and spend alarm (OWNER D-64)
+`hint.HintCache`: the hint call's result per assessment item, keyed by the item and the
+settings that shape a hint (rules hash, hint version, hint model and effort, corpus version,
+vector store, retrieval breadth), never by learner text; `AppConfig.hint_cache` (default off).
+Ground L1, integrity and the leak scan still run on every turn. The eval runtime shares one
+cache across cases. The ledger's alarm moves to 90% of the budget ($135 of $150).
+
 ### `src/course_assistant/eval/fullrun.py` (FRN-01 to FRN-04)
 - `run_summary(run_dir, ledger_rows)`: from an EvalKit course-ta run folder, the §6.4 gate
   values (`release.case_values` and `release.gates`), latency p50 and p95, and the measured
@@ -54,7 +61,7 @@ drops the discarded call's result and any later one, under the lock.
   reason is returned (the owner decides a trade-off, D-44).
 - `cost_model(per_question_usd, run_usd, ...)`: monthly projection (questions a month times
   measured cost per question, plus full runs a month times measured run cost) against the
-  $150 cap (OWNER D-37) and its 80% alarm.
+  $150 cap (OWNER D-37) and its alarm at 90%, $135 (OWNER D-64).
 - `sample_for_reading(record_ids, n=20, seed)`: a fixed, rule-stratified sample of public
   record ids to read end to end (FRN-04, L-14). Held-out records are never sampled for
   quoting.

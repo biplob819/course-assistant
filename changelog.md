@@ -151,3 +151,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [GREEN] [E2.4] — release gate; verifier pass 10 confirmed all four criteria; config and assessments hashes recorded for the removal shortcut
 - [GREEN] [D3.2] — demo deploy DEM-01..03 (verifier pass 2); DEM-04 live deploy pending owner attest; iteration cap
 - [FEAT] [E2.5] — full run and model choice: early_finalize and hint_model latency settings (D-44 candidates), fullrun summaries/choice/cost model/report, latency smoke and public-all modes, judging spend ledgered by eval_live
+- [FEAT] [E2.5] — OWNER D-63 hint cache per assessment item (hint_cache, shared across eval cases; 30-question smoke p50 5.3 s, p95 10.2 s, NFR5 still open); OWNER D-64 spend alarm at $135 (90%); FRN-01 pending the E2.3 labels (OWNER D-62)

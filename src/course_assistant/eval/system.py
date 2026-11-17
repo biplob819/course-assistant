@@ -29,6 +29,7 @@ from evalkit.schemas import Case
 
 from course_assistant.answer import golden
 from course_assistant.answer.ask import Assistant
+from course_assistant.answer.hint import HintCache
 from course_assistant.answer.replay import Source
 from course_assistant.ingest.corpus import Corpus
 from course_assistant.schemas.config import AppConfig
@@ -53,6 +54,9 @@ class Runtime:
     source: Source
     now: Callable[[], dt.datetime] = field(default=lambda: dt.datetime.now(dt.UTC))
     timer: Callable[[], float] = time.monotonic
+    # one hint cache for the whole run (OWNER D-63): each case has its own Assistant, so the
+    # cache lives here; it is used only when the config turns hint_cache on
+    hint_cache: HintCache = field(default_factory=HintCache)
 
 
 _RUNTIME: list[Runtime | None] = [None]
@@ -145,7 +149,7 @@ def run_case(rt: Runtime, case: Case) -> tuple[Answer, str]:
             cid = golden.seed(store, fx, seeded)
         assistant = Assistant(rt.config, rt.corpus, rt.assessments, store, rt.source,
                               now=lambda: now, timer=rt.timer,
-                              new_id=golden.ids_for(rid))  # fmt: skip
+                              new_id=golden.ids_for(rid), hint_cache=rt.hint_cache)  # fmt: skip
         turn = assistant.turn(case.question, pid, session, cid, request_id=rid)
         return turn.answer, rid
     finally:

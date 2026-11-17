@@ -208,7 +208,33 @@ def test_month_total_and_budget_warning(tmp_path):
     assert ledger.warnings == []
     run([make_response()], ledger=ledger)
     assert math.isclose(ledger.month_total(), 2 * run([make_response()])[0].cost_usd)
-    assert ledger.warnings and "80%" in ledger.warnings[-1]
+    assert ledger.warnings and "90%" in ledger.warnings[-1]
+
+
+def test_the_spend_alarm_fires_at_135_of_the_150_cap(tmp_path):
+    """OWNER D-64: the alarm moved from $120 to $135 (90% of the $150 cap)."""
+    from course_assistant.llm.ledger import WARN_AT
+
+    assert pytest.approx(135) == WARN_AT * 150
+    ledger = Ledger(tmp_path / "ledger.jsonl", monthly_budget_usd=150)
+
+    def spend(cost: float) -> None:
+        ledger.append(
+            purpose="eval",
+            model="unknown",
+            tokens_in=0,
+            tokens_cached=0,
+            tokens_out=0,
+            file_search_calls=0,
+            cost_usd=cost,
+        )
+
+    spend(125.0)  # past the old $120 alarm: no warning now
+    assert ledger.warnings == []
+    spend(9.0)
+    assert ledger.warnings == []
+    spend(2.0)  # $136
+    assert len(ledger.warnings) == 1 and "$136.00" in ledger.warnings[0]
 
 
 # ---------- OAI-05 ----------

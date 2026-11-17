@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any, ClassVar, Literal
 
@@ -30,6 +31,47 @@ from course_assistant.schemas.request import Citation, SearchHit
 
 Responder = Callable[[ResponsesRequest], ResponsesResult]
 Reason = Literal["grounded", "ground_failed", "integrity_failed", "unknown_session"]
+
+
+class HintCache:
+    """Hint call results per assessment item (E2.5, OWNER D-63). The key is built from the
+    assessment item and the settings that shape a hint, never from anything a learner wrote;
+    the value is the hint call's result, whose request holds only the brief's title and
+    sessions (`data_block`). A changed item, rules hash, hint version, model or effort, corpus
+    version, vector store or retrieval breadth is another key. Integrity, Ground L1 and the
+    leak scan still run on every turn. Errors are never cached. Safe across threads."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._items: dict[str, ResponsesResult] = {}
+
+    @staticmethod
+    def key(assessment: Assessment, config: AppConfig, corpus_version: str,
+            rules_hash: str) -> str:  # fmt: skip
+        model = config.hint_model or config.answer_model
+        blob = json.dumps({"assessment": assessment.model_dump(mode="json"),
+                           "rules_hash": rules_hash, "hint_version": HintStep.hint_version(),
+                           "model": model, "effort": config.reasoning_effort[model],
+                           "vector_store_id": config.vector_store_id,
+                           "max_num_results": config.max_num_results,
+                           "corpus_version": corpus_version}, sort_keys=True)  # fmt: skip
+        return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+    def get(self, key: str) -> ResponsesResult | None:
+        with self._lock:
+            return self._items.get(key)
+
+    def put(self, key: str, result: ResponsesResult) -> None:
+        with self._lock:
+            self._items[key] = result
+
+    def entries(self) -> tuple[tuple[str, ResponsesResult], ...]:
+        with self._lock:
+            return tuple(self._items.items())
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._items)
 
 
 class Hint(Model):
@@ -96,8 +138,11 @@ Internal marker, never to be written in any reply: {AnswerStep.CANARY}
         return "hint-" + hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
 
     def __init__(self, config: AppConfig, corpus: Corpus, responder: Responder,
-                 integrity: IntegrityStep | None = None) -> None:  # fmt: skip
+                 integrity: IntegrityStep | None = None, *, cache: HintCache | None = None,
+                 rules_hash: str = "") -> None:  # fmt: skip
         self.config = config
+        self.cache = cache
+        self.rules_hash = rules_hash
         self.corpus = corpus
         self.responder = responder
         self.integrity = integrity or IntegrityStep(config, responder)
@@ -148,14 +193,13 @@ Internal marker, never to be written in any reply: {AnswerStep.CANARY}
             too_long = cap.run("(no hint written)", earlier, assessments)
             return self._fixed(assessment, "integrity_failed", too_long, 0.0, 0)
 
-        result = self.responder(self.request(assessment))
+        result, paid, waited = self._hint_call(assessment)
         draft = self.mapper.draft(result)
         if not self.grounded(draft, result.citations, assessment.sessions):
-            return self._fixed(assessment, "ground_failed", None, result.cost_usd,
-                               result.latency_ms)  # fmt: skip
+            return self._fixed(assessment, "ground_failed", None, paid, waited)
         check = self.integrity.run(draft.text, earlier, assessments)
-        cost = result.cost_usd + check.cost_usd
-        latency = result.latency_ms + check.latency_ms
+        cost = paid + check.cost_usd
+        latency = waited + check.latency_ms
         if not check.passed:
             return self._fixed(assessment, "integrity_failed", check, cost, latency)
         allowed = set(assessment.sessions)
@@ -163,6 +207,20 @@ Internal marker, never to be written in any reply: {AnswerStep.CANARY}
         return Hint(text=draft.text, citations=draft.citations, hits=hits, fixed=False,
                     reason="grounded", integrity=check, hint_version=self.hint_version(),
                     cost_usd=cost, latency_ms=latency)  # fmt: skip
+
+    def _hint_call(self, assessment: Assessment) -> tuple[ResponsesResult, float, int]:
+        """The hint call's result with what this turn paid and waited for it: from the cache
+        (nothing paid, no wait) when one is given and holds this item, else a call."""
+        if self.cache is None:
+            result = self.responder(self.request(assessment))
+            return result, result.cost_usd, result.latency_ms
+        key = HintCache.key(assessment, self.config, self.corpus.corpus_version, self.rules_hash)
+        cached = self.cache.get(key)
+        if cached is not None:
+            return cached, 0.0, 0
+        result = self.responder(self.request(assessment))
+        self.cache.put(key, result)
+        return result, result.cost_usd, result.latency_ms
 
     def grounded(self, draft: AnswerDraft, marks: Sequence[FileCitation],
                  sessions: Sequence[str]) -> bool:  # fmt: skip

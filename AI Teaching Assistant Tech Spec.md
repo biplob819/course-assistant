@@ -183,6 +183,8 @@ These are planning numbers. A 30-question smoke run (A2.5) replaces them with me
 
 On the 30-question smoke set: Sol `medium` 10.1 s at p95, Sol `low` 10.1 s (no gain: Sol spends under 30 reasoning tokens at `medium`), Sol `low` with hints on Luna 11.1 s, Sol `medium` with hints on Luna 10.6 s, Luna 8.6 s. `early_finalize` removed the wait for the discarded answer on non-course turns (the A2.5 hint turns took answer + hint, 14 to 20 s). What is left: the answer call with file search (5 to 7 s) plus the checks (1.3 to 4.6 s) on course turns, and route plus hint plus the hint's integrity check (6 to 12 s) on hint turns (70 of the 214 on Sol: the 64 B3 cases and 6 course answers the integrity check stopped). **NFR5 is still not met.** Luna is faster but answers far fewer B1 questions, so quality first keeps Sol; D-61 re-scopes D-44 and brings the owner the trade-off. Report: `docs/measurements/e2.5-report.md`.
 
+**Measured with the hint cache (E2.5, OWNER D-63, 17 Nov 2026):** `hint_cache` keeps the hint call's result per assessment item, keyed by the item and the settings that shape a hint (rules hash, hint version, model and effort, corpus version, vector store, retrieval breadth), never by learner text; Ground L1, the integrity check and the leak scan still run every turn. On the 30-question smoke set with Sol `medium`, hints on Luna, `early_finalize` and the cache (cold at the start of the run, so the first turn on each item still calls): **p50 5.3 s, p95 10.2 s**. A cache hit takes the hint step from 4 to 6 s to the integrity check alone (2.5 s), or to nothing when the cached hint is the fixed one (1.3 s turn). The p95 is now set by course turns: the Sol answer call reached 8.6 s at p95, and one integrity check took 13.4 s (a 19.0 s turn). Replaying the 214-question rows with hint turns at route plus the median integrity check gives about 8.9 s at p95 (estimate, not a live run). **NFR5 is still not met**; the 214-question confirmation run was not made, since the smoke was over 8 s (OWNER D-63: measure, then decide).
+
 ---
 
 ## 3. Schemas (pydantic)
@@ -366,6 +368,7 @@ class AppConfig(BaseModel):
     monthly_budget_usd: float
     hint_model: str | None = None    # E2.5: hints on their own model (None: answer_model)
     early_finalize: bool = False     # E2.5: a non-course turn does not wait for the discarded answer
+    hint_cache: bool = False         # E2.5, OWNER D-63: hint text cached per assessment item
 ```
 
 **Golden case (an EvalKit `Case` plus TA fields, carried in `Case.meta` or a task schema from X1.1):**
@@ -561,7 +564,7 @@ eval_run     = n_cases × per_question(model) + EvalKit judging (claims × 2 jud
 
 **Measured (A2.5 smoke run, 16 Nov 2026):** $0.0069 per question on average over 30 public questions (route, answer, checks and hints), $0.21 for the 30; the full smoke run, including 5 planted questions, 20 decomposition conversations and 15 recall comparisons, cost about $0.73 of an estimated $2.55. All live spend to date (route runs, ingest and smoke): $0.81. At 600 learners asking 10 questions a month, the answer path costs about $41 a month, well inside the cap; E2.5's full runs replace this with the golden-set measurement.
 
-**Measured (E2.5, 17 Nov 2026, ledger spend over every public case through `ask()`, 214 questions):** $0.0070 per question on Sol `medium` with hints on Luna (answer calls $0.0060 of it, discarded answers included), $0.0039 on Luna. The planning figure of $0.027 per question on Sol was about 4 times too high: the sample course's units are short, so an answer reads about 3,100 input tokens with 1,800 of them cached and writes about 100, and Sol spends under 30 reasoning tokens. Pilot month (`fullrun.cost_model`): 1,000 questions at $0.0070 = $7.02, plus 6 full runs at $19.60 = $117.60, is **$124.62 against the $150 cap**: within the cap, past the $120 alarm. Only the system part of the run cost is measured (430 × $0.0070 = $3.01); EvalKit extraction and judging ($0.018 per answer) and the probe judges ($0.04 per probe) stay planning figures until the dual-judge run, which waits for the Anthropic key (D-61). **NFR6:** the PRD's $50 a month is not met with 6 full runs a month (the runs are 94% of the month); OWNER D-37's $150 cap is. At 6,000 questions a month the answer path is $42 and the month $160, over the cap, so either the run count or the cap would need the owner. Report: `docs/measurements/e2.5-report.md`. E2.5 live spend: see its RUN-STATE.
+**Measured (E2.5, 17 Nov 2026, ledger spend over every public case through `ask()`, 214 questions):** $0.0070 per question on Sol `medium` with hints on Luna (answer calls $0.0060 of it, discarded answers included), $0.0039 on Luna. The planning figure of $0.027 per question on Sol was about 4 times too high: the sample course's units are short, so an answer reads about 3,100 input tokens with 1,800 of them cached and writes about 100, and Sol spends under 30 reasoning tokens. Pilot month (`fullrun.cost_model`): 1,000 questions at $0.0070 = $7.02, plus 6 full runs at $19.60 = $117.60, is **$124.62 against the $150 cap**: within the cap, and under the spend alarm, which OWNER D-64 moved from $120 to $135 (90% of the cap) so it fires only near the cap; the owner accepted this cost (OWNER D-64). Only the system part of the run cost is measured (430 × $0.0070 = $3.01); EvalKit extraction and judging ($0.018 per answer) and the probe judges ($0.04 per probe) stay planning figures until the dual-judge run, which waits for the Anthropic key (D-61). **NFR6:** the PRD's $50 a month is not met with 6 full runs a month (the runs are 94% of the month); OWNER D-37's $150 cap is. At 6,000 questions a month the answer path is $42 and the month $160, over the cap, so either the run count or the cap would need the owner. Report: `docs/measurements/e2.5-report.md`. E2.5 live spend: see its RUN-STATE.
 
 Every real-API run appends to the git-ignored `runs/ledger.jsonl` (summaries go into each node's RUN-STATE), and totals are reported to the owner after each run. Any single run over $25 is asked about first.
 
@@ -804,7 +807,7 @@ Each row becomes one line in `docs/graph/catalog.tsv` with status `not-started`.
 | OAI-01 | Responses wrapper: `store=false` always, `include=["file_search_call.results"]`, explicit reasoning effort per model, structured output for the checks | FR3, NFR3 |
 | OAI-02 | Retry and error taxonomy (§2.5), fail-closed rules | NFR8 |
 | OAI-03 | `prices.yaml` (Sol, Luna, file search, storage), cost per call including reasoning and cached tokens | NFR6 |
-| OAI-04 | Spend ledger append and monthly total; budget alarm at 80% | NFR6 |
+| OAI-04 | Spend ledger append and monthly total; budget alarm at 90% (OWNER D-64) | NFR6 |
 | OAI-05 | Trace interface with JSONL sink; text stripped before any sink (test proves no question text leaves) | D-14, D-15 |
 | OAI-06 | SDK fakes built from SDK models, not hand-rolled dicts (L-17) | E2 |
 

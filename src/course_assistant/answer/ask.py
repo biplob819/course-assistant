@@ -29,7 +29,7 @@ from typing import Any, ClassVar, Literal, TypeVar, get_args
 
 from course_assistant.answer.answer import AnswerDraft, AnswerStep
 from course_assistant.answer.ground import GroundReport, GroundStep
-from course_assistant.answer.hint import Hint, HintStep
+from course_assistant.answer.hint import Hint, HintCache, HintStep
 from course_assistant.answer.integrity import IntegrityResult, IntegrityStep
 from course_assistant.answer.leak import Finding, scan
 from course_assistant.answer.replay import Live, Responder, Source
@@ -277,7 +277,8 @@ class Assistant:
                  now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC),
                  timer: Callable[[], float] = time.monotonic,
                  new_id: Callable[[], str] = lambda: uuid.uuid4().hex[:16],
-                 alert: Callable[[str, str], None] | None = None) -> None:  # fmt: skip
+                 alert: Callable[[str, str], None] | None = None,
+                 hint_cache: HintCache | None = None) -> None:  # fmt: skip
         if not isinstance(assessments, AssessmentList):
             raise TypeError("assessments must be an AssessmentList")
         self.config = config
@@ -290,6 +291,12 @@ class Assistant:
         self.timer = timer
         self.new_id = new_id
         self.alert = alert  # (step, exception type): a failure inside _settle (D3.1)
+        # OWNER D-63: hint text per assessment item, used only when the config turns it on; a
+        # caller running many Assistants (the eval) passes one shared cache
+        if not config.hint_cache:
+            self.hint_cache: HintCache | None = None
+        else:  # an empty cache is falsy (it has a length): test for None, never truth
+            self.hint_cache = HintCache() if hint_cache is None else hint_cache
         self.sessions = {u.session for u in corpus.units}
         self.briefs = {a.assessment_id: a for a in assessments.assessments}
 
@@ -545,7 +552,8 @@ class Assistant:
         if brief is None:
             return  # no known brief: the generic fixed hint, no call
         bound = calls.bind("hint")
-        step = HintStep(self.config, self.corpus, bound, IntegrityStep(self.config, bound))
+        step = HintStep(self.config, self.corpus, bound, IntegrityStep(self.config, bound),
+                        cache=self.hint_cache, rules_hash=self.rules_hash())  # fmt: skip
         try:
             hint = step.run(brief, replies, self.assessments)
         except LLMError:

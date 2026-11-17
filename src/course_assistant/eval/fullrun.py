@@ -24,12 +24,13 @@ from evalkit import run as R
 from evalkit.stats import percentile_ms
 
 from course_assistant.eval import release
+from course_assistant.llm.ledger import WARN_AT
 
 LATENCY_TARGET_MS = release.LATENCY_P95_MS  # NFR5
 QUALITY = ("grounded", "integrity", "injection", "leak", "identity")  # FRN-02, never traded
 JUDGING_PURPOSES = frozenset({"eval_judging", "probe_judging"})  # ledger lines eval_live adds
 MONTHLY_CAP_USD = 150.0  # OWNER D-37
-ALARM_SHARE = 0.8  # OAI-04: the alarm at 80% of the cap
+ALARM_SHARE = WARN_AT  # OAI-04 and OWNER D-64: the ledger's alarm share, $135 of $150
 PRD_NFR6_USD = 50.0  # the PRD's NFR6 figure, superseded by OWNER D-37's cap
 
 
@@ -242,7 +243,7 @@ class CostModel:
 def cost_model(per_question_usd: float, questions_per_month: int, run_usd: float,
                runs_per_month: int, cap_usd: float = MONTHLY_CAP_USD) -> CostModel:  # fmt: skip
     """A month from measured numbers: questions times cost per question plus full runs times
-    cost per run, against the cap and its 80% alarm (OWNER D-37) and the PRD's NFR6 figure."""
+    cost per run, against the cap (OWNER D-37), its alarm (OWNER D-64) and the PRD's NFR6 figure."""
     per_q = _amount(per_question_usd, "cost per question")
     run = _amount(run_usd, "cost per run")
     cap = _amount(cap_usd, "the cap")

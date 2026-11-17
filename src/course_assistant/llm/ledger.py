@@ -11,7 +11,7 @@ from pathlib import Path
 
 from course_assistant.llm.trace import MODEL_PATTERN
 
-WARN_AT = 0.8
+WARN_AT = 0.9  # OWNER D-64: the alarm fires near the cap ($135 of $150; was 80%, OWNER D-37)
 
 
 def _lock(fh, timeout_s: float) -> None:
@@ -72,7 +72,7 @@ class Ledger:
         }  # fmt: skip
         self.path.parent.mkdir(parents=True, exist_ok=True)
         # read the month total and append under one exclusive lock, so two writers cannot
-        # both see the same total and both miss (or both report) the 80% crossing
+        # both see the same total and both miss (or both report) the alarm crossing
         with self.path.open("a+", encoding="utf-8") as fh:
             _lock(fh, lock_timeout_s)
             try:
@@ -84,7 +84,8 @@ class Ledger:
         after = before + cost_usd
         if self.budget and before < WARN_AT * self.budget <= after:
             self.warnings.append(
-                f"spend this month ${after:.2f} passed 80% of the ${self.budget:.2f} budget"
+                f"spend this month ${after:.2f} passed {WARN_AT:.0%} of the "
+                f"${self.budget:.2f} budget"
             )
 
     @staticmethod
