@@ -18,8 +18,8 @@ it costs $0.0075 a question ([report](measurements/e2.5-report.md)).
 
 I wrote the product requirements and owned every ruling that shaped the system: multi-turn
 conversations, a passcode on every page, the monthly spend cap, the order in which held-out data
-may be used, and the restated latency target. I approved each paid evaluation run and do the
-human calibration labels and the live deploy myself.
+may be used, and the restated latency target. I approved each paid evaluation run and own the
+human calibration labels and the live deploy, which are still pending.
 
 Claude Code built the code, tests, evaluation runs and documents under EvalKit's node harness.
 Every node needed tests first, two clean convergence runs and a fresh skeptical verifier that
