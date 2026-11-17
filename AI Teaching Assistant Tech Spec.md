@@ -475,7 +475,7 @@ A change goes live (a new corpus version, a rules hash, a model snapshot or `gro
 2. no metric shows a separated regression (paired, Holm) against the last live run, and
 3. `judge_mode = dual` and `calibration_status = calibrated` (EvalKit B8 publish guard).
 
-`make eval` exits 1 on a failure. CI runs it on every manifest or rules change, and a scheduled job runs it weekly. Pinned model snapshots are recorded, so a weekly failure with no change on our side shows provider drift.
+`make eval` runs `scripts/release_gate.py`, which exits 1 on a failed gate (0 pass, 2 error, 3 cost cap, 4 judging pending; the codes are the script's, since GNU make reports any failure as 2, D-59). CI runs it on every manifest or rules change, and a scheduled job runs it weekly. Pinned model snapshots are recorded, so a weekly failure with no change on our side shows provider drift.
 
 ### 6.6 Calibration
 

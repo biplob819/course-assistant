@@ -613,3 +613,67 @@ def test_check_passes_cost_cap_and_pending_codes_through(held_run, tmp_path, mon
         assert json.loads(out.read_text(encoding="utf-8"))["exit_code"] == code
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     assert "GNU make reports any failing recipe as 2" in makefile
+
+
+# ============ verifier pass 2 (E2.4): unexpected errors exit 2; case-only checks first ============
+
+
+@pytest.mark.parametrize("plant", ["drift", "baseline", "support"])
+def test_a_malformed_run_file_exits_2_with_a_fixed_message_in_gate_json(
+        held_run, tmp_path, monkeypatch, plant):  # fmt: skip
+    """A TypeError on malformed input used to escape as exit 1 (a failed gate)."""
+    config, _ = _store(tmp_path)
+    run = fresh(held_run, tmp_path / "live" / "evalkit", "r")  # eval_live's layout
+    live = tmp_path / "live"
+    manifest = tmp_path / "MANIFEST.json"
+    manifest.write_text(json.dumps({"cases": {i: "x" for i in ids(run)}}), encoding="utf-8")
+    monkeypatch.setattr(G, "HELDOUT_MANIFEST", manifest)
+    monkeypatch.setattr(G, "HELDOUT_DIR", tmp_path / "no-private-file")
+    argv = ["check", str(run), "--config", str(config)]
+    if plant == "drift":
+        (live / "drift.json").write_text('{"retired": 5}', encoding="utf-8")
+    elif plant == "baseline":
+        base = tmp_path / "baseline.json"
+        base.write_text('{"values": ["grounded"]}', encoding="utf-8")
+        argv += ["--baseline", str(base)]
+    else:
+        (live / "support-agreement.json").write_text('{"kappa": null}', encoding="utf-8")
+    assert G.main(argv) == 2
+    data = json.loads((live / "gate.json").read_text(encoding="utf-8"))
+    assert data["exit_code"] == 2
+    assert data["errors"] == ["the gate could not run (TypeError)"]
+
+
+def _without_rule(run: Path, rule: str) -> None:
+    gone = {i for i, c in R.read_cases(run).items() if c.meta["rule"] == rule}
+    for name in ("cases.jsonl", "records.jsonl"):
+        path = run / name
+        rows = [json.loads(x) for x in path.read_text("utf-8").splitlines() if x.strip()]
+        key = "id" if name == "cases.jsonl" else "case_id"
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows if r[key] not in gone),
+                        encoding="utf-8")  # fmt: skip
+
+
+def test_a_missing_rule_exits_2_whatever_stop_the_run_is_in(held_run, tmp_path):
+    """Case-only checks come before the cost-cap and pending stops (precedence 2 > 3 > 4)."""
+    for stop in ("none", "cap", "pending"):
+        run = fresh(held_run, tmp_path, stop)
+        _without_rule(run, "B9")
+        if stop == "cap":
+            lines = (run / "records.jsonl").read_text("utf-8").splitlines()
+            (run / "records.jsonl").write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")
+        if stop == "pending":
+            edit_json(run / "summary.json", lambda d: {**d, "judging_status": "pending"})
+        v = release.verdict(run, inputs(run))
+        assert v.exit_code == 2, stop
+        assert v.errors == ["no case for the identity gate"], stop
+
+
+@pytest.mark.privacy
+def test_exposure_scan_normalises_json_escapes_case_and_whitespace():
+    q = 'What does the course say about "attention" heads in long documents?'
+    escaped = json.dumps({"q": q.upper().replace(" ", "\n  ")})  # escaped, cased, re-wrapped
+    unicode_escaped = json.dumps({"q": q.replace("a", "\\u0061")}).replace("\\\\u", "\\u")
+    for text in (escaped, unicode_escaped, f"  {q.lower()}  "):
+        assert release.heldout_exposure({"ta-b1-500": q}, [text]) == ["ta-b1-500"], text
+    assert release.heldout_exposure({"ta-b1-500": q}, ["attention heads"]) == []

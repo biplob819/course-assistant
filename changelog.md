@@ -130,3 +130,5 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [B2.4] — verifier pass 3: label copy test compares letter streams
 - [FIX] [B2.4] — verifier pass 4: labels normalised whole; exact-majority look-alike match
 - [FIX] [N1.5] — checkpoint timing test bound 3 s -> 10 s (still far under the 30 s timeout); a macOS CI runner took 3.6 s
+- [FIX] [B2.4] — verifier pass 5: one label form, checked and stored; no citation stripping in the digest
+- [FIX] [E2.4] — verifier pass 2: unexpected gate errors exit 2 with a fixed gate.json message; case-only checks before cost-cap and pending stops; live CI job never on pull requests, secrets from the protected release environment, actions pinned by SHA, checkout without persisted credentials (enforced in the harness test); D-54 scan normalises JSON escapes, case and whitespace; Tech Spec §6.5 exit-code wording; D-59

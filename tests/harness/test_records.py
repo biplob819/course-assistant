@@ -95,6 +95,35 @@ def test_workflows_grant_least_privilege():
                                                         "HELDOUT_BUNDLE"}  # fmt: skip
 
 
+def test_secrets_never_reach_pull_request_code():
+    """E2.4 verifier pass 2: the live job runs only on a push to main, the schedule or by
+    hand, with secrets from the protected `release` environment."""
+    import yaml
+
+    live = yaml.safe_load((WORKFLOWS / "eval-gate.yml").read_text(encoding="utf-8"))["jobs"]["live"]
+    cond = " ".join(str(live["if"]).split())
+    assert "pull_request" not in cond and "pull_request_target" not in cond
+    assert cond == (
+        "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' "
+        "|| (github.event_name == 'push' && github.ref == 'refs/heads/main')"
+    )
+    assert live["environment"] == "release"
+
+
+def test_every_action_is_pinned_and_checkout_drops_credentials():
+    import yaml
+
+    for wf in sorted(WORKFLOWS.iterdir()):
+        text = wf.read_text(encoding="utf-8")
+        for line in text.splitlines():
+            if "uses:" in line:
+                assert re.search(r"uses: [\w./-]+@[0-9a-f]{40}  # v\d", line), (wf.name, line)
+        for job in yaml.safe_load(text)["jobs"].values():
+            for step in job["steps"]:
+                if str(step.get("uses", "")).startswith("actions/checkout@"):
+                    assert step["with"]["persist-credentials"] is False, (wf.name, step)
+
+
 def test_catalog_round_trip_is_byte_identical(tmp_path):
     from harness_lib import CATALOG_TSV, load_catalog, write_catalog
 

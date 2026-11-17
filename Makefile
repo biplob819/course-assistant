@@ -8,7 +8,7 @@ RUN ?=
 # JSON=1 gives one machine-readable object (Tech Spec §4); .env is read only when it exists
 # Exit codes: scripts/release_gate.py exits 0 pass, 1 gate failed, 2 error, 3 cost cap, 4 judging
 # pending. GNU make reports any failing recipe as 2, so `make eval*` exits 0 or 2; CI and scripts
-# that need the 0-4 code call scripts/release_gate.py directly (the code is also in gate.json).
+# that need the 0-4 code call scripts/release_gate.py directly (also in gate.json; D-59).
 JSONFLAG = $(if $(JSON),--json,)
 ENVFILE = $(if $(wildcard .env),--env-file .env,)
 

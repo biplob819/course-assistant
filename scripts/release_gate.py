@@ -161,6 +161,7 @@ def check_run(run: Path, *, config_path: Path, store_path: Path | None,
 
     from course_assistant.eval import release
     from course_assistant.eval.dataset import load_public
+    from course_assistant.eval.release import ReleaseError
     from course_assistant.eval.tuning import recorded_bar
 
     config, store, assessments = load_course(config_path, store_path)
@@ -177,7 +178,7 @@ def check_run(run: Path, *, config_path: Path, store_path: Path | None,
     if held is not None and len(golden_versions) == 1:  # recompute where the cases exist
         found = release.drift(held, corpus, next(iter(golden_versions)))
         if set(found.retired) != {i for i in retired if i in {c.id for c in held}}:
-            raise ValueError("drift.json does not match the drift of the held-out cases on "
+            raise ReleaseError("drift.json does not match the drift of the held-out cases on "
                              "this corpus: re-run the gate")  # fmt: skip
     public = load_public(PUBLIC)
     if len(golden_versions) == 1:
@@ -369,16 +370,40 @@ def main(argv: list[str] | None = None) -> int:
         if p is not o:
             p.add_argument("--store", type=Path, help="corpus store folder (default: by config)")
     args = ap.parse_args(argv)
+    from course_assistant.eval.dataset import DatasetError
+    from course_assistant.eval.release import ReleaseError
+
     try:
         return int(args.func(args))
-    except (ValueError, OSError, KeyError) as exc:
-        from course_assistant.eval.dataset import DatasetError
-        from course_assistant.eval.release import ReleaseError
+    except (ReleaseError, DatasetError, FileNotFoundError) as exc:
+        message = str(exc)  # our own errors name ids and counts, never text
+    except Exception as exc:  # anything else may quote input: its class only, and exit 2
+        message = f"the gate could not run ({type(exc).__name__})"
+    print(f"release_gate: {message}", file=sys.stderr)
+    _error_gate(args, message)
+    return 2
 
-        # our own errors name ids and counts; anything else may quote input, so only its class
-        own = isinstance(exc, ReleaseError | DatasetError | FileNotFoundError)
-        print(f"release_gate: {exc if own else type(exc).__name__}", file=sys.stderr)
-        return 2
+
+def _error_gate(args: argparse.Namespace, message: str) -> None:
+    """A gate.json for a run that could not be gated: exit 2 and a fixed message, so nothing
+    reads a crash as a failed or passed gate."""
+    if args.cmd != "check":
+        return
+    out = args.out
+    if out is None:
+        try:
+            out = live_folder(evalkit_dir(args.run)) / "gate.json"
+        except Exception:
+            out = args.run / "gate.json" if args.run.is_dir() else None
+    if out is None:
+        return
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps({"exit_code": 2, "run": args.run.name, "errors": [message],
+                                   "failures": [], "notes": []}, indent=1, sort_keys=True)
+                       + "\n", encoding="utf-8")  # fmt: skip
+    except OSError:
+        pass
 
 
 if __name__ == "__main__":
