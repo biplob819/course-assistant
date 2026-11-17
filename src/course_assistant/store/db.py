@@ -460,6 +460,14 @@ class Store:
             self._audit(actor, "pause" if paused else "resume", scope, at)
         return state
 
+    def pause_state(self, scope: str) -> PauseState | None:
+        """The scope's own pause row ("all" or a session id), None when never set. A row whose
+        key and record disagree is refused (the teaching-team view shows it as paused, B2.3)."""
+        state = self._get("pause", scope, PauseState)
+        if state is not None and state.scope != scope:
+            raise ValueError("stored PauseState key does not match its record")
+        return state
+
     def is_paused(self, session: str | None) -> bool:
         """Paused if "all" or this session is paused. Any read error counts as paused."""
         try:

@@ -42,6 +42,9 @@ AUDIT_ACTIONS = (
     "delete_history",
     "purge",
     "settle_failed",
+    "view_ops",
+    "staff_unlock",
+    "staff_sign_out",
 )
 AuditAction = Literal[
     "view_queue",
@@ -57,6 +60,9 @@ AuditAction = Literal[
     "delete_history",
     "purge",
     "settle_failed",
+    "view_ops",
+    "staff_unlock",
+    "staff_sign_out",
 ]
 
 
