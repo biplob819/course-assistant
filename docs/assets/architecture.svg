@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 820" width="1200" height="820" font-family="Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">course-assistant: technical architecture</title>
+  <desc id="d">Four layers: course ingest, the runtime (Streamlit pages, answer pipeline, privacy, escalation, digest, store, LLM client), the evaluation stack built on EvalKit, and the release and CI layer.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#334155"/>
+    </marker>
+    <style>
+      .lane{fill:#f8fafc;stroke:#cbd5e1;stroke-width:1}
+      .lt{font-size:14px;font-weight:700;fill:#475569;letter-spacing:.04em}
+      .box{fill:#ffffff;stroke:#334155;stroke-width:1.4}
+      .ext{fill:#eef2ff;stroke:#4338ca;stroke-width:1.4}
+      .h{font-size:14px;font-weight:700;fill:#0f172a}
+      .s{font-size:11.5px;fill:#334155}
+      .ln{stroke:#334155;stroke-width:1.4;fill:none;marker-end:url(#a)}
+    </style>
+  </defs>
+  <rect width="1200" height="820" fill="#ffffff"/>
+  <text x="600" y="34" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">course-assistant: technical architecture</text>
+
+  <!-- lane 1: ingest -->
+  <rect class="lane" x="20" y="56" width="1160" height="120" rx="10"/>
+  <text class="lt" x="36" y="80">1 · COURSE INGEST</text>
+  <rect class="box" x="60" y="92" width="230" height="66" rx="8"/>
+  <text class="h" x="175" y="116" text-anchor="middle">Course manifest</text>
+  <text class="s" x="175" y="136" text-anchor="middle">sessions, slides, pre-reads,</text>
+  <text class="s" x="175" y="151" text-anchor="middle">assessment briefs (YAML)</text>
+  <rect class="box" x="350" y="92" width="230" height="66" rx="8"/>
+  <text class="h" x="465" y="116" text-anchor="middle">ingest</text>
+  <text class="s" x="465" y="136" text-anchor="middle">PDF and PPTX → units with</text>
+  <text class="s" x="465" y="151" text-anchor="middle">session, slide and page locators</text>
+  <rect class="ext" x="640" y="92" width="230" height="66" rx="8"/>
+  <text class="h" x="755" y="116" text-anchor="middle">OpenAI vector store</text>
+  <text class="s" x="755" y="136" text-anchor="middle">one per corpus version;</text>
+  <text class="s" x="755" y="151" text-anchor="middle">gate-approved version served</text>
+  <rect class="box" x="930" y="92" width="220" height="66" rx="8"/>
+  <text class="h" x="1040" y="116" text-anchor="middle">Corpus guard</text>
+  <text class="s" x="1040" y="136" text-anchor="middle">only openly licensed sample</text>
+  <text class="s" x="1040" y="151" text-anchor="middle">material in the public repo</text>
+  <path class="ln" d="M290,125 H348"/>
+  <path class="ln" d="M580,125 H638"/>
+
+  <!-- lane 2: runtime -->
+  <rect class="lane" x="20" y="192" width="1160" height="300" rx="10"/>
+  <text class="lt" x="36" y="216">2 · RUNTIME</text>
+  <rect class="box" x="60" y="230" width="250" height="78" rx="8"/>
+  <text class="h" x="185" y="254" text-anchor="middle">Streamlit pages</text>
+  <text class="s" x="185" y="274" text-anchor="middle">learner chat · teaching-team view</text>
+  <text class="s" x="185" y="290" text-anchor="middle">separate passcodes; text shown literally</text>
+  <rect class="box" x="360" y="230" width="300" height="78" rx="8"/>
+  <text class="h" x="510" y="254" text-anchor="middle">Answer pipeline (ask)</text>
+  <text class="s" x="510" y="274" text-anchor="middle">route · answer · ground · integrity</text>
+  <text class="s" x="510" y="290" text-anchor="middle">hint (cached) · leak scan · finalize</text>
+  <rect class="ext" x="710" y="230" width="210" height="78" rx="8"/>
+  <text class="h" x="815" y="254" text-anchor="middle">LLM client</text>
+  <text class="s" x="815" y="274" text-anchor="middle">OpenAI Responses API</text>
+  <text class="s" x="815" y="290" text-anchor="middle">Sol answers · Luna checks</text>
+  <rect class="box" x="960" y="230" width="190" height="78" rx="8"/>
+  <text class="h" x="1055" y="254" text-anchor="middle">Demo guard</text>
+  <text class="s" x="1055" y="274" text-anchor="middle">daily spend cap,</text>
+  <text class="s" x="1055" y="290" text-anchor="middle">replay cache, bring-your-own key</text>
+
+  <rect class="box" x="60" y="340" width="250" height="70" rx="8"/>
+  <text class="h" x="185" y="364" text-anchor="middle">Privacy</text>
+  <text class="s" x="185" y="384" text-anchor="middle">consent purposes, notice,</text>
+  <text class="s" x="185" y="399" text-anchor="middle">history, deletion, retention</text>
+  <rect class="box" x="360" y="340" width="300" height="70" rx="8"/>
+  <text class="h" x="510" y="364" text-anchor="middle">Escalation queue</text>
+  <text class="s" x="510" y="384" text-anchor="middle">hand-over, staff reply, material-gap flag;</text>
+  <text class="s" x="510" y="399" text-anchor="middle">stale clicks refused in one transaction</text>
+  <rect class="box" x="710" y="340" width="210" height="70" rx="8"/>
+  <text class="h" x="815" y="364" text-anchor="middle">Weekly digest</text>
+  <text class="s" x="815" y="384" text-anchor="middle">Luna topic labels, k ≥ 5,</text>
+  <text class="s" x="815" y="399" text-anchor="middle">labels never copy a question</text>
+  <rect class="box" x="960" y="340" width="190" height="70" rx="8"/>
+  <text class="h" x="1055" y="364" text-anchor="middle">Store (SQLite, WAL)</text>
+  <text class="s" x="1055" y="384" text-anchor="middle">pseudonymous ids,</text>
+  <text class="s" x="1055" y="399" text-anchor="middle">audit log, purge</text>
+
+  <rect class="box" x="360" y="428" width="560" height="48" rx="8"/>
+  <text class="h" x="640" y="450" text-anchor="middle">Traces and spend ledger</text>
+  <text class="s" x="640" y="467" text-anchor="middle">step records without learner text · JSONL or Langfuse · alarm at 90% of the monthly cap</text>
+
+  <path class="ln" d="M310,269 H358"/>
+  <path class="ln" d="M660,269 H708"/>
+  <path class="ln" d="M920,269 H958"/>
+  <path class="ln" d="M755,158 V228"/>
+  <path class="ln" d="M510,308 V338"/>
+  <path class="ln" d="M920,375 H958"/>
+
+  <!-- lane 3: evaluation -->
+  <rect class="lane" x="20" y="508" width="1160" height="160" rx="10"/>
+  <text class="lt" x="36" y="532">3 · EVALUATION (EvalKit)</text>
+  <rect class="box" x="60" y="546" width="230" height="104" rx="8"/>
+  <text class="h" x="175" y="570" text-anchor="middle">Golden set</text>
+  <text class="s" x="175" y="590" text-anchor="middle">214 public tuning cases</text>
+  <text class="s" x="175" y="606" text-anchor="middle">215 held-out cases, private,</text>
+  <text class="s" x="175" y="622" text-anchor="middle">pinned by a committed manifest,</text>
+  <text class="s" x="175" y="638" text-anchor="middle">scored once</text>
+  <rect class="ext" x="330" y="546" width="250" height="104" rx="8"/>
+  <text class="h" x="455" y="570" text-anchor="middle">EvalKit run</text>
+  <text class="s" x="455" y="590" text-anchor="middle">plug-in system calls ask()</text>
+  <text class="s" x="455" y="606" text-anchor="middle">task scorers per golden rule</text>
+  <text class="s" x="455" y="622" text-anchor="middle">cost estimate and hard cap</text>
+  <text class="s" x="455" y="638" text-anchor="middle">run folder: cases, records, summary</text>
+  <rect class="box" x="620" y="546" width="250" height="104" rx="8"/>
+  <text class="h" x="745" y="570" text-anchor="middle">Two-vendor judges</text>
+  <text class="s" x="745" y="590" text-anchor="middle">OpenAI and Anthropic judges</text>
+  <text class="s" x="745" y="606" text-anchor="middle">calibrated against owner labels</text>
+  <text class="s" x="745" y="622" text-anchor="middle">(kappa), certified only through</text>
+  <text class="s" x="745" y="638" text-anchor="middle">the tamper-evident tuning log</text>
+  <rect class="box" x="910" y="546" width="240" height="104" rx="8"/>
+  <text class="h" x="1030" y="570" text-anchor="middle">Release gate</text>
+  <text class="s" x="1030" y="590" text-anchor="middle">8 quality metrics, p95 ≤ 11 s,</text>
+  <text class="s" x="1030" y="606" text-anchor="middle">paired-bootstrap regression check</text>
+  <text class="s" x="1030" y="622" text-anchor="middle">exit 0 pass · 1 fail · 2 bad input</text>
+  <text class="s" x="1030" y="638" text-anchor="middle">3 cost cap · 4 judging pending</text>
+  <path class="ln" d="M290,598 H328"/>
+  <path class="ln" d="M580,598 H618"/>
+  <path class="ln" d="M870,598 H908"/>
+  <path class="ln" d="M455,546 V478"/>
+
+  <!-- lane 4: release and CI -->
+  <rect class="lane" x="20" y="684" width="1160" height="116" rx="10"/>
+  <text class="lt" x="36" y="708">4 · RELEASE AND CI (GitHub Actions)</text>
+  <rect class="box" x="60" y="720" width="330" height="62" rx="8"/>
+  <text class="h" x="225" y="744" text-anchor="middle">CI on every push</text>
+  <text class="s" x="225" y="764" text-anchor="middle">~1,600 tests · lint · types · offline eval gate</text>
+  <rect class="box" x="430" y="720" width="330" height="62" rx="8"/>
+  <text class="h" x="595" y="744" text-anchor="middle">Eval-gate workflow</text>
+  <text class="s" x="595" y="764" text-anchor="middle">on course or rules change and weekly; keys only on main</text>
+  <rect class="box" x="800" y="720" width="350" height="62" rx="8"/>
+  <text class="h" x="975" y="744" text-anchor="middle">Live version flip</text>
+  <text class="s" x="975" y="764" text-anchor="middle">only after the gate passes; removals skip it only if nothing else changed</text>
+  <path class="ln" d="M1030,650 V718"/>
+</svg>
