@@ -1,0 +1,16 @@
+# Approved course materials, written by `course-assistant init`.
+# Only files listed here are ever indexed. Paths are relative to the corpus root (by default
+# the folder holding config.yaml). After adding a file, put its sha256 in `sha256`
+# (`shasum -a 256 <file>`); `course-assistant doctor` checks every path and hash.
+schema_version: "1.0"
+cohort: my-course-2027            # must match config.yaml
+entries:
+  - manifest_id: m-s01-slides
+    path: materials/s01-slides.pptx
+    session: s01                  # s01, s02, ...
+    kind: slides                  # slides | pre_read | agenda | post_session | faq
+    sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+    licence: all-rights-reserved
+    approved_by: owner-1          # a role id (instructor-1, ta-1, owner-1), never a name
+    approved_at: "2027-01-01"
+    include_speaker_notes: false

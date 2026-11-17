@@ -5,8 +5,10 @@
 
 It fills in the demo's non-secret settings, refuses to serve (a locked page with fixed text)
 when a required secret is missing, a passkey hash is malformed or the two hashes are equal,
-and otherwise routes the learner page (the default, opening on the worked examples when the
-demo cache is there) and the teaching-team page, each behind its own passkey.
+or when a pilot course (CA_CONFIG) has no gate-approved corpus to serve (P4.1: LIVE.json
+missing or unreadable; the demo cache's replay corpus needs none), and otherwise routes
+the learner page (the default, opening on the worked examples when the demo cache is there)
+and the teaching-team page, each behind its own passkey.
 """
 
 from __future__ import annotations
@@ -23,11 +25,12 @@ except ImportError:  # the host installs deploy/requirements.txt, not the packag
 
 import streamlit as st  # noqa: E402
 
-from course_assistant.app import deploy  # noqa: E402
+from course_assistant.app import deploy, wiring  # noqa: E402
 
 deploy.apply_defaults(os.environ, ROOT)
 problem = deploy.startup_problem(os.environ, deploy.LiveSecrets(lambda: st.secrets))
 problem = problem or deploy.course_problem(os.environ)
+problem = problem or wiring.serving_problem(os.environ)  # checked at every run (P4.1)
 if problem is not None:
     deploy.log_startup_problem(problem)  # secret names only, never a value
     st.set_page_config(page_title="Course assistant")

@@ -1,0 +1,15 @@
+# Course assistant configuration, written by `course-assistant init`.
+# Fill in the vector store id, then run `course-assistant doctor`.
+schema_version: "1.0"
+cohort: my-course-2027            # lower case, digits, . _ : - ; must match manifest.yaml
+# Create a vector store in your own OpenAI project and paste its id here ("vs_" + letters
+# and digits). `doctor` fails until this is replaced.
+vector_store_id: vs_REPLACE_WITH_YOUR_STORE_ID
+answer_model: gpt-6.1-sol
+check_model: gpt-6-luna
+reasoning_effort:                 # every model above must be named here
+  gpt-6.1-sol: medium
+  gpt-6-luna: low
+max_num_results: 8
+grounding_bar: 0.4                # tune on your own golden set before relying on it
+monthly_budget_usd: 50.0

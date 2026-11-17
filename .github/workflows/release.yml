@@ -1,0 +1,70 @@
+name: release
+
+# Publish to PyPI (R3.1 OSS-01, OWNER D-21). Runs only when a version tag such as v0.1.0 is
+# pushed: never on a branch push, a pull request or a schedule. The build job checks the tag
+# against the pyproject version, builds the sdist and wheel and runs the exclusion test on
+# them. The publish job uses PyPI Trusted Publishing (OIDC, no stored token) from the protected
+# `pypi` environment, and only for a tag whose commit is on main. The owner registers this
+# repository, this workflow (release.yml) and the environment `pypi` as the trusted publisher
+# on PyPI and adds required reviewers to the environment; each publish is approved there.
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build and check the release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      on_main: ${{ steps.branch.outputs.on_main }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0  # full history and branches, to check the tag is on main
+      - name: the tagged commit is on main
+        id: branch
+        run: |
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "on_main=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "on_main=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::$GITHUB_REF_NAME is not on main; the publish job will not run"
+          fi
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6.8.0
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked --all-extras
+      - run: uv build
+      - name: the exclusion test and the release tests
+        run: uv run pytest -q tests/harness/test_packaging.py tests/release
+      - name: tag equals the version; one sdist and one wheel, no private path
+        run: uv run python scripts/release_check.py --tag "$GITHUB_REF_NAME" --dist dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: publish to PyPI (trusted publishing)
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.on_main == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/course-assistant
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3

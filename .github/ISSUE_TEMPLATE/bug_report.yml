@@ -1,0 +1,45 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Do not paste an API key, a passcode or its hash, learner
+        questions or answers, or course material** into this issue. Security problems go
+        privately through SECURITY.md (https://github.com/biplob819/course-assistant/blob/main/SECURITY.md),
+        not here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Ideally on the bundled sample course, so no private material is needed.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `course-assistant doctor`
+      description: It prints secret names only, never values. Check it before pasting.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `course-assistant --version`, or the commit.
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Python and OS
+      placeholder: Python 3.12, macOS 15
+    validations:
+      required: true

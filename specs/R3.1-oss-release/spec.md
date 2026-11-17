@@ -57,8 +57,10 @@ constant strings plus file names and secret *names*, never a value.
 - `vector_store`: the configured id matches `^vs_[A-Za-z0-9]+$` (FAIL on the init placeholder
   or a malformed id). Format only; no call checks the store exists.
 - `corpus`: the manifest next to the config loads with `load_manifest`, its cohort equals the
-  config's, and every file it lists exists under the corpus root (FAIL naming the first
-  missing path, plus a count).
+  config's, every file it lists exists under the corpus root and matches its `sha256` (FAIL
+  naming the first missing or changed path, plus a count).
+- A key that is only in `.env` (the package does not load `.env`) fails with "export it";
+  `ANTHROPIC_API_KEY` missing is a warning when the `eval` extra is installed.
 - Exit codes: 0 no FAIL (warnings allowed), 1 at least one FAIL, 2 the command itself could
   not run (bad arguments).
 
@@ -72,21 +74,26 @@ constant strings plus file names and secret *names*, never a value.
   no secrets, no network in tests, changelog), plus the security pointer to `SECURITY.md`.
 
 ### `.github/workflows/release.yml` (OSS-01)
-- `on: push: tags: ["v*.*.*"]` only; top-level `permissions: contents: read`.
-- `build` job: checkout (SHA-pinned, `persist-credentials: false`, full history), setup-uv
-  (SHA-pinned), `uv sync --locked --all-extras`, run `tests/harness/test_packaging.py`
-  (the exclusion test) and `tests/release/`, check the tag equals `v` + the pyproject version
-  (`scripts/release_check.py`), `uv build`, `twine check`-equivalent metadata check
-  (`scripts/release_check.py --dist dist`: one sdist and one wheel, names match the version,
-  README rendered as Markdown, no private path in either), upload `dist/` as an artefact
-  (SHA-pinned).
+- `on: push: tags: ["v[0-9]+.[0-9]+.[0-9]+"]` only (no branch push, PR, schedule or manual
+  trigger); top-level `permissions: contents: read`.
+- `build` job: checkout (SHA-pinned, `persist-credentials: false`, full history), records
+  `on_main` (`git merge-base --is-ancestor $GITHUB_SHA origin/main`), setup-uv (SHA-pinned),
+  `uv sync --locked --all-extras`, `uv build`, then `tests/harness/test_packaging.py` (the
+  exclusion test; after the build so its offline build finds the backend) and
+  `tests/release/`, then `scripts/release_check.py --tag "$GITHUB_REF_NAME" --dist dist`
+  (tag equals `v` + the pyproject version; one sdist and one wheel of that version; wheel
+  METADATA declares the README as Markdown and ships the `init` templates; no member of
+  either under a path in the pyproject sdist `exclude` list), then upload `dist/` (SHA-pinned).
 - `publish` job: `needs: build`, `environment: pypi` (protected; the owner adds reviewers),
   `permissions: id-token: write` only, `if:` the ref is a tag *and* the tagged commit is on
   `main` (the build job outputs `on_main` from `git merge-base --is-ancestor $GITHUB_SHA
   origin/main`), downloads the artefact and runs `pypa/gh-action-pypi-publish` (SHA-pinned)
   with no `password`/token input (Trusted Publishing, OIDC).
 - Every `uses:` is pinned to a 40-hex SHA with a version comment, as in `ci.yml`.
-- `ci.yml` and `eval-gate.yml` unchanged.
+- `ci.yml` and `eval-gate.yml` unchanged; `tests/harness/test_records.py` now lists the
+  three workflows and holds `release.yml` to `contents: read` and no `secrets.`.
+- The download-artifact (v8.0.2) and gh-action-pypi-publish (v1.14.3) SHAs are copied from
+  the owner's other release workflow; they were not re-checked against GitHub (no network).
 
 ### README links (OSS-09, lane B part)
 - Every relative image and link in `README.md` becomes an absolute URL so it renders on PyPI:

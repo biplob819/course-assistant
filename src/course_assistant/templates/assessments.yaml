@@ -1,0 +1,9 @@
+# Graded assessment briefs, written by `course-assistant init`.
+# Briefs only: never put a model solution here, in the manifest or in any prompt. For these
+# items the assistant gives hints, not completed work.
+schema_version: "1.0"
+assessments:
+  - assessment_id: s01-a1
+    title: "Assignment 1"
+    brief: "Replace this with the brief learners see for Assignment 1."
+    sessions: [s01]

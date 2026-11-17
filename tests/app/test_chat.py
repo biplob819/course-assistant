@@ -592,7 +592,11 @@ def _course(tmp_path: Path) -> Path:
     cfg = tmp_path / "course" / "config.yaml"
     cfg.parent.mkdir()
     cfg.write_text(yaml.safe_dump(CONFIG.model_dump(mode="json")), encoding="utf-8")
-    CorpusStore(cfg.parent / "corpus_store", CONFIG.cohort).save(CORPUS)
+    store = CorpusStore(cfg.parent / "corpus_store", CONFIG.cohort)
+    store.save(CORPUS)
+    # the release gate passed this version (P4.1: a pilot page serves only LIVE.json's version)
+    (store.dir / "LIVE.json").write_text(f'{{"corpus_version": "{CORPUS.corpus_version}"}}',
+                                         encoding="utf-8")  # fmt: skip
     return cfg
 
 

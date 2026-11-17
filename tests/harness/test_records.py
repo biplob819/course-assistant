@@ -82,11 +82,13 @@ def test_portfolio_notes_stay_out_of_public_repo():
 
 @pytest.mark.contract
 def test_workflows_grant_least_privilege():
-    assert sorted(p.name for p in WORKFLOWS.iterdir()) == ["ci.yml", "eval-gate.yml"]
-    for name in ("ci.yml", "eval-gate.yml"):
+    # R3.1: release.yml publishes by trusted publishing on a tag (tests/release)
+    assert sorted(p.name for p in WORKFLOWS.iterdir()) == ["ci.yml", "eval-gate.yml", "release.yml"]
+    for name in ("ci.yml", "eval-gate.yml", "release.yml"):
         code = _yaml_code(WORKFLOWS / name)
         assert re.search(r"^permissions:\n  contents: read$", code, re.M), name
     assert "secrets." not in _yaml_code(WORKFLOWS / "ci.yml")
+    assert "secrets." not in _yaml_code(WORKFLOWS / "release.yml")  # OIDC, no stored token
     # E2.4: the release gate's secrets are read only by its live job, never by the offline one
     gate = _yaml_code(WORKFLOWS / "eval-gate.yml")
     offline, live = gate.split("\n  live:\n", 1)

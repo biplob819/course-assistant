@@ -2,8 +2,8 @@
 
 [![ci](https://github.com/biplob819/course-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/biplob819/course-assistant/actions/workflows/ci.yml)
 [![eval-gate](https://github.com/biplob819/course-assistant/actions/workflows/eval-gate.yml/badge.svg)](https://github.com/biplob819/course-assistant/actions/workflows/eval-gate.yml)
-[![licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
-[![sample course: CC BY 4.0](https://img.shields.io/badge/sample%20course-CC%20BY%204.0-lightgrey.svg)](sample_course/LICENSE)
+[![licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](https://github.com/biplob819/course-assistant/blob/main/LICENSE)
+[![sample course: CC BY 4.0](https://img.shields.io/badge/sample%20course-CC%20BY%204.0-lightgrey.svg)](https://github.com/biplob819/course-assistant/blob/main/sample_course/LICENSE)
 ![python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)
 
 A course assistant that answers learner questions **only from approved session materials**,
@@ -57,13 +57,13 @@ conversation. Only then is a status picked:
 | `hint_only` | A hint and the session to revisit, never the graded work itself |
 | `handed_over` | "Sent to the teaching team", with an entry in the team's queue |
 
-![Architecture: course ingest, the runtime (pages, ask pipeline, store, traces) and the EvalKit evaluation](docs/assets/architecture.svg)
+![Architecture: course ingest, the runtime (pages, ask pipeline, store, traces) and the EvalKit evaluation](https://raw.githubusercontent.com/biplob819/course-assistant/main/docs/assets/architecture.svg)
 
-![Data flow: one learner question from the passcode gate through routing, answer, checks and the four statuses](docs/assets/dataflow.svg)
+![Data flow: one learner question from the passcode gate through routing, answer, checks and the four statuses](https://raw.githubusercontent.com/biplob819/course-assistant/main/docs/assets/dataflow.svg)
 
 The full design, every schema and the build graph are in the
-[Tech Spec](AI%20Teaching%20Assistant%20Tech%20Spec.md). The product reasoning is in the
-[PRD](AI%20Teaching%20Assistant%20PRD.md).
+[Tech Spec](https://github.com/biplob819/course-assistant/blob/main/AI%20Teaching%20Assistant%20Tech%20Spec.md). The product reasoning is in the
+[PRD](https://github.com/biplob819/course-assistant/blob/main/AI%20Teaching%20Assistant%20PRD.md).
 
 ## Screenshots
 
@@ -103,22 +103,22 @@ owner's go-ahead, OWNER D-21).
 ## Step-by-step guide
 
 1. **Run the offline quickstart** above, to see the pipeline work end to end with no cost.
-2. **Read the sample course.** It lives in [`sample_course/`](sample_course/): three
+2. **Read the sample course.** It lives in [`sample_course/`](https://github.com/biplob819/course-assistant/tree/main/sample_course): three
    sessions (slides, pre-reads, agendas), a manifest, the assessment briefs and a list of
    absent topics. It is written for this project and licensed CC BY 4.0.
-3. **Look at the golden set.** [`golden/README.md`](golden/README.md) explains the rules
-   each case tests, and [`DATA_CARD.md`](DATA_CARD.md) gives the counts.
+3. **Look at the golden set.** [`golden/README.md`](https://github.com/biplob819/course-assistant/blob/main/golden/README.md) explains the rules
+   each case tests, and [`DATA_CARD.md`](https://github.com/biplob819/course-assistant/blob/main/DATA_CARD.md) gives the counts.
 4. **Ingest a course (spends money).** Put `OPENAI_API_KEY` in a local `.env` (git-ignored),
    write a `config.yaml` (see [Configuration](#configuration)), check the plan with
    `uv run course-assistant ingest --config config.yaml --dry-run`, then run it without
    `--dry-run`.
 5. **Run the learner and teaching-team pages locally:**
    `uv run --extra app --extra openai streamlit run deploy/streamlit_app.py`. The app stays on
-   a locked page until its secrets are set; [`docs/deploy.md`](docs/deploy.md) lists each one
+   a locked page until its secrets are set; [`docs/deploy.md`](https://github.com/biplob819/course-assistant/blob/main/docs/deploy.md) lists each one
    and how to make it.
 6. **Evaluate before you rely on it.** `make eval` runs the held-out golden set and the
    release gate (spends money; it prints an estimate first). See [Evaluation](#evaluation).
-7. **Deploy the demo** with [`docs/deploy.md`](docs/deploy.md).
+7. **Deploy the demo** with [`docs/deploy.md`](https://github.com/biplob819/course-assistant/blob/main/docs/deploy.md).
 
 Planned for the release (Tech Spec R3.1, not built yet): `course-assistant init`, which
 writes a starter config, manifest and assessments file for your own course, and
@@ -176,13 +176,13 @@ not shaped by the system they measure. They cover course questions (including fo
 that only make sense with earlier turns), absent and planted topics, graded-work probes
 (including multi-turn decomposition attempts), admin and personal requests, questions about
 other learners, identity probes and prompt injection. Counts are in
-[`DATA_CARD.md`](DATA_CARD.md).
+[`DATA_CARD.md`](https://github.com/biplob819/course-assistant/blob/main/DATA_CARD.md).
 
 **Held-out discipline.** The set is split 50/50 by group (every question on one slide, every
 probe on one assessment and their paraphrases stay on the same side), stratified by rule and
 session. Prompts and thresholds are tuned on the public half only. The held-out half is
 never committed: the repo holds only
-[`golden/heldout/MANIFEST.json`](golden/heldout/MANIFEST.json), with each case's id and
+[`golden/heldout/MANIFEST.json`](https://github.com/biplob819/course-assistant/blob/main/golden/heldout/MANIFEST.json), with each case's id and
 hash, so anyone can check the private file has not changed. Each held-out set is scored
 once; a fresh set is written for the next verdict (OWNER D-67, D-69, D-71).
 
@@ -192,7 +192,7 @@ vendor's blind spot cannot pass an answer on its own.
 
 **Calibration.** The judges are checked against a person: 100 labelled groundedness items
 and 100 integrity items (half public, half held-out), plus a blind relabel of 20 each
-([labelling guide](docs/labelling.md)). Until calibration is certified through the tuning
+([labelling guide](https://github.com/biplob819/course-assistant/blob/main/docs/labelling.md)). Until calibration is certified through the tuning
 log, every report carries the `uncalibrated` stamp and the release gate fails.
 
 **Statistics.** Bootstrap confidence intervals over cases, paired comparisons with Holm
@@ -213,13 +213,13 @@ with:
 | 4 | Judging pending |
 
 `make eval` wraps it, but GNU make reports any failure as 2, so CI calls the script directly
-for the exact code (D-59). The [eval-gate workflow](.github/workflows/eval-gate.yml) runs the
+for the exact code (D-59). The [eval-gate workflow](https://github.com/biplob819/course-assistant/blob/main/.github/workflows/eval-gate.yml) runs the
 offline gate on every change.
 
 ## Measured results
 
 > **First run, gate failing.** These are the honest numbers from the first full run on
-> 17 Nov 2026 ([report](docs/measurements/e2.5-report.md)). Both judges are **uncalibrated**
+> 17 Nov 2026 ([report](https://github.com/biplob819/course-assistant/blob/main/docs/measurements/e2.5-report.md)). Both judges are **uncalibrated**
 > until the owner's labels are in. The gate fails. An improvement round on grounding and
 > locators is under way, tuned on the public half only, and will be followed by one score on a
 > fresh held-out set (OWNER D-71). This table will be replaced, not edited, when that run
@@ -255,7 +255,7 @@ What the failures mean:
 
 ## Privacy and safety
 
-Full detail: [`PRIVACY.md`](PRIVACY.md) and Tech Spec §7.
+Full detail: [`PRIVACY.md`](https://github.com/biplob819/course-assistant/blob/main/PRIVACY.md) and Tech Spec §7.
 
 - **No telemetry.** The project never phones home. Streamlit usage statistics are off.
 - **Data minimisation.** Learners are pseudonymous ids. No names or email addresses are sent
@@ -278,7 +278,7 @@ Full detail: [`PRIVACY.md`](PRIVACY.md) and Tech Spec §7.
 **`DEMO_URL pending owner deploy`.** The hosted demo runs on the sample course, behind two
 passcodes (learner and teaching team). It opens on recorded worked examples with no live
 call; live questions are capped per request and per day, on a separate OpenAI project with a
-hard spend limit. Demo data resets each night. Deploy guide: [`docs/deploy.md`](docs/deploy.md).
+hard spend limit. Demo data resets each night. Deploy guide: [`docs/deploy.md`](https://github.com/biplob819/course-assistant/blob/main/docs/deploy.md).
 
 ## Links
 
@@ -288,29 +288,29 @@ hard spend limit. Demo data resets each night. Deploy guide: [`docs/deploy.md`](
 | PyPI | `course-assistant` (pending publish: [pypi.org/project/course-assistant](https://pypi.org/project/course-assistant/)) |
 | Live demo | `DEMO_URL pending owner deploy` |
 | EvalKit | [repo](https://github.com/biplob819/evalkit) · [`evalkit-harness` on PyPI](https://pypi.org/project/evalkit-harness/) |
-| Design | [Tech Spec](AI%20Teaching%20Assistant%20Tech%20Spec.md) · [PRD](AI%20Teaching%20Assistant%20PRD.md) |
-| Decisions and lessons | [docs/decisions.md](docs/decisions.md) · [docs/lessons.md](docs/lessons.md) |
-| Guides | [Deploying the demo](docs/deploy.md) · [Labelling the calibration sets](docs/labelling.md) |
-| Measurements | [E2.5 full-run report](docs/measurements/e2.5-report.md) · [tuning log](docs/measurements/tuning-log.jsonl) |
-| Golden set | [golden/README.md](golden/README.md) · [DATA_CARD.md](DATA_CARD.md) |
-| Sample course licence | [CC BY 4.0](sample_course/LICENSE) |
-| Policies | [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Privacy](PRIVACY.md) · [Code of conduct](CODE_OF_CONDUCT.md) |
-| Changes | [changelog.md](changelog.md) |
+| Design | [Tech Spec](https://github.com/biplob819/course-assistant/blob/main/AI%20Teaching%20Assistant%20Tech%20Spec.md) · [PRD](https://github.com/biplob819/course-assistant/blob/main/AI%20Teaching%20Assistant%20PRD.md) |
+| Decisions and lessons | [docs/decisions.md](https://github.com/biplob819/course-assistant/blob/main/docs/decisions.md) · [docs/lessons.md](https://github.com/biplob819/course-assistant/blob/main/docs/lessons.md) |
+| Guides | [Deploying the demo](https://github.com/biplob819/course-assistant/blob/main/docs/deploy.md) · [Labelling the calibration sets](https://github.com/biplob819/course-assistant/blob/main/docs/labelling.md) |
+| Measurements | [E2.5 full-run report](https://github.com/biplob819/course-assistant/blob/main/docs/measurements/e2.5-report.md) · [tuning log](https://github.com/biplob819/course-assistant/blob/main/docs/measurements/tuning-log.jsonl) |
+| Golden set | [golden/README.md](https://github.com/biplob819/course-assistant/blob/main/golden/README.md) · [DATA_CARD.md](https://github.com/biplob819/course-assistant/blob/main/DATA_CARD.md) |
+| Sample course licence | [CC BY 4.0](https://github.com/biplob819/course-assistant/blob/main/sample_course/LICENSE) |
+| Policies | [Contributing](https://github.com/biplob819/course-assistant/blob/main/CONTRIBUTING.md) · [Security](https://github.com/biplob819/course-assistant/blob/main/SECURITY.md) · [Privacy](https://github.com/biplob819/course-assistant/blob/main/PRIVACY.md) · [Code of conduct](https://github.com/biplob819/course-assistant/blob/main/CODE_OF_CONDUCT.md) |
+| Changes | [changelog.md](https://github.com/biplob819/course-assistant/blob/main/changelog.md) |
 
 ## Contributing
 
 Bug reports, fixes, tests and documentation are welcome. See
-[`CONTRIBUTING.md`](CONTRIBUTING.md). The test suite needs no API keys and spends nothing.
+[`CONTRIBUTING.md`](https://github.com/biplob819/course-assistant/blob/main/CONTRIBUTING.md). The test suite needs no API keys and spends nothing.
 
 ## Security
 
-Please report vulnerabilities privately, as described in [`SECURITY.md`](SECURITY.md), not in
+Please report vulnerabilities privately, as described in [`SECURITY.md`](https://github.com/biplob819/course-assistant/blob/main/SECURITY.md), not in
 a public issue.
 
 ## Licence
 
-Code: [MIT](LICENSE). Sample course (slides, pre-reads, agendas, briefs and their source):
-[CC BY 4.0](sample_course/LICENSE).
+Code: [MIT](https://github.com/biplob819/course-assistant/blob/main/LICENSE). Sample course (slides, pre-reads, agendas, briefs and their source):
+[CC BY 4.0](https://github.com/biplob819/course-assistant/blob/main/sample_course/LICENSE).
 
 ## Citation
 
