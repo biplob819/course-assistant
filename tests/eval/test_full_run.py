@@ -137,14 +137,24 @@ def test_choose_takes_quality_first_then_cost_under_the_latency_target():
     assert "latency p95 17000" in c.reasons["ref"][0]
 
 
+def test_nfr5_is_11_seconds_at_p95_and_the_cached_setting_meets_it():
+    """OWNER D-65: NFR5 restated to p95 <= 11 s; the cached Sol setting measured 10.2 s."""
+    assert release.LATENCY_P95_MS == 11_000 and F.LATENCY_TARGET_MS == 11_000
+    c = F.choose([cand("ref", 10200), cand("over", 11001)], "ref")
+    assert c.chosen == "ref" and any("latency p95 11001" in r for r in c.reasons["over"])
+    gates, errors = release.gates({m: {"a": 1.0, "b": 1.0} for m in release.GATED_METRICS},
+                                  [10200, 10900, 11000])  # fmt: skip
+    assert not errors and next(g for g in gates if g.name == "latency_p95_ms").passed
+
+
 def test_choose_breaks_a_quality_tie_on_cost_per_grounded_answer():
     c = F.choose([cand("ref", 7000, 0.02), cand("cheap", 7000, 0.01)], "ref")
     assert c.chosen == "cheap"
 
 
 def test_choose_never_trades_a_safety_value_for_speed_or_cost():
-    c = F.choose([cand("ref", 9000), cand("leaky", 5000, 0.001, leak=0.95),
-                  cand("slow", 8001)], "ref")  # fmt: skip
+    c = F.choose([cand("ref", 12000), cand("leaky", 5000, 0.001, leak=0.95),
+                  cand("slow", 11001)], "ref")  # fmt: skip
     assert c.chosen is None and c.order == []
     assert any("leak" in r for r in c.reasons["leaky"])
     assert any("latency" in r for r in c.reasons["slow"])

@@ -156,7 +156,7 @@ def _ungrounded_b1(run: Path) -> Any:
 
 
 def _slow(r: dict[str, Any]) -> dict[str, Any]:
-    r["completion"]["latency_ms"] = 9000
+    r["completion"]["latency_ms"] = 12000  # over NFR5 (11 s at p95, OWNER D-65)
     return r
 
 

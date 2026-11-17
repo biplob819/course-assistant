@@ -200,9 +200,9 @@ class Choice:
 
 def choose(candidates: Sequence[Candidate], reference: str) -> Choice:
     """FRN-02: quality first, then cost per grounded answer, under NFR5. A setting qualifies
-    when its p95 is at most 8 s and no quality value is below the reference setting's; the
-    highest grounded rate wins, then the lowest cost per grounded answer. None qualifying
-    gives no choice: the owner decides the trade-off (D-44)."""
+    when its p95 is at most 11 s (NFR5, OWNER D-65) and no quality value is below the
+    reference setting's; the highest grounded rate wins, then the lowest cost per grounded
+    answer. None qualifying gives no choice: the owner decides the trade-off (D-44)."""
     by = {c.label: c for c in candidates}
     if reference not in by:
         raise FullRunError(f"no reference setting {reference!r}")

@@ -115,7 +115,7 @@ Twelve functional requirements and eight non-functional bars; the first bar, sig
 | NFR2 | Privacy law | Built to India's Digital Personal Data Protection Act 2023 and the DPDP Rules 2025: a plain notice, purpose-specific consent, easy withdrawal, deletion and security safeguards. The Rules were issued on 14 November 2025 and most duties apply 18 months later, in May 2027; the pilot meets them from day one |
 | NFR3 | Data minimisation | Pseudonymous learner ids; no names or email addresses sent to OpenAI or Langfuse; Responses calls made with store set to false |
 | NFR4 | Model provider | OpenAI does not train on API data by default; the cohort's vector store and files are deleted when the pilot ends, since files and vector stores are not covered by zero data retention |
-| NFR5 | Latency | An answer within 8 seconds at the 95th percentile |
+| NFR5 | Latency | An answer within 11 seconds at the 95th percentile (OWNER D-65, 17 Nov 2026; was 8 seconds) |
 | NFR6 | Cost | Under $50 a month during the pilot, with an OpenAI spend limit set |
 | NFR7 | Security | Secrets in the host's secret store; the teaching-team view behind a passcode in the demo and single sign-on in the pilot; access logs kept for one year |
 | NFR8 | Resilience | If the API fails, a fixed message with the programme's support route; no silent failures |

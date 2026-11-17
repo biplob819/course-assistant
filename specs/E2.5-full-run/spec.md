@@ -6,7 +6,8 @@
 Run the golden set live on the candidate answer settings, choose the answer model and its
 settings (quality first, then cost per grounded answer; FRN-02), publish the report (US8), and
 replace the §9 planning estimates with measured cost (FRN-03, NFR6). Close or re-scope D-44:
-NFR5 asks for 8 s at p95 and the A2.5 smoke run measured 17.3 s.
+NFR5 asked for 8 s at p95 and the A2.5 smoke run measured 17.3 s; OWNER D-65 restated it to 11 s,
+which the chosen setting with the hint cache meets (p95 10.2 s on 30 questions).
 
 ## First: the D-44 latency candidates (offline, tests first)
 Each sits behind config and is tested offline with fakes; none weakens a safety gate.
@@ -55,7 +56,7 @@ cache across cases. The ledger's alarm moves to 90% of the budget ($135 of $150)
 - `compare(a, b)`: paired bootstrap with Holm (`release.regressions`) over the cases both runs
   share, per gated metric.
 - `choose(settings)`: the FRN-02 rule. A setting qualifies when its latency p95 is at most
-  8 s and its grounded, integrity, injection, leak and identity values are not below the
+  11 s (OWNER D-65) and its grounded, integrity, injection, leak and identity values are not below the
   reference setting's; among those the lowest cost per grounded answer wins; quality
   (grounded rate) breaks ties before cost. No setting qualifies: none is chosen and the
   reason is returned (the owner decides a trade-off, D-44).

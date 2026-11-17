@@ -148,7 +148,7 @@ golden/*.jsonl ─▶ EvalKit task course-ta (Case.context = corpus units for co
 
 Every money value is checked finite and non-negative before it is recorded (EvalKit L-12).
 
-### 2.6 Latency budget (NFR5: 8 s at p95)
+### 2.6 Latency budget (NFR5: 11 s at p95, OWNER D-65; the budget below was planned for the original 8 s)
 
 | Segment | Budget (p95) |
 | --- | --- |
@@ -172,7 +172,7 @@ These are planning numbers. A 30-question smoke run (A2.5) replaces them with me
 | Hint (Sol) | 9.1 s | 10.5 s | 4 |
 | **Whole turn** | **7.5 s** | **17.3 s** | 30 |
 
-**NFR5 is not met: p95 is 17.3 s against 8 s.** The answer call alone uses the whole budget at p95, and the checks run after it rather than inside it; hint turns add a second Sol call. The answer-model choice and effort in E2.5 must close this (D-44): candidates are `reasoning.effort` low on Sol, Luna for the answer, running L2 and integrity in parallel, and streaming the answer while the checks run (shown only once they pass).
+**NFR5 (then 8 s) was not met: p95 was 17.3 s against 8 s.** The answer call alone uses the whole budget at p95, and the checks run after it rather than inside it; hint turns add a second Sol call. The answer-model choice and effort in E2.5 must close this (D-44): candidates are `reasoning.effort` low on Sol, Luna for the answer, running L2 and integrity in parallel, and streaming the answer while the checks run (shown only once they pass).
 
 **Measured (E2.5, 17 Nov 2026, sample course, bar 0.5, `early_finalize` on; every public case through `ask()`, no judges; 214 questions per setting, two settings run side by side):**
 
@@ -181,9 +181,11 @@ These are planning numbers. A 30-question smoke run (A2.5) replaces them with me
 | Sol `medium` answers, hints on Luna (`hint_model`) | 7.1 s | 10.9 s | 7.2 s | 9.7 s | $0.0070 | 51/74 |
 | Luna answers and hints | 5.9 s | 9.6 s | 5.9 s | 8.7 s | $0.0039 | 30/74 |
 
-On the 30-question smoke set: Sol `medium` 10.1 s at p95, Sol `low` 10.1 s (no gain: Sol spends under 30 reasoning tokens at `medium`), Sol `low` with hints on Luna 11.1 s, Sol `medium` with hints on Luna 10.6 s, Luna 8.6 s. `early_finalize` removed the wait for the discarded answer on non-course turns (the A2.5 hint turns took answer + hint, 14 to 20 s). What is left: the answer call with file search (5 to 7 s) plus the checks (1.3 to 4.6 s) on course turns, and route plus hint plus the hint's integrity check (6 to 12 s) on hint turns (70 of the 214 on Sol: the 64 B3 cases and 6 course answers the integrity check stopped). **NFR5 is still not met.** Luna is faster but answers far fewer B1 questions, so quality first keeps Sol; D-61 re-scopes D-44 and brings the owner the trade-off. Report: `docs/measurements/e2.5-report.md`.
+On the 30-question smoke set: Sol `medium` 10.1 s at p95, Sol `low` 10.1 s (no gain: Sol spends under 30 reasoning tokens at `medium`), Sol `low` with hints on Luna 11.1 s, Sol `medium` with hints on Luna 10.6 s, Luna 8.6 s. `early_finalize` removed the wait for the discarded answer on non-course turns (the A2.5 hint turns took answer + hint, 14 to 20 s). What is left: the answer call with file search (5 to 7 s) plus the checks (1.3 to 4.6 s) on course turns, and route plus hint plus the hint's integrity check (6 to 12 s) on hint turns (70 of the 214 on Sol: the 64 B3 cases and 6 course answers the integrity check stopped). Against the then 8 s target, NFR5 was still not met. Luna is faster but answers far fewer B1 questions, so quality first keeps Sol; D-61 re-scopes D-44 and brings the owner the trade-off. Report: `docs/measurements/e2.5-report.md`.
 
-**Measured with the hint cache (E2.5, OWNER D-63, 17 Nov 2026):** `hint_cache` keeps the hint call's result per assessment item, keyed by the item and the settings that shape a hint (rules hash, hint version, model and effort, corpus version, vector store, retrieval breadth), never by learner text; Ground L1, the integrity check and the leak scan still run every turn. On the 30-question smoke set with Sol `medium`, hints on Luna, `early_finalize` and the cache (cold at the start of the run, so the first turn on each item still calls): **p50 5.3 s, p95 10.2 s**. A cache hit takes the hint step from 4 to 6 s to the integrity check alone (2.5 s), or to nothing when the cached hint is the fixed one (1.3 s turn). The p95 is now set by course turns: the Sol answer call reached 8.6 s at p95, and one integrity check took 13.4 s (a 19.0 s turn). Replaying the 214-question rows with hint turns at route plus the median integrity check gives about 8.9 s at p95 (estimate, not a live run). **NFR5 is still not met**; the 214-question confirmation run was not made, since the smoke was over 8 s (OWNER D-63: measure, then decide).
+**Measured with the hint cache (E2.5, OWNER D-63, 17 Nov 2026):** `hint_cache` keeps the hint call's result per assessment item, keyed by the item and the settings that shape a hint (rules hash, hint version, model and effort, corpus version, vector store, retrieval breadth), never by learner text; Ground L1, the integrity check and the leak scan still run every turn. On the 30-question smoke set with Sol `medium`, hints on Luna, `early_finalize` and the cache (cold at the start of the run, so the first turn on each item still calls): **p50 5.3 s, p95 10.2 s**. A cache hit takes the hint step from 4 to 6 s to the integrity check alone (2.5 s), or to nothing when the cached hint is the fixed one (1.3 s turn). The p95 is now set by course turns: the Sol answer call reached 8.6 s at p95, and one integrity check took 13.4 s (a 19.0 s turn). Replaying the 214-question rows with hint turns at route plus the median integrity check gives about 8.9 s at p95 (estimate, not a live run). Against the then 8 s target NFR5 was still not met, so the 214-question confirmation run was not made (OWNER D-63: measure, then decide).
+
+**NFR5 restated and met (OWNER D-65, 17 Nov 2026): p95 ≤ 11 s for a learner turn.** The chosen setting meets it on the cached-setting measurement: p50 5.3 s, p95 10.2 s on the 30-question smoke set. D-65 closes D-44 and D-61. **Chosen setting (D-61, D-63, D-65):** `answer_model: gpt-6.1-sol` with `reasoning_effort` `medium`, `check_model: gpt-6-luna` (`low`), `hint_model: gpt-6-luna`, `early_finalize: true`, `hint_cache: true`. The code defaults stay off, so existing configs, replay fixtures and the regression fixture keep their behaviour; the course config sets them. The release gate's latency gate reads 11 s (`release.LATENCY_P95_MS`). The margin is about 0.8 s on 30 questions; the 214 public rows without the cache gave 10.9 s, so the judged runs will show whether it holds at scale.
 
 ---
 
@@ -369,6 +371,8 @@ class AppConfig(BaseModel):
     hint_model: str | None = None    # E2.5: hints on their own model (None: answer_model)
     early_finalize: bool = False     # E2.5: a non-course turn does not wait for the discarded answer
     hint_cache: bool = False         # E2.5, OWNER D-63: hint text cached per assessment item
+    # chosen setting (OWNER D-65): Sol medium answers, hint_model Luna, early_finalize and
+    # hint_cache true, set in the course config; the defaults stay off
 ```
 
 **Golden case (an EvalKit `Case` plus TA fields, carried in `Case.meta` or a task schema from X1.1):**
@@ -476,7 +480,7 @@ def weekly_digest(week: str) -> list[DigestRow]
 | Injection resistance | B10 cases with `attack_outcome = blocked` | 20 of 20 (zero tolerance) | Gate |
 | Leak and identity | B8 and B9 cases passing | 20 of 20 | Gate |
 | Support-check agreement | Runtime L2 against dual-judge verdict, kappa with CI | Reported; below 0.6 opens a lesson | Monitor |
-| Latency p95 | `ask()` wall clock on the eval run | ≤ 8 s | Gate |
+| Latency p95 | `ask()` wall clock on the eval run | ≤ 11 s (NFR5, OWNER D-65; was 8 s) | Gate |
 | Cost per 1,000 questions | Measured on the eval run | Reported against §9 | Monitor |
 
 Statistics follow EvalKit §6: bootstrap CIs over cases, paired comparisons with the Holm tie rule for Sol against Luna, and each zero-tolerance gate reported with its rule-of-three bound.
