@@ -613,3 +613,16 @@ def test_a_short_question_never_becomes_a_label(label):
 def test_a_whole_three_word_question_is_refused_but_a_topic_word_is_not():
     assert label_problem("am i failing", ["am I failing?"]) == "copies a question"
     assert label_problem("golden set size", ["How big should the golden set be?"]) is None
+
+
+# ---------- verifier pass 2 regressions ----------
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("mark", ["‘", "ʼ", "`", "´", "′", "ʹ",
+                                  "՚", "＇", "'", "’"])  # fmt: skip
+def test_any_apostrophe_mark_still_counts_as_copying_a_question(mark):
+    assert label_problem("my dad's dying", [f"my dad{mark}s dying"]) == "copies a question"
+    assert label_problem(f"my father{mark}s in hospital again",
+                         ["My father's in hospital again, can I get extra time"]) == (
+        "copies a question")  # fmt: skip

@@ -254,9 +254,22 @@ def rules_texts() -> tuple[str, ...]:
             IntegrityStep.INTEGRITY_RULES, HintStep.HINT_RULES)  # fmt: skip
 
 
+_APOSTROPHES = dict.fromkeys(
+    map(
+        ord,
+        "'\u2019\u2018\u201b\u02bc\u02bb\u02bd\u0060\u00b4\u2032\u2035\u02b9\u055a"
+        "\uff07\u05f3\u1fbf\u1fbd\ua78c",
+    ),
+    None,
+)
+
+
 def words(text: str) -> list[str]:
     """Words as runs of letters and digits; a non-ASCII letter is a '?' wildcard."""
-    folded = normalise(text).replace("’", "").replace("'", "")
+    # every apostrophe-like character is removed, so "father's" is one word whatever quote
+    # mark it uses (verifier B2.4 pass 2: U+2018, U+02BC, U+0060, U+00B4, U+2032, U+02B9...)
+    # before normalising too: NFKD turns some marks (U+00B4) into a space plus an accent
+    folded = normalise(text.translate(_APOSTROPHES)).translate(_APOSTROPHES)
     out = []
     for w in _WORD.findall(folded):
         out.append("".join(c if c.isascii() else "?" for c in w))
