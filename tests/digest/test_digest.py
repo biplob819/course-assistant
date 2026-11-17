@@ -860,3 +860,18 @@ def test_full_width_punctuation_never_hides_a_spaceless_copy(store, q, label):
                                    "add a bad face", "Week 12 data"])  # fmt: skip
 def test_hex_letter_words_next_to_a_number_are_not_an_id(label):
     assert label_problem(label, [GOLDEN_Q]) is None
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("q, label", [
+    ("我爸爸在ICU住院了，第3周作业要延期",
+     "我爸爸在ICU住院了"),
+    ("我父亲住院3天了作业2能延期吗老师",
+     "我父亲住院3天了作业2能延期吗"),
+    ("父亲去世了", "父亲去世了"),
+])  # fmt: skip
+def test_ascii_inside_a_spaceless_copy_never_hides_it(store, q, label):
+    assert label_problem(label, [q]) == "copies a question"
+    cohort(store, 5, q)
+    rows, _, _ = run(store, Luna(labeler=lambda _t: label))
+    assert rows == () and store.digest(WEEK) == []

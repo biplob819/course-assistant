@@ -243,6 +243,7 @@ def _shares_run(label: str, index: dict[tuple[int, ...], set[tuple[str, ...]]]) 
 # mark splits a token (more tokens, so a stricter test) and never merges two.
 MIN_WHOLE_LETTERS = 3  # a whole short question must carry at least this many letters
 SPACELESS_RUN = 8  # characters, for a question in a script written without spaces
+MIN_SPACELESS = 4  # a whole spaceless question this long or longer counts as short
 _BLANK_LETTERS = dict.fromkeys(map(ord, "\u115f\u1160\u3164\uffa0\u2800"), " ")
 # control characters end a word too (verifier B2.4 pass 11: "my dad\rdied" merged to 2 tokens)
 _BLANK_LETTERS.update(dict.fromkeys([*range(0x20), *range(0x7F, 0xA0)], " "))
@@ -371,11 +372,18 @@ class QuestionIndex:
             # a script written without spaces (Chinese, Japanese, Thai): every 8-character run
             # of the question's whole letter stream, across punctuation (pass 12: a full-width
             # comma cut a sentence into chunks under 8), when the run has no ASCII letter
+            # (pass 13: a window counts when most of it is non-ASCII, so digits and Latin
+            # letters inside it, such as "ICU" or "3", no longer hide it)
             stream = _stream(q)
             for i in range(len(stream) - SPACELESS_RUN + 1):
                 window = stream[i : i + SPACELESS_RUN]
-                if not any(c.isascii() for c in window):
+                if sum(not c.isascii() for c in window) * 2 > len(window):
                     runs.add(window)
+            # a whole short question in such a script (4-7 characters) is a short question too
+            if MIN_SPACELESS <= len(stream) < SPACELESS_RUN and (
+                sum(not c.isascii() for c in stream) * 2 > len(stream)
+            ):
+                short.add(stream)
         self.short = sorted(short)
         self.runs = sorted(runs)
 
