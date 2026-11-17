@@ -362,18 +362,20 @@ class QuestionIndex:
             for toks in (_label_tokens(q), _label_tokens(q, split_marks=True)):
                 for i in range(len(toks) - n + 1):
                     runs.add("".join(toks[i : i + n]))
-                # a script written without spaces (Chinese, Japanese, Thai) puts a whole
-                # sentence in one token, so its 8-character runs count as runs too (pass 11)
-                for tok in toks:
-                    if len(tok) >= SPACELESS_RUN and not tok.isascii():
-                        for i in range(len(tok) - SPACELESS_RUN + 1):
-                            runs.add(tok[i : i + SPACELESS_RUN])
                 if 3 <= len(toks) < n:
                     for i in range(len(toks) - 2):
                         for j in range(i + 3, len(toks) + 1):
                             st = "".join(toks[i:j])
                             if len(st) >= MIN_WHOLE_LETTERS:
                                 short.add(st)
+            # a script written without spaces (Chinese, Japanese, Thai): every 8-character run
+            # of the question's whole letter stream, across punctuation (pass 12: a full-width
+            # comma cut a sentence into chunks under 8), when the run has no ASCII letter
+            stream = _stream(q)
+            for i in range(len(stream) - SPACELESS_RUN + 1):
+                window = stream[i : i + SPACELESS_RUN]
+                if not any(c.isascii() for c in window):
+                    runs.add(window)
         self.short = sorted(short)
         self.runs = sorted(runs)
 
@@ -418,14 +420,18 @@ def _looks_like_an_id(raw: str) -> bool:
         if len(tok) >= 8 and re.fullmatch(r"[0-9a-fA-F]+", tok) and re.search(r"[0-9]", tok):
             return True
     # adjacent hex-only tokens joined, whatever separates them (pass 11: "2e34-5afd 911e-9c99")
-    joined = ""
+    # an id mixes digits and letters in a group, or is at least a quarter digits, so ordinary
+    # hex-letter words next to a number ("week 12 feed a bad face") are not an id (pass 12)
+    joined, mixed = "", False
     for tok in [*toks, "_"]:
         if tok and re.fullmatch(r"[0-9a-fA-F]+", tok):
             joined += tok
+            mixed = mixed or (re.search(r"[0-9]", tok) and re.search(r"[a-fA-F]", tok)) is not None
             continue
-        if len(joined) >= 12 and re.search(r"[0-9]", joined):
+        digits = sum(c.isdigit() for c in joined)
+        if len(joined) >= 12 and digits and (mixed or digits * 4 >= len(joined)):
             return True
-        joined = ""
+        joined, mixed = "", False
     return False
 
 

@@ -840,3 +840,23 @@ def test_display_keeps_combining_vowel_signs_and_drops_zero_width():
     assert display_label(thai) == thai
     assert display_label("golden​set") == "goldenset"
     assert display_label("neutral   label") == "neutral label"
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("q, label", [
+    ("我的父亲住院了，所以我想延期。",
+     "我的父亲住院了 所以我想延期"),
+    ("我父亲住院了，我很难过。",
+     "我父亲住院了我很难过"),
+])  # fmt: skip
+def test_full_width_punctuation_never_hides_a_spaceless_copy(store, q, label):
+    assert label_problem(label, [q]) == "copies a question"
+    cohort(store, 5, q)
+    rows, _, _ = run(store, Luna(labeler=lambda _t: label))
+    assert rows == () and store.digest(WEEK) == []
+
+
+@pytest.mark.parametrize("label", ["Week 12 feed a bad face", "Session 3 decade feedback",
+                                   "add a bad face", "Week 12 data"])  # fmt: skip
+def test_hex_letter_words_next_to_a_number_are_not_an_id(label):
+    assert label_problem(label, [GOLDEN_Q]) is None
