@@ -160,7 +160,7 @@ def check_run(run: Path, *, config_path: Path, store_path: Path | None,
     from evalkit import run as R
 
     from course_assistant.eval import release
-    from course_assistant.eval.dataset import load_public, to_case
+    from course_assistant.eval.dataset import corpus_context, load_public, to_case
     from course_assistant.eval.release import ReleaseError
     from course_assistant.eval.tuning import recorded_bar
 
@@ -183,7 +183,8 @@ def check_run(run: Path, *, config_path: Path, store_path: Path | None,
             raise ReleaseError("drift.json does not match the drift of the held-out cases on "
                                "this corpus: re-run the gate")  # fmt: skip
         retired = frozenset(found.retired)
-        expected = {c.id: to_case(c, corpus, version, context=()) for c in found.cases}
+        context = corpus_context(corpus)
+        expected = {c.id: to_case(c, corpus, version, context=context) for c in found.cases}
     public = load_public(PUBLIC)
     if len(golden_versions) == 1:
         public = list(release.drift(public, corpus, next(iter(golden_versions))).cases)
@@ -242,18 +243,31 @@ def cmd_check(args: argparse.Namespace) -> int:
     return _report(result, args.json, args.out or live_folder(run) / "gate.json")
 
 
+def _stop_gate(path: Path, code: int, message: str) -> int:
+    """gate.json for an eval-mode exit that has no verdict: the code and one fixed message."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    key = "errors" if code == 2 else "notes"
+    data = {"exit_code": code, "run": path.parent.name, "failures": [], "errors": [], "notes": []}
+    data[key] = [message]
+    path.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"release_gate: {message}", file=sys.stderr)
+    return code
+
+
 def cmd_eval(args: argparse.Namespace) -> int:
+    """Every exit path writes gate.json: at the run folder once one exists, else in the gate
+    folder, else under --out."""
     from course_assistant.answer.ask import Assistant
     from course_assistant.eval.release import apply_removals, flip_live
 
+    args.gate_json = args.out / "gate.json"
     if args.split != "heldout":
-        print("release_gate: the release gate runs on the held-out split (§6.5)", file=sys.stderr)
-        return 2
+        return _stop_gate(args.gate_json, 2, "the release gate runs on the held-out split (§6.5)")
     config, store, _ = load_course(args.config, args.store)
     now = dt.datetime.now(dt.UTC)
     if not args.no_flip and apply_removals(store, now=now):
-        print("release_gate: the candidate only removes units: live at once, no gate (§2.3)")
-        return 0
+        return _stop_gate(args.gate_json, 0, "the candidate only removes units: live at once, "
+                          "no gate (§2.3)")  # fmt: skip
     import eval_live
 
     out = args.out / f"gate-{now.strftime('%Y%m%dT%H%M%SZ')}"
@@ -265,20 +279,26 @@ def cmd_eval(args: argparse.Namespace) -> int:
         argv += ["--store", str(args.store)]
     if args.yes:
         argv.append("--yes")
-    code = eval_live.main(argv)
-    if code in (2, 3):  # refused, or stopped at the cost cap: nothing to gate
-        return code
+    live_code = eval_live.main(argv)
     runs = sorted(out.glob("course-ta-heldout-*/evalkit/*/run.json"))
+    if not runs:  # refused (2) or stopped (3) before EvalKit wrote a run folder
+        code = live_code if live_code in (2, 3) else 2
+        return _stop_gate(args.gate_json, code, f"eval_live exited {live_code} before a run "
+                          "folder was written: nothing to gate")  # fmt: skip
     if len(runs) != 1:
-        print(f"release_gate: expected one run folder under {out}, found {len(runs)}",
-              file=sys.stderr)  # fmt: skip
-        return 2
+        return _stop_gate(args.gate_json, 2, f"expected one run folder, found {len(runs)}")
     run = runs[0].parent
     args.gate_json = live_folder(run) / "gate.json"
     result = check_run(run, config_path=args.config, store_path=args.store,
                        calibration=evalkit_dir(args.calibration) if args.calibration else None,
                        baseline_path=None, env=os.environ)  # fmt: skip
-    code = _report(result, args.json, live_folder(run) / "gate.json")
+    if live_code == 3 and result.exit_code != 2:  # EvalKit said it stopped at the cap
+        result.exit_code = 3
+        result.notes.append("eval_live stopped at the cost cap")
+    elif live_code == 2 and result.exit_code != 2:  # eval_live failed after writing the run
+        result.exit_code = 2
+        result.errors.append("eval_live exited 2 (a config or runtime error)")
+    code = _report(result, args.json, args.gate_json)
     if result.exit_code == 0 and not args.no_flip:
         state = flip_live(store, result, rules_hash=Assistant.rules_hash(),
                           grounding_bar=config.grounding_bar, now=now)  # fmt: skip

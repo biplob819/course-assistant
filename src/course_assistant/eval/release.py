@@ -50,6 +50,7 @@ CASE_RULES = {"grounded": {"B1"}, "handover": set(HANDOVER_RULES), "integrity": 
 MIN_B1_PER_SESSION, MIN_B3_PER_ASSESSMENT = 15, 3  # §6.3 coverage rule
 EXPOSURE_MIN_CHARS = 25  # D-54
 LIVE_FILE, BASELINE_FILE = "LIVE.json", "live-baseline.json"
+CASE_SOURCE = "local/course-ta"  # EvalKit's local loader: f"local/{task.name}"
 N_RESAMPLES = 2000
 
 
@@ -252,23 +253,28 @@ def _json(value: Any) -> Any:
 
 
 def row_content(row: Mapping[str, Any]) -> str:
-    """What the gate compares of a dataset row (`dataset.to_case`): all but the corpus text."""
+    """What the gate compares of a dataset row (`dataset.to_case`): every field, with the
+    source EvalKit's local loader gives a case of task course-ta."""
     view = {"id": row["id"], "question": row["question"], "label": row["label"],
-            "meta": row["meta"]}  # fmt: skip
+            "meta": row["meta"], "context": row["context"], "source": CASE_SOURCE}  # fmt: skip
     return json.dumps(_json(view), sort_keys=True)
 
 
 def case_content(case: Case) -> str:
     """The same view of a case as EvalKit wrote it into the run folder."""
     view = {"id": case.id, "question": case.question, "label": case.reference_label,
-            "meta": case.meta}  # fmt: skip
+            "meta": case.meta, "context": case.context, "source": case.source}  # fmt: skip
     return json.dumps(_json(view), sort_keys=True)
 
 
 def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
-    """Every check that depends only on the run's inputs (the cases, which records exist, the
-    MANIFEST, the citations present) runs before the cost-cap and pending stops, so the exit
-    code of an input error never depends on how far the run got (precedence 2 > 3 > 4 > 1)."""
+    """Input-only checks (the cases file, the MANIFEST ids, the cases' content, duplicates,
+    records for unknown cases, and what the cases alone decide: one corpus version, a case of
+    every gate's rule, a B1 case with gold units) run before the cost-cap and pending stops,
+    so their exit code never depends on how far the run got. Completion-dependent checks (a
+    B1 record with citations, scores present, a case for every metric among the records, the
+    support file) run after the stops: a capped or pending run is 3 or 4 first. Precedence
+    2 > 3 > 4 > 1 within each class."""
     v = Verdict(exit_code=EXIT_PASS, run=run_dir.name)
     try:
         R.read_manifest(run_dir)
@@ -310,10 +316,6 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
     counts = Counter(r.case_id for r in records)
     answered = set(counts)
     summary_path = run_dir / "summary.json"
-    if not absent and not any(_rule(cases[r.case_id]) == "B1" and r.completion.answer is not None
-                              and r.completion.answer.citations
-                              for r in records if r.case_id in cases):  # fmt: skip
-        absent.append("citation_validity")
     if absent:
         return _stop(v, EXIT_ERROR, "; ".join(f"no case for the {m} gate" for m in absent))
     if answered - ids:
@@ -322,19 +324,7 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
     if doubled:
         return _stop(v, EXIT_ERROR, f"{len(doubled)} case(s) have more than one record: "
                      f"{', '.join(doubled)}")  # fmt: skip
-    # a record that has scores must have every score it needs, whether or not the run finished
-    scored = [r for r in records if r.scores is not None]
-    try:
-        v.values = case_values(scored, cases)
-    except ReleaseError as exc:
-        return _stop(v, EXIT_ERROR, str(exc))
-    support = run_dir.parent.parent / "support-agreement.json"  # eval_live: RUN/evalkit/<run>
-    if support.is_file():
-        try:
-            kappa = json.loads(support.read_text("utf-8"))["kappa"]["point"]
-            v.monitors["support_kappa"] = float(kappa)
-        except (ValueError, TypeError, KeyError):
-            return _stop(v, EXIT_ERROR, "support-agreement.json is malformed")
+    # ---- the stops: everything below depends on how far the run got ----
     summary: dict[str, Any] = {}
     if summary_path.is_file():
         try:
@@ -346,9 +336,24 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
                      "unanswered (cost cap): resume with the same command")  # fmt: skip
     if summary.get("judging_status") != "complete":
         return _stop(v, EXIT_PENDING, "judging is pending: collect the judges, then re-run")
+    scored = [r for r in records if r.scores is not None]
     if len(scored) != len(records):
         return _stop(v, EXIT_ERROR, f"judging is complete but {len(records) - len(scored)} "
                      "record(s) have no scores")  # fmt: skip
+    if not any(_rule(cases[r.case_id]) == "B1" and r.completion.answer is not None
+               and r.completion.answer.citations for r in records):  # fmt: skip
+        return _stop(v, EXIT_ERROR, "no case for the citation_validity gate")
+    try:
+        v.values = case_values(records, cases)
+    except ReleaseError as exc:
+        return _stop(v, EXIT_ERROR, str(exc))
+    support = run_dir.parent.parent / "support-agreement.json"  # eval_live: RUN/evalkit/<run>
+    if support.is_file():
+        try:
+            kappa = json.loads(support.read_text("utf-8"))["kappa"]["point"]
+            v.monitors["support_kappa"] = float(kappa)
+        except (ValueError, TypeError, KeyError):
+            return _stop(v, EXIT_ERROR, "support-agreement.json is malformed")
     v.gates, errors = gates(v.values, [r.completion.latency_ms for r in records], inputs.seed)
     if errors:
         v.errors += errors

@@ -57,7 +57,8 @@ baseline (first release) is reported, not failed.
 
 **The verdict** — `verdict(run_dir, inputs)` → `Verdict(exit_code, failures, errors, ...)`:
 - exit 2: not a held-out run (run case ids must equal the MANIFEST ids minus drift-retired
-  ids, never `meta.split` alone), a missing file, an unreadable record, a missing score;
+  ids, never `meta.split` alone), case content that differs from the MANIFEST-checked held-out
+  file, a missing file, an unreadable record, a missing score (see the check order below);
 - exit 3: the run stopped before every case was answered (EvalKit's cost-cap stop leaves no
   `summary.json` or fewer records than cases);
 - exit 4: `judging_status` pending;
@@ -68,6 +69,23 @@ baseline (first release) is reported, not failed.
   required, append-only), a coverage problem, or a held-out exposure (D-54);
 - exit 0 otherwise. Precedence 2 > 3 > 4 > 1 > 0. `gate.json` holds the verdict: numbers, ids,
   model snapshots and messages; no case text.
+
+**Check order (verifier passes 2 to 4).** Checks fall into two classes:
+- *Input-only*, run before the cost-cap and pending stops, so their exit 2 never depends on how
+  far the run got: the run's `cases.jsonl` is readable and has no duplicate line; its ids are
+  exactly the MANIFEST held-out ids minus drift-retired ones; each case equals, field by field
+  (id, question, label, meta, context and source `local/course-ta`), the row built from the
+  private held-out file that `load_heldout` matched against the MANIFEST (per-case hashes, file
+  hash, count), after drift; no record names an unknown case or repeats a case; and what the
+  cases alone decide: one corpus version, a case of every gate's rule, a B1 case with gold
+  units. Without the private held-out file the cases cannot be checked: exit 2.
+- *Completion-dependent*, run after the stops (a capped run is 3 and a pending one 4 first):
+  a B1 record with citations, every record scored with every score it needs, a case for every
+  metric among the records, a well-formed `support-agreement.json`.
+In eval mode every exit path writes `gate.json`: at the run folder once EvalKit wrote one (an
+`eval_live` cap or error there is merged with the verdict, an input error still winning), else
+in the gate folder, else under `--out`. An unexpected exception exits 2 with a fixed message
+naming only its class (D-59).
 
 **D-54 held-out exposure** — `heldout_exposure(questions, texts)`: held-out ids whose question
 (25+ characters) appears in a tracked file. The gate runs it where the private held-out file

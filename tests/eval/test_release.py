@@ -67,7 +67,8 @@ def ids(run: Path) -> frozenset[str]:
 def rows_of(run: Path) -> dict[str, dict[str, Any]]:
     """The run's cases as dataset rows, as they are now (the cases the run should hold)."""
     return {c.id: {"id": c.id, "question": c.question, "label": c.reference_label,
-                   "meta": c.meta} for c in R.read_cases(run).values()}  # fmt: skip
+                   "meta": c.meta, "context": list(c.context)}
+            for c in R.read_cases(run).values()}  # fmt: skip
 
 
 def inputs(run: Path, **kw: Any) -> GateInputs:
@@ -565,8 +566,9 @@ def test_drift_on_the_unchanged_corpus_changes_nothing_and_repeats_exactly():
 # ============ verifier pass 1 (E2.4): precedence, duplicates, baseline, exposure ============
 
 
-def test_a_missing_score_in_a_cost_capped_run_exits_2_not_3(held_run, tmp_path):
-    """Precedence 2 > 3: an input error in the records written so far wins over the cap."""
+def test_a_missing_score_is_completion_dependent(held_run, tmp_path):
+    """A missing score depends on how far the run got (verifier pass 4): a capped run is 3
+    and a pending one 4 first; a finished one is 2."""
     run = fresh(held_run, tmp_path)
     b9 = first_id(run, "B9")
     lines = (run / "records.jsonl").read_text("utf-8").splitlines()
@@ -580,10 +582,14 @@ def test_a_missing_score_in_a_cost_capped_run_exits_2_not_3(held_run, tmp_path):
         return r
 
     edit_records(run, drop)
-    v = release.verdict(run, inputs(run))
+    assert release.verdict(run, inputs(run)).exit_code == 3
+    full = fresh(held_run, tmp_path, "full")
+    b9 = first_id(full, "B9")
+    edit_records(full, drop)
+    v = release.verdict(full, inputs(full))
     assert v.exit_code == 2 and v.errors == [f"record {b9} has no identity score"]
-    edit_json(run / "summary.json", lambda d: {**d, "judging_status": "pending"})
-    assert release.verdict(run, inputs(run)).exit_code == 2  # and over pending
+    edit_json(full / "summary.json", lambda d: {**d, "judging_status": "pending"})
+    assert release.verdict(full, inputs(full)).exit_code == 4
 
 
 def test_duplicate_records_for_a_case_exit_2(held_run, tmp_path):
@@ -717,6 +723,16 @@ def _swap_question(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
+def _other_context(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows[0]["context"] = ["other text", *rows[0]["context"][1:]]
+    return rows
+
+
+def _other_source(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows[0]["source"] = "local/elsewhere"
+    return rows
+
+
 def _no_gold_indices(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for r in rows:
         r["meta"].pop("gold_indices", None)
@@ -758,8 +774,9 @@ def _missing_score(run: Path) -> None:
 
 @pytest.mark.safety
 def test_every_input_only_check_exits_2_whether_complete_capped_or_pending(held_run, tmp_path):
-    """Each check that depends only on the run's inputs (cases, which records exist, the
-    MANIFEST-checked cases, citations present) gives the same exit under every stop."""
+    """Input-only checks (cases file, MANIFEST ids, content including context and source,
+    duplicates, records for unknown cases, what the cases alone decide) exit 2 under every
+    stop; completion-dependent ones (B1 citations, scores) give 3 capped and 4 pending first."""
     plants: dict[str, tuple[Any, str]] = {
         "extra MANIFEST id": (None, "not the held-out split"),
         "duplicate case line": (_double_case, "more than once"),
@@ -767,13 +784,19 @@ def test_every_input_only_check_exits_2_whether_complete_capped_or_pending(held_
         "two corpus versions": (lambda run: _edit_cases(run, _two_versions), "more than one"),
         "missing rule": (lambda run: _without_rule(run, "B9"), "no case for the identity gate"),
         "no gold units": (lambda run: _edit_cases(run, _no_gold_indices), "differ from"),
-        "no B1 citations": (lambda run: edit_records(run, _strip_b1_citations),
-                            "no case for the citation_validity gate"),
         "record for an unknown case": (_unknown_record, "for cases not in the run"),
         "duplicate record": (_double_record, "more than one record"),
+        "changed context": (lambda run: _edit_cases(run, _other_context), "differ from"),
+        "changed source": (lambda run: _edit_cases(run, _other_source), "differ from"),
+    }  # fmt: skip
+    # completion-dependent checks: what the records hold so far; the stops come first
+    later: dict[str, tuple[Any, str]] = {
+        "no B1 citations": (lambda run: edit_records(run, _strip_b1_citations),
+                            "no case for the citation_validity gate"),
         "missing score": (_missing_score, "has no identity score"),
     }  # fmt: skip
-    for name, (plant, message) in plants.items():
+    codes = {"complete": 2, "capped": 3, "pending": 4}
+    for name, (plant, message) in [*plants.items(), *later.items()]:
         for stop in ("complete", "capped", "pending"):
             run = fresh(held_run, tmp_path, f"{len(name)}-{name[:6]}-{stop}".replace(" ", "_"))
             expected = rows_of(run)  # what the MANIFEST-checked held-out file holds
@@ -791,8 +814,10 @@ def test_every_input_only_check_exits_2_whether_complete_capped_or_pending(held_
             held = set(expected) | ({"ta-b1-999"} if name == "extra MANIFEST id" else set())
             v = release.verdict(run, inputs(run, heldout_ids=frozenset(held),
                                             expected_cases=expected))  # fmt: skip
-            assert v.exit_code == 2, (name, stop, v.exit_code, v.errors, v.notes)
-            assert any(message in e for e in v.errors), (name, stop, v.errors)
+            want = 2 if name in plants else codes[stop]
+            assert v.exit_code == want, (name, stop, v.exit_code, v.errors, v.notes)
+            if want == 2:
+                assert any(message in e for e in v.errors), (name, stop, v.errors)
 
 
 @pytest.mark.safety
@@ -831,3 +856,67 @@ def test_a_crash_in_eval_mode_writes_gate_json(tmp_path, monkeypatch):
     (gate,) = (tmp_path / "o").glob("gate-*/course-ta-heldout-x/gate.json")
     data = json.loads(gate.read_text(encoding="utf-8"))
     assert data["exit_code"] == 2 and data["errors"] == ["the gate could not run (TypeError)"]
+
+
+def _fake_live(code: int, folders: int = 1) -> Any:
+    def fake(argv: list[str]) -> int:
+        out = Path(argv[argv.index("--out") + 1])
+        for i in range(folders):
+            d = out / "course-ta-heldout-x" / "evalkit" / f"r{i}"
+            d.mkdir(parents=True)
+            (d / "run.json").write_text("{}", encoding="utf-8")
+        return code
+
+    return fake
+
+
+def test_every_eval_mode_exit_writes_gate_json(tmp_path, monkeypatch):
+    """Verifier pass 4: eval_live's 2 or 3 returned before any gate.json or check."""
+    config, store = _store(tmp_path)
+
+    def gate_files(root: Path) -> list[dict[str, Any]]:
+        return [json.loads(p.read_text(encoding="utf-8")) for p in sorted(root.rglob("gate.json"))]
+
+    def run(name: str, *extra: str) -> tuple[int, list[dict[str, Any]]]:
+        out = tmp_path / name
+        code = G.main(["eval", "--config", str(config), "--yes", "--out", str(out), *extra])
+        return code, gate_files(out)
+
+    seen: list[Path] = []
+    verdict_code = {"code": 1}
+
+    def fake_check(run_dir: Path, **k: Any) -> Verdict:
+        seen.append(run_dir)
+        return dataclasses.replace(_passing(), exit_code=verdict_code["code"], run=run_dir.name)
+
+    monkeypatch.setattr(G, "check_run", fake_check)
+    code, files = run("split", "--split", "public")
+    assert code == 2 and [f["exit_code"] for f in files] == [2]
+    for live_code in (2, 3):  # refused or capped before EvalKit wrote a run folder
+        monkeypatch.setattr(eval_live, "main", lambda argv, c=live_code: c)
+        code, files = run(f"early{live_code}")
+        assert code == live_code and [f["exit_code"] for f in files] == [live_code]
+    monkeypatch.setattr(eval_live, "main", _fake_live(3))  # capped with a run folder: checked
+    code, files = run("capped")
+    assert code == 3 and [f["exit_code"] for f in files] == [3] and seen[-1].name == "r0"
+    verdict_code["code"] = 2  # an input error in that run wins over the cap
+    code, files = run("capped-bad")
+    assert code == 2 and [f["exit_code"] for f in files] == [2]
+    verdict_code["code"] = 0
+    monkeypatch.setattr(eval_live, "main", _fake_live(2))  # failed after writing the run
+    code, files = run("late2", "--no-flip")
+    assert code == 2 and [f["exit_code"] for f in files] == [2]
+    monkeypatch.setattr(eval_live, "main", _fake_live(0, folders=2))
+    code, files = run("two")
+    assert code == 2 and [f["exit_code"] for f in files] == [2]
+    for vc in (1, 4, 0):
+        verdict_code["code"] = vc
+        monkeypatch.setattr(eval_live, "main", _fake_live(vc))
+        code, files = run(f"verdict{vc}", "--no-flip")
+        assert code == vc and [f["exit_code"] for f in files] == [vc]
+    # removal-only candidate: live at once, and gate.json says so
+    release.flip_live(store, _passing(), rules_hash="rh", grounding_bar=0.5, now=NOW)
+    store.save(_sub(E.CORPUS, lambda u: u.session != "s03"))
+    code, files = run("removal")
+    assert code == 0 and [f["exit_code"] for f in files] == [0]
+    assert "only removes units" in files[0]["notes"][0]
