@@ -129,3 +129,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FIX] [E2.4] — verifier pass 1: tuning-log history walk checks every parent of every commit, merges included (full history); make's exit 2 documented and CI calls release_gate.py for the 0-4 codes; score errors take precedence over cost-cap and pending stops; duplicate records and a baseline sharing no case exit 2; live-job secrets per step; llm code and uv.lock trigger the gate; record_fixture restores the folder on a failed swap; D-54 scan over every tracked text file by content; P4.1 row names the serving_corpus wiring
 - [FIX] [B2.4] — verifier pass 3: label copy test compares letter streams
 - [FIX] [B2.4] — verifier pass 4: labels normalised whole; exact-majority look-alike match
+- [FIX] [N1.5] — checkpoint timing test bound 3 s -> 10 s (still far under the 30 s timeout); a macOS CI runner took 3.6 s

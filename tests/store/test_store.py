@@ -405,7 +405,8 @@ def test_checkpoint_with_a_reader_open_is_quick_and_reported(tmp_path):
     reader.execute("select count(*) from records").fetchone()
     started = time.monotonic()
     s.delete_history(A, at=T0)
-    assert time.monotonic() - started < 3.0
+    # far under the connection's 30 s timeout; 10 s leaves room for slow CI runners (macOS)
+    assert time.monotonic() - started < 10.0
     assert s.last_checkpoint_complete is False
     reader.rollback()
     reader.close()
