@@ -37,6 +37,7 @@ ingest = [
     "python-pptx>=1",
 ]
 eval = [
+    "anthropic>=1",
     "evalkit-harness>=0.2,<0.3",  # X1.1: case-aware systems, task scorers, slices (D-11)
 ]
 app = [
