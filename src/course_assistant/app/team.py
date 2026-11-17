@@ -12,6 +12,7 @@ type only (D-14).
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import logging
 import math
@@ -288,7 +289,11 @@ class TeachingTeam:
         if self._learner_code(code):
             self.gate.lock_session(state.token)
             raise GuardRefused(SAME_PASSKEY)
-        self._audit("staff_unlock")
+        try:
+            self._audit("staff_unlock")
+        except GuardRefused:
+            self.gate.lock_session(state.token)  # never open without its audit row
+            raise
 
     def _learner_code(self, code: str) -> bool:
         """The staff code also opens the learner hash (the same code under another salt)."""
@@ -305,13 +310,28 @@ class TeachingTeam:
         self.gate.lock_session(state.token)
         state.token = TeamState.new().token
         if was_open:
-            self._audit("staff_sign_out")
+            with contextlib.suppress(GuardRefused):  # signed out even if the audit fails
+                self._audit("staff_sign_out")
 
     def _require(self, state: TeamState) -> None:
         self.gate.require(state.token)
 
+    def _connect(self) -> Store:
+        """The store, or a fixed refusal: a store that will not open never crashes the page
+        (verifier B2.3 pass 1). Logged by exception type only."""
+        try:
+            return self.store()
+        except Exception as exc:
+            LOG.warning("teaching team: store open failed (%s)", type(exc).__name__)
+            raise GuardRefused(READ_FAILED) from None
+
     def _audit(self, action: str, target: str | None = None) -> None:
-        self.store().audit(self.role, action, target, at=self.now())
+        store = self._connect()
+        try:
+            store.audit(self.role, action, target, at=self.now())
+        except Exception as exc:
+            LOG.warning("teaching team: audit write failed (%s)", type(exc).__name__)
+            raise GuardRefused(READ_FAILED) from None
 
     # --- the queue (TTV-01) ---
 
@@ -320,24 +340,27 @@ class TeachingTeam:
         if status is not None and status not in STATUSES:
             raise GuardRefused(BAD_STATUS)
         try:
-            items = team_queue(self.store(), viewer=self.role, status=status, at=self.now())
+            items = team_queue(self._connect(), viewer=self.role, status=status, at=self.now())
         except EscalationError:
             raise GuardRefused(READ_FAILED) from None
         return tuple(queue_row(i, self.corpus) for i in items)
 
     def reply(self, state: TeamState, question_id: str, text: str) -> None:
         self._require(state)
-        self._escalation(lambda: reply(question_id, text, instructor=self.role,
-                                       store=self.store(), at=self.now()))  # fmt: skip
+        store = self._connect()
+        self._escalation(lambda: reply(question_id, text, instructor=self.role, store=store,
+                                       at=self.now()))  # fmt: skip
 
     def flag_gap(self, state: TeamState, question_id: str) -> None:
         self._require(state)
-        self._escalation(lambda: flag_gap(question_id, instructor=self.role,
-                                          store=self.store(), at=self.now()))  # fmt: skip
+        store = self._connect()
+        self._escalation(lambda: flag_gap(question_id, instructor=self.role, store=store,
+                                          at=self.now()))  # fmt: skip
 
     def close(self, state: TeamState, question_id: str) -> None:
         self._require(state)
-        self._escalation(lambda: close(question_id, instructor=self.role, store=self.store(),
+        store = self._connect()
+        self._escalation(lambda: close(question_id, instructor=self.role, store=store,
                                        at=self.now()))  # fmt: skip
 
     @staticmethod
@@ -362,7 +385,9 @@ class TeachingTeam:
         except Exception:
             raise GuardRefused(BAD_WEEK) from None
         try:
-            rows = self.store().digest(week)
+            rows = self._connect().digest(week)
+        except GuardRefused:
+            raise
         except Exception as exc:
             LOG.warning("teaching team: digest read failed (%s)", type(exc).__name__)
             raise GuardRefused(READ_FAILED) from None
@@ -398,20 +423,32 @@ class TeachingTeam:
         return [ALL, *sorted({u.session for u in self.corpus.units})]
 
     def pauses(self, state: TeamState) -> tuple[PauseLine, ...]:
+        """Each scope's own state, audited `view_pauses`. Fail closed: an unreadable state
+        shows as paused, and a store that will not open (or an audit that cannot be written)
+        shows every scope as paused."""
         self._require(state)
-        store = self.store()
+        labels = [(s, ALL_LABEL if s == ALL else _session_label(s)) for s in self._scopes()]
+        unreadable = tuple(PauseLine(scope=s, scope_label=label, paused=True, unreadable=True)
+                           for s, label in labels)  # fmt: skip
+        try:
+            store = self._connect()
+        except GuardRefused:
+            return unreadable
         out = []
-        for scope in self._scopes():
-            label = ALL_LABEL if scope == ALL else _session_label(scope)
+        for line, (scope, label) in zip(unreadable, labels, strict=True):
             try:
                 ps = store.pause_state(scope)
             except Exception as exc:  # fail closed: an unreadable state shows as paused
                 LOG.warning("teaching team: pause read failed (%s)", type(exc).__name__)
-                out.append(PauseLine(scope=scope, scope_label=label, paused=True, unreadable=True))
+                out.append(line)
                 continue
             out.append(
                 PauseLine(scope=scope, scope_label=label, paused=ps is not None and ps.paused)
             )
+        try:
+            self._audit("view_pauses")
+        except GuardRefused:
+            return unreadable
         return tuple(out)
 
     def set_pause(self, state: TeamState, scope: str, paused: bool, *,
@@ -423,13 +460,18 @@ class TeachingTeam:
             raise GuardRefused(NOT_CONFIRMED)
         if scope not in self._scopes() or not isinstance(paused, bool):
             raise GuardRefused(BAD_SCOPE)
-        self.store().set_pause(scope, paused, self.role, at=self.now())
+        store = self._connect()
+        try:
+            store.set_pause(scope, paused, self.role, at=self.now())
+        except Exception as exc:
+            LOG.warning("teaching team: pause write failed (%s)", type(exc).__name__)
+            raise GuardRefused(READ_FAILED) from None
 
     # --- the ops tile (TTV-05) ---
 
     def ops(self, state: TeamState) -> OpsTile:
         self._require(state)
-        store = self.store()
+        store = self._connect()
         try:
             lo = dt.datetime(1970, 1, 2, tzinfo=dt.UTC)
             questions = store.questions_between(lo, self.now() + dt.timedelta(days=1))

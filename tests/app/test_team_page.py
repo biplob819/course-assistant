@@ -299,3 +299,20 @@ def test_every_learner_and_team_text_reaches_the_page_literally(make_rig):
         for marker in MARKERS:
             assert marker not in str(value), (marker, value)
     assert not at.exception
+
+
+@pytest.mark.safety
+def test_page_never_crashes_when_the_store_will_not_open(make_rig):
+    from course_assistant.app.team import READ_FAILED
+    from tests.app.test_team import broken_store
+
+    rig = make_rig()
+    at = unlock(page())
+    rig.team.store = broken_store
+    for name in ("Queue", "Digest", "Materials", "Pause switches", "Ops"):
+        at = section(at, name)
+        assert not at.exception, name
+        if name == "Pause switches":
+            assert "could not be read" in texts(at)
+        else:
+            assert READ_FAILED in [e.value for e in at.error], name

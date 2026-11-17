@@ -52,7 +52,9 @@ tested with `AppTest`. Deploying it next to the learner page is D3.2.
     Audited `view_manifest`. Nothing in this module writes the manifest or the corpus.
   - `pauses(state)` and `set_pause(state, scope, paused, *, confirmed)` (TTV-04): one
     `PauseLine` for "all" and per live-corpus session (its own row, N1.5
-    `Store.pause_state`; a read failure shows as paused); `set_pause` refuses unless
+    `Store.pause_state`; a read failure shows as paused), audited `view_pauses`; if the
+    store will not open or the audit cannot be written, every scope shows as paused;
+    `set_pause` refuses unless
     `confirmed is True` and the scope is "all" or a live session, then calls N1.5's
     `set_pause` (pause row and `pause`/`resume` audit in one transaction).
   - `ops(state)` (TTV-05): `OpsTile` with the stored question count, answers by status, the
@@ -88,11 +90,16 @@ tested with `AppTest`. Deploying it next to the learner page is D3.2.
 - The typed passkey is dropped from the widget state on the next run (B2.5 pattern).
 
 ### Changes to green nodes (additive, behaviour unchanged)
-- N1.1: `AUDIT_ACTIONS` and `AuditAction` gain `view_ops`, `staff_unlock`, `staff_sign_out`.
+- N1.1: `AUDIT_ACTIONS` and `AuditAction` gain `view_ops`, `view_pauses`, `staff_unlock`,
+  `staff_sign_out`.
 - N1.5: `Store.pause_state(scope) -> PauseState | None` (the scope's own row; the key and
   record must agree).
 
 ## Rules
+- Every view and action writes exactly one audit row; its target is a question id, a
+  session scope (`s01`, ..., `all`) or none. A store that will not open, or an audit that
+  cannot be written, gives a fixed refusal (logged by exception type), never a crash; unlock
+  is locked again when its audit cannot be written (verifier pass 1).
 - No network or API call in any test. No learner pid, question text or reply text in any
   audit row, log line or error (D-14, NFR7); the page logs by exception type only.
 - The staff page never uses the learner gate or the learner session-state key; the learner

@@ -251,7 +251,7 @@ def test_queue_rows_and_audits_hold_no_learner_id_and_audits_hold_no_text(tmp_pa
     staff = [e for e in rig.audits() if e.actor == "instructor-1"]
     blob = json.dumps([e.model_dump(mode="json") for e in staff])
     assert {e.action for e in staff} == {"staff_unlock", "view_queue", "reply", "view_digest",
-                                         "view_manifest", "pause", "view_ops",
+                                         "view_manifest", "view_pauses", "pause", "view_ops",
                                          "staff_sign_out"}  # fmt: skip
     for text in (REPLY, "pricing", "hospital", NOT_COVERED_DRAFT, st.pid):
         assert text not in blob
@@ -463,3 +463,87 @@ def test_secrets_never_come_from_a_file_and_unset_staff_hash_keeps_the_gate_clos
     with pytest.raises(GuardRefused, match=CLOSED):
         gate.require(TeamState.new().token)
     assert Secret(STAFF_HASH)() == STAFF_HASH and STAFF_HASH != HASH
+
+
+# ==================== verifier pass 1: one audit per view, store failures ====================
+
+VIEWS = ("queue", "digest", "manifest_view", "pauses", "ops")
+ACTIONS = ("reply", "flag_gap", "close", "set_pause")
+NO_STORE = ("weeks",)  # computes dates only: reads and shows nothing from the store
+
+
+def test_every_gated_method_is_classed_as_a_view_an_action_or_storeless():
+    assert set(VIEWS) | set(ACTIONS) | set(NO_STORE) == set(GATED)
+    assert len(VIEWS) + len(ACTIONS) + len(NO_STORE) == len(GATED)
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("name", VIEWS + ACTIONS)
+def test_every_view_and_action_writes_exactly_one_audit_row(tmp_path, name):
+    rig = TeamRig(tmp_path, owner=KINDS["not_covered"])
+    qid = rig.escalated()
+    st = rig.unlock()
+    before = len(rig.audits())
+    args: dict[str, tuple[Any, ...]] = {"reply": (qid, REPLY), "flag_gap": (qid,),
+                                        "close": (qid,), "digest": (WEEK,),
+                                        "set_pause": ("s01", True)}  # fmt: skip
+    kw = {"confirmed": True} if name == "set_pause" else {}
+    getattr(rig.team, name)(st, *args.get(name, ()), **kw)
+    new = rig.audits()[before:]
+    assert len(new) == 1, (name, [e.action for e in new])
+    assert new[0].actor == "instructor-1"
+    expected = {"queue": "view_queue", "digest": "view_digest", "manifest_view": "view_manifest",
+                "pauses": "view_pauses", "ops": "view_ops", "reply": "reply",
+                "flag_gap": "flag_gap", "close": "close", "set_pause": "pause"}  # fmt: skip
+    assert new[0].action == expected[name]
+
+
+def test_weeks_reads_nothing_from_the_store(tmp_path):
+    rig = TeamRig(tmp_path)
+    st = rig.unlock()
+    before = len(rig.audits())
+    rig.team.store = broken_store
+    assert rig.team.weeks(st)[0] == WEEK
+    rig.team.store = rig.learners.stores
+    assert len(rig.audits()) == before
+
+
+def broken_store() -> Any:
+    raise OSError("unable to open database file /private/secret/path")
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("name", [n for n in GATED if n not in NO_STORE and n != "pauses"])
+def test_a_store_that_will_not_open_gives_a_fixed_refusal_never_a_crash(tmp_path, caplog, name):
+    rig = TeamRig(tmp_path)
+    st = rig.unlock()
+    rig.team.store = broken_store
+    with caplog.at_level(logging.WARNING), pytest.raises(GuardRefused) as exc:
+        calls_for(name, rig, st)()
+    assert exc.value.reason == team_mod.READ_FAILED
+    assert "secret" not in caplog.text and "OSError" in caplog.text
+
+
+@pytest.mark.safety
+def test_pauses_fail_closed_when_the_store_will_not_open(tmp_path):
+    rig = TeamRig(tmp_path)
+    st = rig.unlock()
+    rig.team.store = broken_store
+    lines = rig.team.pauses(st)
+    assert len(lines) == 4 and all(x.paused and x.unreadable for x in lines)
+
+
+@pytest.mark.safety
+def test_unlock_with_a_store_that_will_not_open_is_refused_and_stays_locked(tmp_path):
+    rig = TeamRig(tmp_path)
+    rig.team.store = broken_store
+    st = TeamState.new()
+    with pytest.raises(GuardRefused) as exc:
+        rig.team.unlock(st, STAFF_CODE)
+    assert exc.value.reason == team_mod.READ_FAILED
+    assert rig.team.locked_reason(st) == NEEDED  # never open without its audit row
+    rig.team.store = rig.learners.stores
+    rig.unlock(st)
+    rig.team.store = broken_store
+    rig.team.sign_out(st)  # signing out still locks, even when its audit cannot be written
+    assert rig.team.locked_reason(st) == NEEDED

@@ -45,6 +45,7 @@ AUDIT_ACTIONS = (
     "view_ops",
     "staff_unlock",
     "staff_sign_out",
+    "view_pauses",
 )
 AuditAction = Literal[
     "view_queue",
@@ -63,6 +64,7 @@ AuditAction = Literal[
     "view_ops",
     "staff_unlock",
     "staff_sign_out",
+    "view_pauses",
 ]
 
 
