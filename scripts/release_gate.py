@@ -199,7 +199,10 @@ def check_run(run: Path, *, config_path: Path, store_path: Path | None,
     data = (json.loads(baseline_path.read_text(encoding="utf-8")) if baseline_path
             else release.live_baseline(store))  # fmt: skip
     if data is not None:
-        base, snapshots = data["values"], list(data.get("snapshots", []))
+        if isinstance(data, dict):  # the verdict checks the values' shape (input-only)
+            base, snapshots = data.get("values"), list(data.get("snapshots") or [])
+        else:
+            base = data
     inputs = release.GateInputs(
         heldout_ids=heldout_ids(),
         calibration=calibration_status(calibration or run),
@@ -241,6 +244,9 @@ def cmd_check(args: argparse.Namespace) -> int:
                        calibration=evalkit_dir(args.calibration) if args.calibration else None,
                        baseline_path=args.baseline, env=os.environ)  # fmt: skip
     return _report(result, args.json, args.out or live_folder(run) / "gate.json")
+
+
+RANK = {2: 4, 3: 3, 4: 2, 1: 1, 0: 0}  # exit-code precedence: 2 > 3 > 4 > 1 > 0
 
 
 def _stop_gate(path: Path, code: int, message: str) -> int:
@@ -292,14 +298,16 @@ def cmd_eval(args: argparse.Namespace) -> int:
     result = check_run(run, config_path=args.config, store_path=args.store,
                        calibration=evalkit_dir(args.calibration) if args.calibration else None,
                        baseline_path=None, env=os.environ)  # fmt: skip
-    if live_code == 3 and result.exit_code != 2:  # EvalKit said it stopped at the cap
-        result.exit_code = 3
-        result.notes.append("eval_live stopped at the cost cap")
-    elif live_code == 2 and result.exit_code != 2:  # eval_live failed after writing the run
-        result.exit_code = 2
-        result.errors.append("eval_live exited 2 (a config or runtime error)")
+    if live_code and RANK.get(live_code, 4) > RANK.get(result.exit_code, 4):
+        # eval_live's own code outranks the verdict's (precedence 2 > 3 > 4 > 1 > 0)
+        result.exit_code = live_code if live_code in RANK else 2
+        (result.errors if result.exit_code == 2 else result.notes).append(
+            f"eval_live exited {live_code}"
+        )
+    elif live_code:
+        result.notes.append(f"eval_live exited {live_code}")
     code = _report(result, args.json, args.gate_json)
-    if result.exit_code == 0 and not args.no_flip:
+    if result.exit_code == 0 and live_code == 0 and not args.no_flip:
         state = flip_live(store, result, rules_hash=Assistant.rules_hash(),
                           grounding_bar=config.grounding_bar, now=now)  # fmt: skip
         print(f"live corpus version is now {state['corpus_version'][:12]}", file=sys.stderr)
@@ -366,7 +374,21 @@ def cmd_drift(args: argparse.Namespace) -> int:
     return 0
 
 
+def _argv_error_gate(argv: list[str]) -> None:
+    """A command line that does not parse still leaves gate.json (exit 2): at --out's folder
+    when given (eval) or --out itself (check), else under runs/ for eval."""
+    out: Path | None = None
+    if "--out" in argv and argv.index("--out") + 1 < len(argv):
+        given = Path(argv[argv.index("--out") + 1])
+        out = given / "gate.json" if argv[0] == "eval" else given
+    elif argv[0] == "eval":
+        out = ROOT / "runs" / "gate.json"
+    if out is not None:
+        _stop_gate(out, 2, "the command line could not be parsed")
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv_list = list(sys.argv[1:] if argv is None else argv)
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)  # fmt: skip
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -396,7 +418,14 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--json", action="store_true", help="one JSON object on stdout")
         if p is not o:
             p.add_argument("--store", type=Path, help="corpus store folder (default: by config)")
-    args = ap.parse_args(argv)
+    try:
+        args = ap.parse_args(argv)
+    except SystemExit as exc:
+        if not exc.code:  # --help
+            raise
+        if argv_list and argv_list[0] in ("eval", "check"):
+            _argv_error_gate(argv_list)
+        return 2
     from course_assistant.eval.dataset import DatasetError
     from course_assistant.eval.release import ReleaseError
 

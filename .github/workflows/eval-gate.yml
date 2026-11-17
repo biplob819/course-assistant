@@ -129,6 +129,8 @@ jobs:
           name: release-gate-live
           # verdict and summary only: the run folder itself holds case text
           path: |
+            runs/gate.json
+            runs/gate-*/gate.json
             runs/gate-*/course-ta-heldout-*/gate.json
             runs/gate-*/course-ta-heldout-*/evalkit/*/summary.json
           if-no-files-found: warn

@@ -256,11 +256,11 @@ def display_label(raw: str) -> str:
     (verifier B2.4 pass 5: control characters and citation-shaped brackets were checked in
     one form and stored in another)."""
     folded = unicodedata.normalize("NFKC", raw)
-    # combining marks stay with their letter (Thai, Devanagari vowel signs); format characters
-    # (zero-width) vanish; anything else that is not a letter, digit or hyphen is a space
+    # combining marks stay with their letter (Thai, Devanagari vowel signs); anything else that
+    # is not a letter, digit or hyphen is a space
     kept = "".join(
         ch if ch == "-" or unicodedata.category(ch)[0] in "LNM"
-        else "" if unicodedata.category(ch) == "Cf" else " "
+        else " "  # format characters too: a zero-width space must not glue two words (pass 15)
         for ch in folded
     )  # fmt: skip
     return " ".join(kept.split())

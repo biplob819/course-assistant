@@ -70,21 +70,35 @@ baseline (first release) is reported, not failed.
 - exit 0 otherwise. Precedence 2 > 3 > 4 > 1 > 0. `gate.json` holds the verdict: numbers, ids,
   model snapshots and messages; no case text.
 
-**Check order (verifier passes 2 to 4).** Checks fall into two classes:
-- *Input-only*, run before the cost-cap and pending stops, so their exit 2 never depends on how
-  far the run got: the run's `cases.jsonl` is readable and has no duplicate line; its ids are
-  exactly the MANIFEST held-out ids minus drift-retired ones; each case equals, field by field
-  (id, question, label, meta, context and source `local/course-ta`), the row built from the
-  private held-out file that `load_heldout` matched against the MANIFEST (per-case hashes, file
-  hash, count), after drift; no record names an unknown case or repeats a case; and what the
-  cases alone decide: one corpus version, a case of every gate's rule, a B1 case with gold
-  units. Without the private held-out file the cases cannot be checked: exit 2.
-- *Completion-dependent*, run after the stops (a capped run is 3 and a pending one 4 first):
-  a B1 record with citations, every record scored with every score it needs, a case for every
-  metric among the records, a well-formed `support-agreement.json`.
-In eval mode every exit path writes `gate.json`: at the run folder once EvalKit wrote one (an
-`eval_live` cap or error there is merged with the verdict, an input error still winning), else
-in the gate folder, else under `--out`. An unexpected exception exits 2 with a fixed message
+**Check order (verifier passes 2 to 5).** Every input the verdict reads sits in exactly one
+class (`release.INPUT_CLASSES`; a test fails if `verdict` reads anything else):
+- *input-only* — run before the cost-cap and pending stops, so their exit 2 never depends on
+  how far the run got:
+  - `run.json` readable; `cases.jsonl` readable, no duplicate line;
+  - `heldout_ids` (the MANIFEST) minus `retired` (from `drift.json`, recomputed from the
+    private held-out file before the verdict) equal the run's case ids exactly;
+  - `expected_cases`: each case equals, field by field (id, question, label, meta, context and
+    source `local/course-ta`), the row built from the private held-out file that
+    `load_heldout` matched against the MANIFEST (per-case hashes, file hash, count), after
+    drift; without that file the cases cannot be checked (exit 2);
+  - what the cases alone decide: one corpus version, a case of every gate's rule, a B1 case
+    with gold units;
+  - `records.jsonl` presence: no record for an unknown case, no case recorded twice;
+  - `baseline`: well formed (metric -> case id -> finite number) and sharing at least one case
+    id with the run.
+- *completion-dependent* — run after the stops (a capped run is 3 and a pending one 4 first):
+  `summary.json` (judging status, judge mode); `records.jsonl` scores (every record scored with
+  every score it needs, a B1 record with citations, a case for every metric among the
+  records); `support-agreement.json` well formed.
+- *gate condition* — evaluated last, each a failure (exit 1): the §6.4 gates and regressions,
+  `calibration` (certified_calibration), `fixture_problems`, `log_problems` (the tuning log,
+  read before the verdict), `coverage_problems`, `exposure` (D-54), and `baseline_snapshots`
+  (a provider-drift note only). `seed` is a parameter of the bootstrap.
+
+In eval mode every exit path writes `gate.json`, including a command line that does not parse:
+at the run folder once EvalKit wrote one, else in the gate folder, else under `--out`. Any
+non-zero `eval_live` exit blocks the flip and is merged with the verdict by the precedence
+2 > 3 > 4 > 1 > 0. An unexpected exception exits 2 with a fixed message
 naming only its class (D-59).
 
 **D-54 held-out exposure** — `heldout_exposure(questions, texts)`: held-out ids whose question

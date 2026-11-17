@@ -267,6 +267,47 @@ def case_content(case: Case) -> str:
     return json.dumps(_json(view), sort_keys=True)
 
 
+def baseline_problem(baseline: Any, case_ids: AbstractSet[str]) -> str | None:
+    """A baseline must map metric -> case id -> finite number, and share a case with the run."""
+    ok = isinstance(baseline, Mapping) and all(
+        isinstance(m, str) and isinstance(vals, Mapping)
+        and all(isinstance(i, str) and isinstance(x, int | float) and not isinstance(x, bool)
+                and math.isfinite(x) for i, x in vals.items())
+        for m, vals in baseline.items())  # fmt: skip
+    if not ok:
+        return "the live baseline is malformed (metric -> case id -> number)"
+    shared = {i for vals in baseline.values() for i in vals} & set(case_ids)
+    if not shared:
+        return ("the live baseline shares no cases with this run: nothing can be compared "
+                "(pass the right --baseline)")  # fmt: skip
+    return None
+
+
+# Every input the verdict reads, and its class in the check order (spec "Check order"). A test
+# fails if `verdict` reads anything not listed here.
+INPUT_CLASSES: dict[str, str] = {
+    # run-folder files
+    "run.json": "input-only",
+    "cases.jsonl": "input-only",
+    "records.jsonl presence": "input-only",  # which cases have records, unknown, duplicated
+    "records.jsonl scores": "completion-dependent",  # scores and citations
+    "summary.json": "completion-dependent",
+    "support-agreement.json": "completion-dependent",
+    # GateInputs fields
+    "heldout_ids": "input-only",
+    "retired": "input-only",  # from drift.json, read and recomputed before the verdict
+    "expected_cases": "input-only",
+    "baseline": "input-only",
+    "baseline_snapshots": "gate condition",
+    "calibration": "gate condition",
+    "fixture_problems": "gate condition",
+    "log_problems": "gate condition",  # the tuning log, read before the verdict
+    "coverage_problems": "gate condition",
+    "exposure": "gate condition",
+    "seed": "parameter",
+}
+
+
 def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
     """Input-only checks (the cases file, the MANIFEST ids, the cases' content, duplicates,
     records for unknown cases, and what the cases alone decide: one corpus version, a case of
@@ -324,6 +365,10 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
     if doubled:
         return _stop(v, EXIT_ERROR, f"{len(doubled)} case(s) have more than one record: "
                      f"{', '.join(doubled)}")  # fmt: skip
+    if inputs.baseline is not None:  # the baseline against the run's case ids: input-only
+        problem = baseline_problem(inputs.baseline, ids)
+        if problem:
+            return _stop(v, EXIT_ERROR, problem)
     # ---- the stops: everything below depends on how far the run got ----
     summary: dict[str, Any] = {}
     if summary_path.is_file():
@@ -369,13 +414,6 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
     if inputs.baseline is None:
         v.notes.append("no live baseline: first release, nothing to regress against")
     else:
-        shared = {i for m in set(v.values) & set(inputs.baseline)
-                  for i in set(v.values[m]) & set(inputs.baseline[m])}  # fmt: skip
-        if not shared:
-            v.errors.append("the live baseline shares no cases with this run: nothing can be "
-                            "compared (pass the right --baseline)")  # fmt: skip
-            v.exit_code = EXIT_ERROR
-            return v
         v.regressions = regressions(v.values, inputs.baseline, inputs.seed)
         thin = sorted(set(v.values) - {r.metric for r in v.regressions})
         if thin:

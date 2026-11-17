@@ -838,7 +838,7 @@ def test_display_keeps_combining_vowel_signs_and_drops_zero_width():
 
     thai = "ผมป่วย"
     assert display_label(thai) == thai
-    assert display_label("golden​set") == "goldenset"
+    assert display_label("golden​set") == "golden set"
     assert display_label("neutral   label") == "neutral label"
 
 
@@ -895,3 +895,10 @@ def test_a_short_spaceless_question_glued_into_a_label_is_refused(store, q, labe
 def test_one_long_shared_cyrillic_word_does_not_refuse_a_neutral_label():
     q = "Как откалибровать судью для оценки?"
     assert label_problem("Калибровка", [q]) is None
+
+
+@pytest.mark.privacy
+def test_a_zero_width_character_never_glues_a_short_question_to_a_word(store):
+    cohort(store, 5, "my mum died")
+    rows, _, _ = run(store, Luna(labeler=lambda _t: "my mum died​course"))
+    assert rows == () and store.digest(WEEK) == []

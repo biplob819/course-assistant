@@ -377,7 +377,13 @@ def test_live_job_skips_every_step_without_the_secrets_and_uploads_no_run_folder
     assert "--no-flip" in gate["run"] and "--yes" in gate["run"]
     upload = next(s for s in rest if str(s.get("uses", "")).startswith("actions/upload-artifact"))
     paths = [p for p in upload["with"]["path"].splitlines() if p.strip()]
-    assert [Path(p).name for p in paths] == ["gate.json", "summary.json"]
+    assert {Path(p).name for p in paths} == {"gate.json", "summary.json"}  # never a run folder
+    for where in (
+        "runs/gate.json",
+        "runs/gate-*/gate.json",
+        "runs/gate-*/course-ta-heldout-*/gate.json",
+    ):  # every eval-mode gate.json
+        assert where in paths
 
 
 def test_offline_gate_passes_on_the_repo_and_fails_on_a_broken_fixture_or_log(
@@ -468,7 +474,7 @@ def test_release_gate_eval_flips_only_on_exit_0(tmp_path, monkeypatch):
         out = Path(argv[argv.index("--out") + 1])
         (out / "course-ta-heldout-x" / "evalkit" / "r1").mkdir(parents=True)
         (out / "course-ta-heldout-x" / "evalkit" / "r1" / "run.json").write_text("{}", "utf-8")
-        return 1
+        return 0  # eval_live finished; the verdict decides
 
     monkeypatch.setattr(eval_live, "main", fake_eval_live)
     for code in (1, 3, 4, 0):
@@ -663,8 +669,9 @@ def test_a_malformed_run_file_exits_2_with_a_fixed_message_in_gate_json(
     assert G.main(argv) == 2
     data = json.loads((live / "gate.json").read_text(encoding="utf-8"))
     assert data["exit_code"] == 2
-    want = ("support-agreement.json is malformed" if plant == "support"
-            else "the gate could not run (TypeError)")  # fmt: skip
+    want = {"support": "support-agreement.json is malformed",
+            "baseline": "the live baseline is malformed (metric -> case id -> number)",
+            }.get(plant, "the gate could not run (TypeError)")  # fmt: skip
     assert data["errors"] == [want]
 
 
@@ -788,6 +795,8 @@ def test_every_input_only_check_exits_2_whether_complete_capped_or_pending(held_
         "duplicate record": (_double_record, "more than one record"),
         "changed context": (lambda run: _edit_cases(run, _other_context), "differ from"),
         "changed source": (lambda run: _edit_cases(run, _other_source), "differ from"),
+        "baseline sharing no case": ("baseline", "shares no cases"),
+        "malformed baseline": ("bad-baseline", "malformed"),
     }  # fmt: skip
     # completion-dependent checks: what the records hold so far; the stops come first
     later: dict[str, tuple[Any, str]] = {
@@ -800,7 +809,12 @@ def test_every_input_only_check_exits_2_whether_complete_capped_or_pending(held_
         for stop in ("complete", "capped", "pending"):
             run = fresh(held_run, tmp_path, f"{len(name)}-{name[:6]}-{stop}".replace(" ", "_"))
             expected = rows_of(run)  # what the MANIFEST-checked held-out file holds
-            if plant is not None:
+            baseline: Any = None
+            if plant == "baseline":
+                baseline = {"grounded": {"ta-b1-900": 1.0, "ta-b1-901": 1.0}}
+            elif plant == "bad-baseline":
+                baseline = {"grounded": ["ta-b1-001"]}
+            elif plant is not None:
                 plant(run)
             if name in ("missing rule", "two corpus versions"):
                 expected = rows_of(run)  # the held-out file agrees, so this check is reached
@@ -812,8 +826,9 @@ def test_every_input_only_check_exits_2_whether_complete_capped_or_pending(held_
             if stop == "pending":
                 edit_json(run / "summary.json", lambda d: {**d, "judging_status": "pending"})
             held = set(expected) | ({"ta-b1-999"} if name == "extra MANIFEST id" else set())
-            v = release.verdict(run, inputs(run, heldout_ids=frozenset(held),
-                                            expected_cases=expected))  # fmt: skip
+            given = inputs(run, heldout_ids=frozenset(held), expected_cases=expected,
+                           baseline=baseline)  # fmt: skip
+            v = release.verdict(run, given)
             want = 2 if name in plants else codes[stop]
             assert v.exit_code == want, (name, stop, v.exit_code, v.errors, v.notes)
             if want == 2:
@@ -920,3 +935,87 @@ def test_every_eval_mode_exit_writes_gate_json(tmp_path, monkeypatch):
     code, files = run("removal")
     assert code == 0 and [f["exit_code"] for f in files] == [0]
     assert "only removes units" in files[0]["notes"][0]
+
+
+# ========= verifier pass 5 (E2.4): every input in exactly one class; eval_live's code =========
+
+
+@pytest.mark.safety
+def test_verdict_reads_only_inputs_the_check_order_lists(held_run, tmp_path, monkeypatch):
+    """Each run file and GateInputs field the verdict touches must be listed, in one class,
+    in release.INPUT_CLASSES and named in the spec's "Check order"."""
+    spec = (ROOT / "specs" / "E2.4-release-gate" / "spec.md").read_text(encoding="utf-8")
+    order = spec[spec.index("**Check order") : spec.index("**D-54 held-out exposure**")]
+    classes = {"input-only", "completion-dependent", "gate condition", "parameter"}
+    assert set(release.INPUT_CLASSES.values()) <= classes
+    for name, cls in release.INPUT_CLASSES.items():
+        assert f"`{name.split()[0]}`" in order, name  # listed in the written rule
+        if cls != "parameter":
+            assert cls in order
+    fields = {f.name for f in dataclasses.fields(GateInputs)}
+    assert fields <= set(release.INPUT_CLASSES)  # every field has a class
+
+    run = fresh(held_run, tmp_path / "live" / "evalkit", "r")
+    (tmp_path / "live" / "support-agreement.json").write_text(
+        json.dumps({"kappa": {"point": 0.8}}), encoding="utf-8")  # fmt: skip
+    files: set[str] = set()
+    real = Path.read_text
+
+    def spy(self: Path, *a: Any, **k: Any) -> str:
+        files.add(self.name)
+        return real(self, *a, **k)
+
+    class Spy:
+        def __init__(self, inner: GateInputs) -> None:
+            self._inner, self.used = inner, set()
+
+        def __getattr__(self, name: str) -> Any:
+            self.used.add(name)
+            return getattr(self._inner, name)
+
+    monkeypatch.setattr(Path, "read_text", spy)
+    spied = Spy(inputs(run, baseline=rows_baseline(run)))
+    v = release.verdict(run, spied)  # type: ignore[arg-type]
+    monkeypatch.undo()
+    assert v.exit_code == 0, (v.errors, v.failures)
+    listed_files = {k.split()[0] for k in release.INPUT_CLASSES}
+    assert files <= listed_files, files - listed_files
+    assert spied.used <= set(release.INPUT_CLASSES), spied.used - set(release.INPUT_CLASSES)
+    assert {"cases.jsonl", "records.jsonl", "summary.json", "support-agreement.json"} <= files
+
+
+def rows_baseline(run: Path) -> dict[str, dict[str, float]]:
+    return {"grounded": {i: 1.0 for i in ids(run) if i.startswith("ta-b1-")}}
+
+
+def test_any_nonzero_eval_live_exit_blocks_the_flip(tmp_path, monkeypatch):
+    """Verifier pass 5: eval_live's 1 or 4 was ignored, so a verdict of 0 still flipped."""
+    config, store = _store(tmp_path)
+    monkeypatch.setattr(
+        G, "check_run", lambda run_dir, **k: dataclasses.replace(_passing(), run=run_dir.name)
+    )
+    for live_code, want in ((1, 1), (4, 4), (3, 3), (2, 2), (0, 0)):
+        monkeypatch.setattr(eval_live, "main", _fake_live(live_code))
+        out = tmp_path / f"o{live_code}"
+        assert G.main(["eval", "--config", str(config), "--yes", "--out", str(out)]) == want
+        (gate,) = out.rglob("gate.json")
+        assert json.loads(gate.read_text(encoding="utf-8"))["exit_code"] == want
+        assert (release.live_state(store) is not None) == (live_code == 0), live_code
+    # a worse verdict still wins over a milder eval_live code (2 > 3 > 4 > 1)
+    monkeypatch.setattr(G, "check_run", lambda run_dir, **k: dataclasses.replace(
+        _passing(), exit_code=2, run=run_dir.name))  # fmt: skip
+    monkeypatch.setattr(eval_live, "main", _fake_live(4))
+    assert G.main(["eval", "--config", str(config), "--yes", "--out", str(tmp_path / "w")]) == 2
+
+
+def test_an_unparsable_eval_command_line_writes_gate_json(tmp_path):
+    out = tmp_path / "o"
+    assert G.main(["eval", "--out", str(out)]) == 2  # no --config
+    data = json.loads((out / "gate.json").read_text(encoding="utf-8"))
+    assert data["exit_code"] == 2 and data["errors"] == ["the command line could not be parsed"]
+    (out / "gate.json").unlink()
+    assert G.main(["eval", "--config", "c.yaml", "--max-cost", "x", "--out", str(out)]) == 2
+    assert json.loads((out / "gate.json").read_text(encoding="utf-8"))["exit_code"] == 2
+    check_out = tmp_path / "check-gate.json"
+    assert G.main(["check", "--out", str(check_out)]) == 2  # no RUN, no --config
+    assert json.loads(check_out.read_text(encoding="utf-8"))["exit_code"] == 2
