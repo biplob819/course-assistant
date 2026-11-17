@@ -37,3 +37,6 @@ corpus_store/
 
 # the sample course build is part of the repo (CC BY 4.0, N1.3); only Python build folders are ignored
 !sample_course/build/
+
+# EvalKit local store and cache: live run outputs, may hold held-out answers (never commit)
+.evalkit/
