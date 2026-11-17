@@ -140,5 +140,5 @@ OSS-04	R3.1	not-started		Docs: quickstart on the sample course (first grounded a
 OSS-05	R3.1	not-started		CONTRIBUTING, SECURITY (key handling, reporting a vulnerability), CODE_OF_CONDUCT, issue and PR templates [D-21]
 OSS-06	R3.1	not-started		Privacy statement: no telemetry; learner and course data go only to the OpenAI project the operator configures [NFR3]
 OSS-07	R3.1	not-started		Example GitHub Action that runs the course-ta gate and fails the job when a threshold fails [FR11]
-OSS-08	R3.1	not-started		Tag v0.1.0, semver policy, a clean-venv install of the published package runs `--version`, `doctor` and the sample-course replay [D-21]
+OSS-08	R3.1	not-started		Tag v0.1.0, semver policy, a clean-venv install of the published package runs `--version`, `doctor` and the sample-course replay; the PyPI publish itself (owner attest) [D-21, D-60]
 OSS-09	R3.1	not-started		README with screenshots of both pages, a step-by-step guide, and every important link (PyPI, docs, live demo, EvalKit, sample course licence, issue tracker, security policy) [OWNER D-46]

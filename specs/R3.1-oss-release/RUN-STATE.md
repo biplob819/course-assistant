@@ -1,0 +1,3 @@
+# RUN-STATE R3.1
+
+- 2026-11-17 — spec, criteria and tasks written (lane B, release mechanics; drafting under OWNER D-72). criteria.md covers OSS-01 to OSS-09. The PyPI publish, the `v0.1.0` tag and the published-package check are OSS-08, to be marked `(owner attest)` per D-60 (catalog note and Tech Spec §11.4 row; not lane B's files, so not yet changed); OSS-01 keeps the release workflow, provable offline. node_start R3.1: DO NOT START (exit 1) — T3.1 not-started, D3.2 building (DEM-04 awaits owner attest). Stopped at the spec as instructed; no tests, code, workflow or README change made. Resume with node_start once T3.1 and D3.2 are green.

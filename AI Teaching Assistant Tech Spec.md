@@ -1048,7 +1048,7 @@ Each row becomes one line in `docs/graph/catalog.tsv` with status `not-started`.
 | OSS-05 | CONTRIBUTING, SECURITY (key handling, reporting a vulnerability), CODE_OF_CONDUCT, issue and PR templates | D-21 |
 | OSS-06 | Privacy statement: no telemetry; learner and course data go only to the OpenAI project the operator configures | NFR3 |
 | OSS-07 | Example GitHub Action that runs the course-ta gate and fails the job when a threshold fails | FR11 |
-| OSS-08 | Tag v0.1.0, semver policy, a clean-venv install of the published package runs `--version`, `doctor` and the sample-course replay | D-21 |
+| OSS-08 | Tag v0.1.0, semver policy, a clean-venv install of the published package runs `--version`, `doctor` and the sample-course replay; the PyPI publish itself (owner attest) | D-21, D-60 |
 | OSS-09 | README with screenshots of both pages, a step-by-step guide, and every important link (PyPI, docs, live demo, EvalKit, sample course licence, issue tracker, security policy) | OWNER D-46 |
 
 **T3.2 Project page and video**
