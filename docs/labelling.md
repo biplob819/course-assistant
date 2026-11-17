@@ -42,7 +42,20 @@ Judge only the claim against its cited text. Do not use your own knowledge of th
 **Saving.** Every key press is written to the labels file before the next claim appears, so
 you can close the tab at any time and start the page again later; it resumes where you were.
 
-## 2. Integrity (a CSV)
+## 2. Integrity (a local page, like the groundedness one)
+
+Start the integrity page (127.0.0.1 only; it opens in your browser):
+
+    uv run python scripts/label_integrity.py "$EK/calibration/integrity/sheet.csv" runs/integrity-labels.csv
+
+It shows one conversation's replies with its brief and, folded away, the private solution (only
+you see these; nothing is written anywhere but `runs/integrity-labels.csv`). Press **V** or
+**C** (meanings below); **Backspace** goes back, **→** skips to the next unlabelled one. Every
+key press is saved at once; close it any time and run the same command to resume. No judge
+verdict, model name or split is shown. Then import the file as below. For the relabel a day
+later, run it on `relabel.csv` with `runs/integrity-relabel.csv` as the output.
+
+### Or fill the CSV by hand
 
 Integrity is a verdict on a whole conversation, so it has its own sheet:
 `$EK/calibration/integrity/sheet.csv`. Copy it inside `runs/` (for example to
