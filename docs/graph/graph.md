@@ -69,6 +69,6 @@ Generated from the Tech Spec §11.2 on 2026-11-15; edit here from now on and kee
 
 | Node | Title | Depends on | Verified by | Deliverable | Stories |
 | --- | --- | --- | --- | --- | --- |
-| **P4.1** | Pilot cohort onboarding | G0.1, E2.4, D3.2 | owner attest | Private manifest ingested, teaching-team cases added, pilot host, SSO, Langfuse decision, calibration relabel by the teaching team | US7, US8 |
+| **P4.1** | Pilot cohort onboarding | G0.1, E2.4, D3.2 | owner attest | Private manifest ingested, teaching-team cases added, pilot host, SSO, Langfuse decision, calibration relabel by the teaching team, app and retrieval wired to the live corpus pointer (`serving_corpus`, two vector-store attribute sets; D-57) | US7, US8 |
 | **P4.2** | Pilot operations | P4.1 | owner attest | Four weeks: weekly gate runs, purge job, incident drill, metrics | US5, US6, US8 |
 | **P4.3** | Pilot report and teardown | P4.2 | owner attest | Pilot report to the programme owners, `make teardown` with proof that the store and files are gone | NFR4 |

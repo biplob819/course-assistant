@@ -318,7 +318,8 @@ def test_eval_gate_workflow_runs_on_manifest_and_rules_changes_and_weekly():
         paths = on[event]["paths"]
         for needed in ("**/manifest.yaml", "src/course_assistant/answer/**",
                        "docs/measurements/tuning-log.jsonl", "golden/**",
-                       "src/course_assistant/eval/**"):  # fmt: skip
+                       "src/course_assistant/eval/**", "src/course_assistant/llm/**",
+                       "uv.lock"):  # fmt: skip
             assert needed in paths, (event, needed)
     assert on["schedule"][0]["cron"].split()[-1] == "1"  # weekly
     assert "workflow_dispatch" in on
@@ -326,7 +327,9 @@ def test_eval_gate_workflow_runs_on_manifest_and_rules_changes_and_weekly():
     offline_text = yaml.safe_dump(jobs["offline"])
     assert "secrets." not in offline_text  # the offline part never needs a secret
     steps = jobs["offline"]["steps"]
-    assert any(s.get("run") == "make eval-offline JSON=1" for s in steps)
+    assert any(
+        s.get("run") == "uv run python scripts/release_gate.py offline --json" for s in steps
+    )  # the script's own exit code, not make's 2
     upload = [s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact")]
     assert upload and upload[0]["with"]["path"] == "runs/gate/"
 
@@ -335,8 +338,15 @@ def test_eval_gate_workflow_runs_on_manifest_and_rules_changes_and_weekly():
 def test_live_job_skips_every_step_without_the_secrets_and_uploads_no_run_folder():
     wf = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     live = wf["jobs"]["live"]
-    assert set(live["env"]) == {"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "HELDOUT_BUNDLE"}
+    assert "env" not in live  # secrets reach only the steps that need them
     check, *rest = live["steps"]
+    assert set(check["env"]) == {"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "HELDOUT_BUNDLE"}
+    needs = {s.get("name", s.get("uses", "")): set(s.get("env", {})) - {"GATE_CONFIG"}
+             for s in rest}  # fmt: skip
+    assert needs["restore the private held-out folder"] == {"HELDOUT_BUNDLE"}
+    assert needs["ingest the sample course"] == {"OPENAI_API_KEY"}
+    assert all("HELDOUT_BUNDLE" not in v for k, v in needs.items()
+               if k != "restore the private held-out folder")  # fmt: skip
     assert check["id"] == "secrets" and "live=false" in check["run"]
     for step in rest:
         assert "steps.secrets.outputs.live == 'true'" in step.get("if", ""), step
@@ -528,3 +538,78 @@ def test_drift_on_the_unchanged_corpus_changes_nothing_and_repeats_exactly():
     b = release.drift(E.PUBLIC_CASES, E.CORPUS, E.GOLDEN_VERSION)
     assert a == b and a.retired == a.converted == ()
     assert [c.model_dump_json() for c in a.cases] == [c.model_dump_json() for c in E.PUBLIC_CASES]
+
+
+# ============ verifier pass 1 (E2.4): precedence, duplicates, baseline, exposure ============
+
+
+def test_a_missing_score_in_a_cost_capped_run_exits_2_not_3(held_run, tmp_path):
+    """Precedence 2 > 3: an input error in the records written so far wins over the cap."""
+    run = fresh(held_run, tmp_path)
+    b9 = first_id(run, "B9")
+    lines = (run / "records.jsonl").read_text("utf-8").splitlines()
+    keep = [x for x in lines if json.loads(x)["case_id"] != first_id(run, "B4")]
+    (run / "records.jsonl").write_text("\n".join(keep) + "\n", encoding="utf-8")
+    assert release.verdict(run, inputs(run)).exit_code == 3  # capped alone
+
+    def drop(r: dict[str, Any]) -> dict[str, Any]:
+        if r["case_id"] == b9:
+            del r["task_scores"]["identity"]
+        return r
+
+    edit_records(run, drop)
+    v = release.verdict(run, inputs(run))
+    assert v.exit_code == 2 and v.errors == [f"record {b9} has no identity score"]
+    edit_json(run / "summary.json", lambda d: {**d, "judging_status": "pending"})
+    assert release.verdict(run, inputs(run)).exit_code == 2  # and over pending
+
+
+def test_duplicate_records_for_a_case_exit_2(held_run, tmp_path):
+    run = fresh(held_run, tmp_path)
+    lines = (run / "records.jsonl").read_text("utf-8").splitlines()
+    (run / "records.jsonl").write_text("\n".join([*lines, lines[0]]) + "\n", encoding="utf-8")
+    v = release.verdict(run, inputs(run))
+    assert v.exit_code == 2 and "more than one record" in v.errors[0]
+
+
+def test_a_baseline_sharing_no_case_with_the_run_exits_2(held_run, tmp_path):
+    run = fresh(held_run, tmp_path)
+    other = {"grounded": {"ta-b1-900": 1.0, "ta-b1-901": 1.0}}
+    v = release.verdict(run, inputs(run, baseline=other))
+    assert v.exit_code == 2 and "shares no cases" in v.errors[0]
+
+
+@pytest.mark.privacy
+def test_exposure_scan_reads_every_tracked_text_file_and_skips_binaries_by_content(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    q = "What does the course say about attention heads in long documents?"
+    (repo / "notes.cfg").write_text(f"x = {q}\n", encoding="utf-8")  # no allow-listed suffix
+    (repo / "blob.json").write_bytes(b"\x00\x01" + q.encode())  # binary by content
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    texts = G.tracked_texts(repo)
+    assert len(texts) == 1 and q in texts[0]
+    assert release.heldout_exposure({"ta-b1-500": q}, texts) == ["ta-b1-500"]
+    assert release.text_of(b"a\x00b") is None and release.text_of(b"plain") == "plain"
+
+
+def test_check_passes_cost_cap_and_pending_codes_through(held_run, tmp_path, monkeypatch):
+    """The 0-4 codes are the script's (make reports any failure as 2; Makefile says so)."""
+    config, _ = _store(tmp_path)
+    monkeypatch.setattr(G, "HELDOUT_DIR", tmp_path / "no-private-file")
+    for name, code in (("capped", 3), ("pending", 4)):
+        run = fresh(held_run, tmp_path, name)
+        manifest = tmp_path / f"{name}.json"
+        manifest.write_text(json.dumps({"cases": {i: "x" for i in ids(run)}}), encoding="utf-8")
+        monkeypatch.setattr(G, "HELDOUT_MANIFEST", manifest)
+        if code == 3:
+            lines = (run / "records.jsonl").read_text("utf-8").splitlines()
+            (run / "records.jsonl").write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")
+        else:
+            edit_json(run / "summary.json", lambda d: {**d, "judging_status": "pending"})
+        out = tmp_path / f"{name}-gate.json"
+        assert G.main(["check", str(run), "--config", str(config), "--out", str(out)]) == code
+        assert json.loads(out.read_text(encoding="utf-8"))["exit_code"] == code
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert "GNU make reports any failing recipe as 2" in makefile

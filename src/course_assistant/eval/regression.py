@@ -159,9 +159,15 @@ def record_fixture(run_dir: Path, out_dir: Path, *, recordings: Sequence[Recordi
                        source=source)  # fmt: skip
         old = out_dir.with_name(f".{out_dir.name}-old")
         shutil.rmtree(old, ignore_errors=True)
-        if out_dir.exists():
+        had = out_dir.exists()
+        if had:
             out_dir.rename(old)
-        work.rename(out_dir)
+        try:
+            work.rename(out_dir)
+        except BaseException:
+            if had:  # put the original back before reporting the failure
+                old.rename(out_dir)
+            raise
         shutil.rmtree(old, ignore_errors=True)
     finally:
         shutil.rmtree(work, ignore_errors=True)

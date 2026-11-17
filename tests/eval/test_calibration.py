@@ -1116,3 +1116,38 @@ def test_certified_calibration_binds_to_the_run_and_the_current_rubric(cal_run, 
     assert C.certified_calibration(run, log=log)["integrity"] == "uncalibrated"
     monkeypatch.setattr(C, "JUDGE_PROMPT_HASH", "a-changed-judge-rubric")
     assert C.certified_calibration(run, log=log)["groundedness"] == "uncalibrated"
+
+
+@pytest.mark.safety
+def test_a_merge_that_drops_a_line_of_either_parent_fails(tmp_path):
+    """E2.4 verifier pass 1: only the first parent was checked, and path-limited rev-list
+    skipped merges, so a merge resolution could drop the other branch's line."""
+    if shutil.which("git") is None:
+        pytest.skip("no git here")
+    repo, log = _scratch_repo(tmp_path)
+    base = _commit(repo, log, ["A"], "base")
+    _scratch_git(repo, "checkout", "-q", "-b", "X")
+    _commit(repo, log, ["A", "L"], "X adds L")
+    _scratch_git(repo, "checkout", "-q", "main")
+    _scratch_git(repo, "checkout", "-q", "-b", "Y")
+    _commit(repo, log, ["A", "M"], "Y adds M")
+    subprocess.run(["git", "merge", "-q", "X", "-m", "merge X"], cwd=repo, capture_output=True)
+    _commit(repo, log, ["A", "M"], "merge X into Y (drops L)")
+    head = _scratch_git(repo, "rev-parse", "HEAD")
+    assert len(_scratch_git(repo, "rev-list", "--parents", "-n", "1", head).split()) == 3
+    pr = {"CI": "true", "LOG_BASE_SHA": base, "LOG_DEFAULT_BRANCH": "main"}
+    for env in (pr, {**pr, "LOG_BASE_SHA": "0" * 40}):
+        found = tuning.append_only_problems(log, repo, env)
+        assert found and any(p.startswith(f"merge {head[:12]} drops") for p in found), found
+    # fast-forwarded onto main and pushed: still caught
+    _scratch_git(repo, "checkout", "-q", "main")
+    _scratch_git(repo, "merge", "-q", "--ff-only", "Y")
+    found = tuning.append_only_problems(log, repo, {"CI": "true", "LOG_BASE_SHA": base,
+                                                    "LOG_DEFAULT_BRANCH": "main"})  # fmt: skip
+    assert found and any("merge" in p for p in found)
+    # a merge that keeps every parent's log (one side unchanged) is clean
+    _scratch_git(repo, "checkout", "-q", "-b", "Z", base)
+    _scratch_git(repo, "commit", "-q", "--allow-empty", "-m", "no log change")
+    _scratch_git(repo, "checkout", "-q", "X")
+    _scratch_git(repo, "merge", "-q", "--no-ff", "Z", "-m", "merge Z into X")
+    assert tuning.append_only_problems(log, repo, {"CI": "true", "LOG_BASE_SHA": base}) == []

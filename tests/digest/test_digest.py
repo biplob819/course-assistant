@@ -672,3 +672,25 @@ def test_neutral_labels_still_pass(label):
                  "work in practice", "which evaluation metrics should I use for my judge",
                  "can I get an extension on the deadline for assignment two"]  # fmt: skip
     assert label_problem(label, questions) is None
+
+
+# ---------- verifier pass 4 regressions ----------
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("q, label", [
+    ("my father [1] is in hospital, can I get an extension", "my father [1] is in hospital"),
+    ("dad [2] in hospital", "dad [2] in hospital"),
+    ("I am stuck on (unit 3) because my father died", "stuck on (unit 3) because my father"),
+    ("i am ok", "i am ok"),
+    ("i am in a bus today", "i am in a bus"),
+])  # fmt: skip
+def test_citation_markers_and_short_words_never_hide_a_copy(q, label):
+    assert label_problem(label, [q]) == "copies a question"
+
+
+def test_a_question_in_another_script_does_not_block_english_labels():
+    questions = ["판사 보정이 뭐예요", "如何为评估集选择合适的规模以及校准评审模型的方法", GOLDEN_Q]
+    for label in [*NEUTRAL, "how to size a golden set"]:
+        assert label_problem(label, questions) is None, label
+    assert label_problem("판사 보정이 뭐예요", questions) == "copies a question"

@@ -237,3 +237,36 @@ def test_record_fixture_checks_the_manifest_before_writing_anything(tmp_path):
         )
     assert [p.name for p in tracked.iterdir()] == ["fixture.json"]  # untouched
     assert sorted(p.name for p in tmp_path.iterdir()) == sorted([*before, "run3"])
+
+
+@pytest.mark.safety
+def test_a_failed_swap_restores_the_original_fixture_folder(tmp_path, monkeypatch):
+    """E2.4 verifier pass 1 should-fix: when moving the new fixture in fails, the original
+    folder is put back."""
+    from course_assistant.eval import regression
+
+    case = E.first("B4")
+    run = O.offline_run(tmp_path / "run", [case], {case.id: E.script_for(case)})
+    tracked = tmp_path / "evalreg"
+    tracked.mkdir()
+    (tracked / "fixture.json").write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(
+        regression,
+        "_write_fixture",
+        lambda out, *a, **k: (out / "fixture.json").write_text("new\n", "utf-8"),
+    )
+    real = Path.rename
+
+    def rename(self: Path, target: Any) -> Any:
+        if Path(target) == tracked and self.name.startswith(".evalreg-") and \
+                not self.name.endswith("-old"):  # fmt: skip
+            raise OSError("disk full")
+        return real(self, target)
+
+    monkeypatch.setattr(Path, "rename", rename)
+    with pytest.raises(OSError, match="disk full"):
+        record_fixture(run.run_dir, tracked, recordings=[], probe_cache=tmp_path / "none",
+                       support=[], now=O.NOW, solutions=PlaceholderSolutions(),
+                       source="scripted", heldout_ids=MANIFEST_IDS)  # fmt: skip
+    assert (tracked / "fixture.json").read_text(encoding="utf-8") == "{}\n"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["evalreg", "run"]

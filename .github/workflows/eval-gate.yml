@@ -10,6 +10,8 @@ on:
       - "sample_course/**"
       - "src/course_assistant/answer/**"  # the rules constants (ROUTE/ANSWER/HINT/SUPPORT/INTEGRITY)
       - "src/course_assistant/eval/**"
+      - "src/course_assistant/llm/**"  # model calls, pinned snapshots, prices
+      - "uv.lock"  # SDK and EvalKit versions
       - "docs/measurements/tuning-log.jsonl"
       - "golden/**"
       - "tests/eval/evalreg/**"
@@ -22,6 +24,8 @@ on:
       - "sample_course/**"
       - "src/course_assistant/answer/**"  # the rules constants (ROUTE/ANSWER/HINT/SUPPORT/INTEGRITY)
       - "src/course_assistant/eval/**"
+      - "src/course_assistant/llm/**"  # model calls, pinned snapshots, prices
+      - "uv.lock"  # SDK and EvalKit versions
       - "docs/measurements/tuning-log.jsonl"
       - "golden/**"
       - "tests/eval/evalreg/**"
@@ -53,7 +57,8 @@ jobs:
       - name: gate tests (every exit code, flip, drift, coverage)
         run: uv run pytest -q tests/eval/test_release.py tests/eval/test_evalreg.py
       - name: offline release gate
-        run: make eval-offline JSON=1
+        # the script itself, so the step fails with its 0-4 code (make would turn any into 2)
+        run: uv run python scripts/release_gate.py offline --json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -65,13 +70,13 @@ jobs:
     name: release gate (live, held-out)
     needs: offline
     runs-on: ubuntu-latest
-    env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      HELDOUT_BUNDLE: ${{ secrets.HELDOUT_BUNDLE }}
     steps:
       - id: secrets
         name: check for the live secrets
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HELDOUT_BUNDLE: ${{ secrets.HELDOUT_BUNDLE }}
         run: |
           if [ -n "$OPENAI_API_KEY" ] && [ -n "$ANTHROPIC_API_KEY" ] && [ -n "$HELDOUT_BUNDLE" ]; then
             echo "live=true" >> "$GITHUB_OUTPUT"
@@ -92,16 +97,21 @@ jobs:
       - name: restore the private held-out folder
         if: steps.secrets.outputs.live == 'true'
         run: echo "$HELDOUT_BUNDLE" | base64 -d | tar -xz -C golden/heldout
+        env:
+          HELDOUT_BUNDLE: ${{ secrets.HELDOUT_BUNDLE }}
       - name: ingest the sample course
         if: steps.secrets.outputs.live == 'true'
         run: uv run course-assistant ingest --config "$GATE_CONFIG"
         env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GATE_CONFIG: ${{ vars.GATE_CONFIG || 'sample_course/config.yaml' }}
       - name: held-out run and release gate (report only, no flip)
         id: gate
         if: steps.secrets.outputs.live == 'true'
         run: uv run python scripts/release_gate.py eval --config "$GATE_CONFIG" --yes --no-flip --out runs
         env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GATE_CONFIG: ${{ vars.GATE_CONFIG || 'sample_course/config.yaml' }}
       - uses: actions/upload-artifact@v4
         if: always() && steps.secrets.outputs.live == 'true'

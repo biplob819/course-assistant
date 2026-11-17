@@ -258,20 +258,36 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
     if len(versions) != 1:
         return _stop(v, EXIT_ERROR, "the run's cases name more than one corpus version")
     v.corpus_version = versions.pop()
-    answered = {r.case_id for r in records}
+    counts = Counter(r.case_id for r in records)
+    answered = set(counts)
     summary_path = run_dir / "summary.json"
     if answered - ids:
         return _stop(v, EXIT_ERROR, f"{len(answered - ids)} record(s) for cases not in the run")
+    doubled = sorted(i for i, n in counts.items() if n > 1)
+    if doubled:
+        return _stop(v, EXIT_ERROR, f"{len(doubled)} case(s) have more than one record: "
+                     f"{', '.join(doubled)}")  # fmt: skip
+    # input errors in the records written so far come first (precedence 2 > 3 > 4): a record
+    # that has scores must have every score it needs, whether or not the run finished
+    scored = [r for r in records if r.scores is not None]
+    try:
+        v.values = case_values(scored, cases)
+    except ReleaseError as exc:
+        return _stop(v, EXIT_ERROR, str(exc))
+    summary: dict[str, Any] = {}
+    if summary_path.is_file():
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        except ValueError:
+            return _stop(v, EXIT_ERROR, "summary.json is not valid JSON")
     if not summary_path.is_file() or answered != ids:
         return _stop(v, EXIT_COST_CAP, f"the run stopped with {len(ids - answered)} case(s) "
                      "unanswered (cost cap): resume with the same command")  # fmt: skip
-    summary = json.loads(summary_path.read_text(encoding="utf-8"))
     if summary.get("judging_status") != "complete":
         return _stop(v, EXIT_PENDING, "judging is pending: collect the judges, then re-run")
-    try:
-        v.values = case_values(records, cases)
-    except ReleaseError as exc:
-        return _stop(v, EXIT_ERROR, str(exc))
+    if len(scored) != len(records):
+        return _stop(v, EXIT_ERROR, f"judging is complete but {len(records) - len(scored)} "
+                     "record(s) have no scores")  # fmt: skip
     v.gates, errors = gates(v.values, [r.completion.latency_ms for r in records], inputs.seed)
     if errors:
         v.errors += errors
@@ -291,7 +307,18 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
     if inputs.baseline is None:
         v.notes.append("no live baseline: first release, nothing to regress against")
     else:
+        shared = {i for m in set(v.values) & set(inputs.baseline)
+                  for i in set(v.values[m]) & set(inputs.baseline[m])}  # fmt: skip
+        if not shared:
+            v.errors.append("the live baseline shares no cases with this run: nothing can be "
+                            "compared (pass the right --baseline)")  # fmt: skip
+            v.exit_code = EXIT_ERROR
+            return v
         v.regressions = regressions(v.values, inputs.baseline, inputs.seed)
+        thin = sorted(set(v.values) - {r.metric for r in v.regressions})
+        if thin:
+            v.notes.append(f"no paired comparison (fewer than 2 shared cases) for "
+                           f"{', '.join(thin)}")  # fmt: skip
         v.failures += [f"separated regression on {r.metric}: {r.diff:+.4f} over {r.n} shared "
                        f"cases (Holm)" for r in v.regressions if r.separated]  # fmt: skip
         drift = sorted(set(v.snapshots) - set(inputs.baseline_snapshots))
@@ -316,6 +343,14 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
         v.notes.append(f"{len(inputs.retired)} held-out case(s) retired by drift")
     v.exit_code = EXIT_FAIL if v.failures else EXIT_PASS
     return v
+
+
+def text_of(data: bytes) -> str | None:
+    """A tracked file's text, or None for a binary (a NUL byte in it): decided by content,
+    never by suffix (D-54)."""
+    if b"\0" in data:
+        return None
+    return data.decode("utf-8", errors="replace")
 
 
 def heldout_exposure(questions: Mapping[str, str], texts: Iterable[str]) -> list[str]:

@@ -41,8 +41,6 @@ DECISIONS = ROOT / "docs" / "decisions.md"
 EVALREG = ROOT / "tests" / "eval" / "evalreg"
 ASSESSMENTS = ROOT / "sample_course" / "assessments.yaml"
 OFFLINE_OUT = ROOT / "runs" / "gate"
-TEXT_SUFFIXES = frozenset({".py", ".md", ".json", ".jsonl", ".yaml", ".yml", ".txt", ".toml",
-                           ".csv"})  # fmt: skip
 PUBLIC_MIN_B1, PUBLIC_MIN_B3 = 7, 0  # public half (E2.1); B3 groups sit by assessment (D-34)
 
 
@@ -99,13 +97,19 @@ def log_problems(bar: float | None, env: Mapping[str, str], log_path: Path | Non
     return out
 
 
-def tracked_texts() -> list[str]:
-    done = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=False)
+def tracked_texts(root: Path | None = None) -> list[str]:
+    """Every tracked file that is text by content (no NUL byte), whatever its suffix (D-54)."""
+    from course_assistant.eval.release import text_of
+
+    root = root or ROOT
+    done = subprocess.run(["git", "ls-files", "-z"], cwd=root, capture_output=True, check=False)
     texts = []
     for f in done.stdout.decode("utf-8", errors="replace").split("\0"):
-        path = ROOT / f
-        if f and path.suffix in TEXT_SUFFIXES and path.is_file():
-            texts.append(path.read_text(encoding="utf-8", errors="ignore"))
+        path = root / f
+        if f and path.is_file():
+            text = text_of(path.read_bytes())
+            if text is not None:
+                texts.append(text)
     return texts
 
 

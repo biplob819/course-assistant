@@ -632,7 +632,7 @@ Status vocabulary: `not-started | spec | building | green`. There is one new pro
 | **T3.1** | Trust pack | B2.2, E2.5, D3.2 | Behavioral spec, data card, privacy notice, DPDP and UK GDPR mapping, incident runbook (72-hour report), off-switch test evidence | NFR2, NFR7 |
 | **R3.1** | Open-source packaging and v0.1.0 | T3.1, D3.2 | PyPI `course-assistant` by trusted publishing, `init` and `doctor`, docs (quickstart on the sample course, bring your own course, evaluate your course), community files, privacy statement, eval GitHub Action example, tag v0.1.0 | US7, US8, US10 |
 | **T3.2** | Project page and video | T3.1, E2.5, D3.2 | Case study under the nine architecture areas on Cloudflare Pages, 90-second video | — |
-| **P4.1** | Pilot cohort onboarding | G0.1, E2.4, D3.2 | Private manifest ingested, teaching-team cases added, pilot host, SSO, Langfuse decision, calibration relabel by the teaching team | US7, US8 |
+| **P4.1** | Pilot cohort onboarding | G0.1, E2.4, D3.2 | Private manifest ingested, teaching-team cases added, pilot host, SSO, Langfuse decision, calibration relabel by the teaching team, app and retrieval wired to the live corpus pointer (`serving_corpus`, two vector-store attribute sets; D-57) | US7, US8 |
 | **P4.2** | Pilot operations | P4.1 | Four weeks: weekly gate runs, purge job, incident drill, metrics | US5, US6, US8 |
 | **P4.3** | Pilot report and teardown | P4.2 | Pilot report to the programme owners, `make teardown` with proof that the store and files are gone | NFR4 |
 

@@ -241,14 +241,14 @@ def _shares_run(label: str, index: dict[tuple[int, ...], set[tuple[str, ...]]]) 
 # label and a question are compared as streams of letters and digits only: every mark, space and
 # blank is ignored on both sides. Word counts come from the label's own tokens, where an unknown
 # mark splits a token (more tokens, so a stricter test) and never merges two.
-MIN_RUN_LETTERS = 10  # a 5-token run must carry at least this many letters to count
-MIN_WHOLE_LETTERS = 6  # a whole short question must carry at least this many letters
+MIN_WHOLE_LETTERS = 3  # a whole short question must carry at least this many letters
+_BLANK_LETTERS = dict.fromkeys(map(ord, "\u115f\u1160\u3164\uffa0\u2800"), " ")
 
 
 def _stream(text: str) -> str:
-    """Letters and digits only, after normalisation; a non-ASCII letter is a '?' wildcard."""
+    """Letters and digits only, after normalisation (non-ASCII letters kept as they are)."""
     return "".join(
-        (c if c.isascii() else "?")
+        c
         for c in normalise(text)
         if c.isalnum() and unicodedata.category(c) not in ("Lm", "Sk")  # modifier marks
     )
@@ -260,7 +260,9 @@ def _label_tokens(label: str) -> list[str]:
     apostrophe-like marks, which never split one."""
     tokens: list[str] = []
     cur = ""
-    for ch in label:
+    # normalise the whole label first, as the questions are (citation markers go, look-alikes
+    # map); blank letters become spaces first so they still end a word (verifier pass 4)
+    for ch in normalise(label.translate(_BLANK_LETTERS)):
         bit = _stream(ch)
         if bit:
             cur += bit
@@ -282,14 +284,24 @@ def _is_mark(ch: str) -> bool:
 
 
 def _contains(hay: str, needle: str) -> bool:
-    """Is `needle` inside `hay`? A '?' on either side matches any one character."""
-    if "?" not in hay and "?" not in needle:
-        return needle in hay
+    """Is `needle` inside `hay`? A letter the normalisation could not map to ASCII matches any
+    one ASCII letter (a look-alike), but at least half the letters must match exactly, so a
+    question in another script never matches an English label (verifier pass 4)."""
+    if needle in hay:
+        return True
     n = len(needle)
-    return any(
-        all(a == b or a == "?" or b == "?" for a, b in zip(hay[i : i + n], needle, strict=True))
-        for i in range(len(hay) - n + 1)
-    )
+    need = (n + 1) // 2
+    for i in range(len(hay) - n + 1):
+        exact = 0
+        for a, b in zip(hay[i : i + n], needle, strict=True):
+            if a == b:
+                exact += 1
+            elif a.isascii() == b.isascii():
+                break
+        else:
+            if exact >= need:
+                return True
+    return False
 
 
 class QuestionIndex:
@@ -311,7 +323,7 @@ class QuestionIndex:
         n = QUESTION_RUN_WORDS
         for i in range(len(tokens) - n + 1):
             run = "".join(tokens[i : i + n])
-            if len(run) >= MIN_RUN_LETTERS and any(_contains(q, run) for q in self.streams):
+            if any(_contains(q, run) for q in self.streams):
                 return True
         return False
 

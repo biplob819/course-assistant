@@ -404,15 +404,27 @@ def _zero(sha: str) -> bool:
 
 
 def _history_problems(git: _Git, base: str, rel: str) -> list[str]:
-    """Every commit in base..HEAD that touches the log must keep its first parent's log as a
-    prefix: a line added on a parent branch and dropped on a child is caught at the dropping
-    commit, whatever the merge-base held (E2.3 should-fix 1)."""
+    """Every commit in base..HEAD, merges included and with no path simplification, must keep
+    the log of EVERY parent as a prefix: a line added on a parent branch and dropped on a
+    child, or dropped while resolving a merge, is caught at that commit (E2.3 should-fix 1,
+    E2.4 verifier pass 1). A merge of two branches that each appended lines therefore fails:
+    the hash chain cannot hold both, so the later branch rebases."""
+    logs: dict[str, str] = {}
+
+    def log_at(sha: str) -> str:
+        if sha not in logs:
+            logs[sha] = git.show(sha, rel)
+        return logs[sha]
+
     out = []
-    for sha in git.lines("rev-list", "--reverse", f"{base}..HEAD", "--", rel):
-        parents = git.lines("rev-list", "--parents", "-n", "1", sha)
-        first = parents[0].split()[1:2] if parents else []
-        if first and not git.show(sha, rel).startswith(git.show(first[0], rel)):
-            out.append(f"commit {sha[:12]} drops or rewrites tuning log lines of its parent")
+    for line in git.lines("rev-list", "--reverse", "--full-history", "--parents",
+                          f"{base}..HEAD"):  # fmt: skip
+        sha, *parents = line.split()
+        dropped = [p for p in parents if not log_at(sha).startswith(log_at(p))]
+        if dropped:
+            what = "merge" if len(parents) > 1 else "commit"
+            out.append(f"{what} {sha[:12]} drops or rewrites tuning log lines of its parent "
+                       f"{', '.join(p[:12] for p in dropped)}")  # fmt: skip
     return out
 
 

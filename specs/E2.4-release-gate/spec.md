@@ -111,13 +111,14 @@ counted over both splits after drift; a problem blocks go-live (exit 1).
 
 ### `Makefile`
 `make eval [SPLIT=heldout] [YES=--yes]` (calls), `make eval-check RUN=...`, `make eval-offline`;
-each takes `JSON=1`.
+each takes `JSON=1`. The 0-4 exit codes are `scripts/release_gate.py`'s: GNU make turns any
+failing recipe into exit 2, so make exits 0 or 2, and CI runs the script directly.
 
 ### `.github/workflows/eval-gate.yml` (GAT-02)
 - Triggers: push and pull request touching a manifest, `src/course_assistant/answer/**`
   (the rules constants), the tuning log, `golden/**` or the eval code; a weekly schedule;
   manual dispatch.
-- `offline` job: no secrets; `make eval-offline JSON=1`; uploads `runs/gate/` as an artifact.
+- `offline` job: no secrets; `release_gate.py offline --json` (its own exit code); uploads `runs/gate/` as an artifact.
 - `live` job: a step reads whether `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` and `HELDOUT_BUNDLE`
   are set; without them every later step is skipped with a notice. With them it restores the
   held-out folder, ingests the sample course, runs `release_gate.py eval --no-flip` and uploads
