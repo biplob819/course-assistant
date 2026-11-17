@@ -1342,6 +1342,10 @@ def test_a_removal_plus_any_gated_setting_change_runs_the_full_gate(tmp_path, mo
         "answer model": {"answer_model": "an-older-answer-model"},
         "check model": {"check_model": "an-older-check-model"},
         "reasoning effort": {"reasoning_effort": {"x": "high"}},
+        # pass 10: any other config field (retrieval breadth, window, vector store) or the
+        # assessments file, through their hashes
+        "other config field": {"config_sha256": "0" * 64},
+        "assessments file": {"assessments_sha256": "0" * 64},
         "no recorded settings": {},  # a LIVE.json written before settings were recorded
     }
     for name, changed in changes.items():

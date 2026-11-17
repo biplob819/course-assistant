@@ -291,11 +291,18 @@ def gated_settings(config: Any) -> dict[str, Any]:
     """The settings §6.5 gates besides the corpus: the rules hash, the bar and the models (with
     their effort). Recorded in LIVE.json at a flip; the removal-only shortcut needs them all
     unchanged."""
+    import hashlib
+
     from course_assistant.answer.ask import Assistant
 
+    # the whole config and the assessments file too, so retrieval breadth, the window, the
+    # vector store or an assessment change all send a removal through the full gate (pass 10)
+    whole = json.dumps(config.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
     return {"rules_hash": Assistant.rules_hash(), "grounding_bar": config.grounding_bar,
             "answer_model": config.answer_model, "check_model": config.check_model,
-            "reasoning_effort": dict(config.reasoning_effort)}  # fmt: skip
+            "reasoning_effort": dict(config.reasoning_effort),
+            "config_sha256": hashlib.sha256(whole.encode("utf-8")).hexdigest(),
+            "assessments_sha256": hashlib.sha256(ASSESSMENTS.read_bytes()).hexdigest()}  # fmt: skip
 
 
 RANK = {2: 4, 3: 3, 4: 2, 1: 1, 0: 0}  # exit-code precedence: 2 > 3 > 4 > 1 > 0
