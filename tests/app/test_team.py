@@ -547,3 +547,51 @@ def test_unlock_with_a_store_that_will_not_open_is_refused_and_stays_locked(tmp_
     rig.team.store = broken_store
     rig.team.sign_out(st)  # signing out still locks, even when its audit cannot be written
     assert rig.team.locked_reason(st) == NEEDED
+
+
+# ==================== verifier pass 2: actions act on the question seen ====================
+
+
+@pytest.mark.safety
+def test_an_action_on_a_question_that_changed_since_it_was_seen_is_refused(tmp_path):
+    rig = TeamRig(tmp_path, owner={k: list(v) * 3 for k, v in KINDS["not_covered"].items()})
+    q1 = rig.escalated("Is there a session on pricing models?")
+    q2 = rig.escalated("Is there a session on hiring a team?")
+    me, other = rig.unlock(), rig.unlock(TeamState.new())
+    seen = {r.question_id: r.status for r in rig.team.queue(me)}
+    rig.team.reply(other, q1, REPLY)  # another staff session acts first
+    before = len(rig.audits())
+    for act in (lambda: rig.team.close(me, q1, seen=seen[q1]),
+                lambda: rig.team.flag_gap(me, q1, seen=seen[q1]),
+                lambda: rig.team.reply(me, q1, "Mine.", seen=seen[q1])):  # fmt: skip
+        with pytest.raises(GuardRefused) as exc:
+            act()
+        assert exc.value.reason == team_mod.CHANGED
+    assert len(rig.audits()) == before
+    assert rig.store().get_escalation(q1).reply_text == REPLY  # type: ignore[union-attr]
+    rig.team.close(me, q2, seen=seen[q2])  # the question seen is the one acted on
+    assert rig.store().get_escalation(q2).status == "closed"  # type: ignore[union-attr]
+    assert rig.audits()[-1].target == q2
+    # a question deleted by its learner since it was seen is refused, not guessed
+    q3 = rig.escalated("Is there a session on budgets?")
+    seen3 = rig.team.queue(me)[0].status
+    rig.learners.chat.delete(rig.learners.state)
+    with pytest.raises(GuardRefused) as exc:
+        rig.team.close(me, q3, seen=seen3)
+    assert exc.value.reason == team_mod.GONE
+
+
+@pytest.mark.safety
+def test_a_queue_row_that_cannot_be_built_gives_a_fixed_refusal(tmp_path, monkeypatch, caplog):
+    rig = TeamRig(tmp_path, owner=KINDS["not_covered"])
+    rig.escalated()
+    st = rig.unlock()
+
+    def bad(*_: Any) -> Any:
+        raise KeyError("a question text that must not be logged")
+
+    monkeypatch.setattr(team_mod, "queue_row", bad)
+    with caplog.at_level(logging.WARNING), pytest.raises(GuardRefused) as exc:
+        rig.team.queue(st)
+    assert exc.value.reason == team_mod.READ_FAILED
+    assert "KeyError" in caplog.text and "must not be logged" not in caplog.text

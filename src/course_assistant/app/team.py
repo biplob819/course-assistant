@@ -52,6 +52,8 @@ BAD_SCOPE = "Pick a session from the list."
 BAD_WEEK = "Pick a week from the list."
 BAD_STATUS = "Pick a status from the list."
 READ_FAILED = "That could not be read just now. Please try again."
+CHANGED = "That question changed since you opened it. Look at the queue again."
+GONE = "That question is no longer in the queue."
 ESCALATION_REASONS: dict[str, str] = {
     "invalid": "A reply needs visible text, up to 4,000 characters.",
     "not_found": "That question is no longer in the queue.",
@@ -343,23 +345,48 @@ class TeachingTeam:
             items = team_queue(self._connect(), viewer=self.role, status=status, at=self.now())
         except EscalationError:
             raise GuardRefused(READ_FAILED) from None
-        return tuple(queue_row(i, self.corpus) for i in items)
+        try:
+            return tuple(queue_row(i, self.corpus) for i in items)
+        except Exception as exc:  # after the audit: a fixed refusal, never a crash (pass 2)
+            LOG.warning("teaching team: queue row failed (%s)", type(exc).__name__)
+            raise GuardRefused(READ_FAILED) from None
 
-    def reply(self, state: TeamState, question_id: str, text: str) -> None:
+    def _seen(self, store: Store, question_id: str, seen: str | None) -> None:
+        """The page acts only on the question it showed, in the status it showed: a question
+        deleted since is refused, and one another session changed since is refused (verifier
+        B2.3 pass 2). B2.1's own transition rules still guard the change itself."""
+        if seen is None:
+            return
+        try:
+            e = store.get_escalation(question_id)
+            q = store.get_question(question_id)
+        except Exception as exc:
+            LOG.warning("teaching team: escalation read failed (%s)", type(exc).__name__)
+            raise GuardRefused(READ_FAILED) from None
+        if e is None or q is None:
+            raise GuardRefused(GONE)
+        if e.status != seen:
+            raise GuardRefused(CHANGED)
+
+    def reply(self, state: TeamState, question_id: str, text: str, *,
+              seen: str | None = None) -> None:  # fmt: skip
         self._require(state)
         store = self._connect()
+        self._seen(store, question_id, seen)
         self._escalation(lambda: reply(question_id, text, instructor=self.role, store=store,
                                        at=self.now()))  # fmt: skip
 
-    def flag_gap(self, state: TeamState, question_id: str) -> None:
+    def flag_gap(self, state: TeamState, question_id: str, *, seen: str | None = None) -> None:
         self._require(state)
         store = self._connect()
+        self._seen(store, question_id, seen)
         self._escalation(lambda: flag_gap(question_id, instructor=self.role, store=store,
                                           at=self.now()))  # fmt: skip
 
-    def close(self, state: TeamState, question_id: str) -> None:
+    def close(self, state: TeamState, question_id: str, *, seen: str | None = None) -> None:
         self._require(state)
         store = self._connect()
+        self._seen(store, question_id, seen)
         self._escalation(lambda: close(question_id, instructor=self.role, store=store,
                                        at=self.now()))  # fmt: skip
 

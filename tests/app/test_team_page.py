@@ -13,7 +13,7 @@ from streamlit.testing.v1 import AppTest
 
 from course_assistant.app import team_wiring
 from course_assistant.app.chat import STATE_KEY as LEARNER_STATE_KEY
-from course_assistant.app.team import STATE_KEY
+from course_assistant.app.team import STATE_KEY, TeamState
 from course_assistant.escalation import TEAM_LABEL
 from tests.answer.test_ask import CORPUS, S01, happy
 from tests.app.rig import KINDS
@@ -316,3 +316,33 @@ def test_page_never_crashes_when_the_store_will_not_open(make_rig):
             assert "could not be read" in texts(at)
         else:
             assert READ_FAILED in [e.value for e in at.error], name
+
+
+@pytest.mark.safety
+def test_page_buttons_act_on_their_own_question_when_rows_move(make_rig):
+    rig = make_rig(owner={k: list(v) * 3 for k, v in KINDS["not_covered"].items()})
+    q = [rig.escalated(f"Is there a session on pricing models number {i}?") for i in range(3)]
+    at = unlock(page())
+    keys = {b.key for b in at.button}
+    for qid in q:
+        assert {f"gap-{qid}", f"close-{qid}"} <= keys  # keyed by question, never position
+    assert {f.key for f in at.text_area} == {f"reply-text-{qid}" for qid in q}
+    rig.team.close(rig.unlock(TeamState.new()), q[0])  # another staff session, meanwhile
+    labelled_key(at.button, f"close-{q[1]}").click()
+    at.run()
+    store = rig.store()
+    assert [store.get_escalation(x).status for x in q] == ["closed", "closed", "open"]  # type: ignore[union-attr]
+    closes = [e.target for e in rig.audits() if e.action == "close"]
+    assert closes == [q[0], q[1]]
+    # a learner deletes the history behind a row between the render and the click
+    rig.learners.chat.delete(rig.learners.state)
+    labelled_key(at.button, f"close-{q[2]}").click()
+    at.run()
+    assert not at.exception
+    assert [e.target for e in rig.audits() if e.action == "close"] == [q[0], q[1]]
+
+
+def labelled_key(widgets: Any, key: str) -> Any:
+    found = [w for w in widgets if w.key == key]
+    assert found, f"no widget keyed {key!r}"
+    return found[0]

@@ -110,6 +110,9 @@ def _passkey(team: TeachingTeam, state: TeamState) -> None:
 
 
 def _row(team: TeachingTeam, state: TeamState, row: QueueRow, n: int) -> None:
+    """One queue row. Every widget is keyed by the question id, never the position, and each
+    action names the status the row showed, so a click acts on this question or is refused."""
+    qid, seen = row.question_id, row.status
     with st.container(border=True):
         st.markdown(f"**Question {n + 1}**: {row.heading}")  # fixed labels only
         st.text(row.question)
@@ -126,17 +129,17 @@ def _row(team: TeachingTeam, state: TeamState, row: QueueRow, n: int) -> None:
             st.caption("Your team's reply:")
             st.text(row.reply)
         if row.can_reply:
-            with st.form(f"reply-{row.question_id}", clear_on_submit=True):
-                text = st.text_area("Reply to the learner", key=f"reply-text-{row.question_id}",
+            with st.form(f"reply-{qid}", clear_on_submit=True):
+                text = st.text_area("Reply to the learner", key=f"reply-text-{qid}",
                                     help="The learner sees it in their history, marked as "
                                          "from the teaching team.")  # fmt: skip
-                send = st.form_submit_button("Send reply")
+                send = st.form_submit_button("Send reply", key=f"send-{qid}")
             if send:
-                _done(lambda: team.reply(state, row.question_id, text), "Reply sent.")
-        if row.can_flag and st.button("Flag a gap in the materials", key=f"gap-{n}"):
-            _done(lambda: team.flag_gap(state, row.question_id), "Flagged as a gap.")
-        if row.can_close and st.button("Close", key=f"close-{n}"):
-            _done(lambda: team.close(state, row.question_id), "Closed.")
+                _done(lambda: team.reply(state, qid, text, seen=seen), "Reply sent.")
+        if row.can_flag and st.button("Flag a gap in the materials", key=f"gap-{qid}"):
+            _done(lambda: team.flag_gap(state, qid, seen=seen), "Flagged as a gap.")
+        if row.can_close and st.button("Close", key=f"close-{qid}"):
+            _done(lambda: team.close(state, qid, seen=seen), "Closed.")
 
 
 def _queue(team: TeachingTeam, state: TeamState) -> None:

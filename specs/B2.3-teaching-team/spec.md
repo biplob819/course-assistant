@@ -42,8 +42,12 @@ tested with `AppTest`. Deploying it next to the learner page is D3.2.
   - `reply(state, question_id, text)`, `flag_gap(state, question_id)`,
     `close(state, question_id)` (TTV-01): B2.1's functions with the staff role as instructor
     (each audited by B2.1); an `EscalationError` becomes a readable refusal and nothing changes.
+    Each takes `seen=` (the status the page showed): a question deleted since is refused
+    (`GONE`), one whose status changed since is refused (`CHANGED`). The page keys every
+    per-row widget by the question id (verifier pass 2). A queue row that cannot be built
+    after the `view_queue` audit gives `READ_FAILED`.
   - `weeks(state, n=8)` and `digest(state, week)` (TTV-02): the current ISO week and the
-    `n - 1` before it; the stored B2.4 rows of a week (N1.5 `Store.digest`), filtered again to
+    `n - 1` before it (no audit: it reads nothing from the store); the stored B2.4 rows of a week (N1.5 `Store.digest`), filtered again to
     `count >= max(K_MIN, config.digest_k)` (defence in depth), as `DigestLine`s (session
     label, topic, count, gaps). Audited `view_digest` (target none).
   - `manifest_view(state)` (TTV-03): `ManifestView` with the cohort, the live corpus version,
