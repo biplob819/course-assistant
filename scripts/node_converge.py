@@ -209,13 +209,27 @@ def proof_problems(cap: Cap, root: Path, external: bool = False) -> list[str]:
 def gate_proofs(ctx: Ctx) -> Result:
     rows = [c for c in ctx.caps if c.node == ctx.node]
     external = ctx.nodes[ctx.node].external if ctx.node in ctx.nodes else False
-    problems = [p for c in rows for p in proof_problems(c, ctx.root, external)]
+    problems: list[str] = []
+    pending: list[str] = []
+    for c in rows:
+        if c.owner_attest and not external:
+            # D-60: an owner-attest row of a code node is pending until the owner attests it;
+            # a proof it already carries must be a valid attest, and green needs one
+            if c.status != "green" and not c.proof.strip():
+                pending.append(c.cap_id)
+                continue
+            problems += proof_problems(c, ctx.root, external=True)
+            continue
+        problems += proof_problems(c, ctx.root, external)
     if problems:
         shown = "; ".join(problems[:6]) + (
             f"; … {len(problems) - 6} more" if len(problems) > 6 else ""
         )
         return Result("FAIL", shown)
-    return Result("PASS", f"{len(rows)} rows × {len(PROOF_DIMENSIONS)} dimensions resolve")
+    detail = f"{len(rows) - len(pending)} rows × {len(PROOF_DIMENSIONS)} dimensions resolve"
+    if pending:
+        detail += f"; owner attest pending: {', '.join(pending)}"
+    return Result("PASS", detail)
 
 
 def _tool_gate(cmd: list[str], root: Path, label: str) -> Result:
@@ -607,6 +621,12 @@ def self_test() -> int:
         check("3 proofs fail on a ruling about another node", r.status == "FAIL")
         r = gate_proofs(ctx("H-1\tW0.1\tgreen\tattest=OWNER D-21\t\n"))
         check("3 proofs fail on attest for a code node", r.status == "FAIL")
+        # D-60: an owner-attest row of a code node is pending, then green only on attest
+        mark = "live (owner attest) [US10]"
+        r = gate_proofs(ctx(f"H-1\tW0.1\tbuilding\t\t{mark}\n"))
+        check("3 proofs pass on a pending owner-attest row", r.status == "PASS")
+        r = gate_proofs(ctx(f"H-1\tW0.1\tgreen\t\t{mark}\n"))
+        check("3 proofs fail on a green owner-attest row with no attest", r.status == "FAIL")
         prose = parse_catalog(hdr + "S-1\tN1.1\tgreen\tattest=OWNER D-21\t\n")
         r = gate_proofs(Ctx("N1.1", root, ext_graph, prose, specs))
         check("3 attest in prose does not make a node external", r.status == "FAIL")

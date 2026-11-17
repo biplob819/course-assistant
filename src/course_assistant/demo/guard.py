@@ -26,11 +26,11 @@ from course_assistant.demo._errors import GuardRefused
 from course_assistant.demo.passkey import PasskeyGate
 from course_assistant.demo.spend import MICRO, SpendCounter, to_micro
 from course_assistant.llm import LLMError, Prices, ResponsesRequest, ResponsesResult, call_cost
-from course_assistant.llm.client import MAX_ATTEMPTS
+from course_assistant.llm.client import MAX_ATTEMPTS, MAX_TOOL_CALLS
 
 LOG = logging.getLogger("course_assistant.demo")
 MAX_SESSIONS = 10_000  # rate-limit memory bound: the oldest idle sessions are forgotten first
-FILE_SEARCH_CALLS_BOUND = 3  # file_search calls one Responses call may make, at most
+FILE_SEARCH_CALLS_BOUND = MAX_TOOL_CALLS  # the provider's own cap (D3.2): one number
 CHUNK_TOKENS = 800  # the vector store's chunk size: tokens per retrieved result
 ITEM_OVERHEAD_TOKENS = 16  # role and framing per input item
 

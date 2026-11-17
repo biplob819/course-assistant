@@ -1,0 +1,19 @@
+# Streamlit settings for the hosted demo (D3.2). Community Cloud reads this file from the
+# repo root. No secret belongs here: secrets go in the host's secret store only.
+
+[server]
+headless = true
+runOnSave = false
+fileWatcherType = "none"
+enableXsrfProtection = true
+maxUploadSize = 1  # MB; the demo takes no uploads
+
+[browser]
+gatherUsageStats = false
+
+[client]
+showErrorDetails = "none"  # no traceback (which could hold a value) reaches a visitor
+toolbarMode = "minimal"
+
+[logger]
+level = "warning"

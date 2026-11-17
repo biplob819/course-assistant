@@ -17,7 +17,7 @@ import re
 import secrets
 import threading
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -435,6 +435,29 @@ class LearnerChat:
         state.turns.append(Shown(question=q, card=card, conversation_id=state.conversation_id,
                                  turn=turn))  # fmt: skip
         return card
+
+    # --- worked examples: the demo cache, replayed with no model call (D3.2, DEM-01) ---
+
+    def replay_options(self, state: ChatState) -> tuple[tuple[str, str], ...]:
+        """(case id, question) for each stored example; empty when no cache is loaded."""
+        self._require(state)
+        cache = self.demo.cache
+        if cache is None:
+            return ()
+        return tuple((cid, cache.question(cid)) for cid in cache.ids())
+
+    def replay(self, state: ChatState, case_id: str) -> Card:
+        """The stored answer of one example as a card (chips from the cache's own corpus),
+        with no question id and no "Ask the teaching team".
+        The live demo checks the passkey again; nothing is stored and no model is called."""
+        self._require(state)
+        answer = self.demo.replay(state.token, case_id)
+        cache = self.demo.cache
+        if cache is None:  # the live demo refused above already; kept for the type
+            raise GuardRefused("The demo replay file is not available yet.")
+        # an example is not this learner's question: nothing to send to the teaching team
+        return replace(card_for(answer, cache.fixture.corpus), question_id=None,
+                       can_escalate=False)  # fmt: skip
 
     def escalate(self, state: ChatState, question_id: str | None) -> Escalation:
         """ "Ask the teaching team" on a not-covered reply: the turn this page holds goes with

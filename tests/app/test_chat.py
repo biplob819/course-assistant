@@ -470,6 +470,8 @@ def _calls(rig: ChatRig, st: ChatState) -> dict[str, Any]:
         "new_conversation": lambda: rig.chat.new_conversation(st),
         "notice": lambda: rig.chat.notice(st),
         "replies_waiting": lambda: rig.chat.replies_waiting(st),
+        "replay_options": lambda: rig.chat.replay_options(st),  # D3.2
+        "replay": lambda: rig.chat.replay(st, "case-1"),  # D3.2
         "scope_label": lambda: rig.chat.scope_label(st),
         "session_options": lambda: rig.chat.session_options(st),
         "set_own_key": lambda: rig.chat.set_own_key(st, OWN_KEY),

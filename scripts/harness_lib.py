@@ -28,6 +28,9 @@ ATTEST_RE = re.compile(
     r"^attest=OWNER D-([0-9]+)$", re.ASCII
 )  # the only proof an external node takes
 EXTERNAL_MARK = "owner attest"  # the exact Verified-by cell of an external node
+# a single row of a code node that only the owner can prove (D-60): its note ends with this
+# exact mark, before the optional trace bracket
+OWNER_ATTEST_ROW_RE = re.compile(r"\(owner attest\)(?: \[[^\]]*\])?$")
 
 
 @dataclass
@@ -54,6 +57,12 @@ class Cap:
     status: str
     proof: str
     note: str
+
+    @property
+    def owner_attest(self) -> bool:
+        """An owner-attest row (D-60): pending until green, and green only on
+        `attest=OWNER D-n`. Only the exact mark at the end of the note counts."""
+        return OWNER_ATTEST_ROW_RE.search(self.note.strip()) is not None
 
 
 class HarnessError(Exception):
@@ -219,6 +228,12 @@ def eligibility_problems(
                 why = attest_problem(c, decisions_text)
                 if why:
                     problems.append(f"external node {n.id} is green without a valid attest: {why}")
+    for c in caps:
+        if c.owner_attest and c.status == "green" and c.node in nodes:
+            why = attest_problem(c, decisions_text)
+            if why:
+                problems.append(f"owner attest row {c.cap_id} is green without a valid attest: "
+                                f"{why}")  # fmt: skip
     for n in nodes.values():
         status = node_status(n.id, caps)
         active = status in ("building", "green") or n.id == simulate_start

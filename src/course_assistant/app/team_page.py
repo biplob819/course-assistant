@@ -17,7 +17,7 @@ from typing import Any, TypeVar
 
 import streamlit as st
 
-from course_assistant.app import team_wiring
+from course_assistant.app import deploy, team_wiring
 from course_assistant.app.team import (
     STATE_KEY,
     STATUS_FILTERS,
@@ -41,17 +41,19 @@ def _from_env() -> TeachingTeam:
 
 
 def _secrets() -> Any:
-    try:
-        return dict(st.secrets)
-    except Exception:
-        return None
+    """The host secret store, read at every lookup (D3.2): a hash changed there revokes
+    sessions at the next check, with no restart."""
+    return deploy.LiveSecrets(lambda: st.secrets)
 
 
 def _ip() -> str | None:
+    """The client address for the passkey rate limit, trusted only as far as the configured
+    proxy hops (D3.2); None (per session plus the global cap) when none is configured."""
     try:
-        return st.context.ip_address
+        headers = st.context.headers
     except Exception:
         return None
+    return deploy.client_ip(headers, deploy.trusted_hops(secrets_store=_secrets()))
 
 
 def _safely(fn: Callable[[], T]) -> T | None:

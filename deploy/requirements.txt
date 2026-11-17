@@ -1,0 +1,9 @@
+# The hosted demo's dependencies (D3.2). Streamlit Community Cloud reads the dependency file
+# next to the main file (deploy/streamlit_app.py) before the repo root, so the root uv.lock,
+# whose dev group carries test tools, is not what the demo installs. These are exactly the
+# core dependencies plus the `app` and `openai` extras of pyproject.toml (a test keeps them
+# equal); the entry point adds src/ to the import path, so the package itself is not installed.
+pydantic>=2.7
+pyyaml>=6
+streamlit>=1.40
+openai>=2

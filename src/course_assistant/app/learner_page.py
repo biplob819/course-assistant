@@ -17,7 +17,7 @@ from typing import Any, TypeVar
 
 import streamlit as st
 
-from course_assistant.app import wiring
+from course_assistant.app import deploy, wiring
 from course_assistant.app.chat import STATE_KEY, Card, ChatState, LearnerChat, Shown
 from course_assistant.demo._errors import GuardRefused
 
@@ -25,6 +25,7 @@ st.set_page_config(page_title="Course assistant")
 SECRET_INPUTS = ("ca_passkey_input", "ca_own_key_input")
 FORGET = "ca_forget_inputs"
 FLASH = "ca_flash"
+MODES = ("Worked examples (no live call)", "Ask your own question")  # replay first (D3.2)
 T = TypeVar("T")
 
 
@@ -34,17 +35,19 @@ def _from_env() -> LearnerChat:
 
 
 def _secrets() -> Any:
-    try:
-        return dict(st.secrets)
-    except Exception:
-        return None
+    """The host secret store, read at every lookup (D3.2): a hash changed there revokes
+    sessions at the next check, with no restart."""
+    return deploy.LiveSecrets(lambda: st.secrets)
 
 
 def _ip() -> str | None:
+    """The client address for the passkey rate limit, trusted only as far as the configured
+    proxy hops (D3.2); None (per session plus the global cap) when none is configured."""
     try:
-        return st.context.ip_address
+        headers = st.context.headers
     except Exception:
         return None
+    return deploy.client_ip(headers, deploy.trusted_hops(secrets_store=_secrets()))
 
 
 def _safely(fn: Callable[[], T]) -> T | None:
@@ -159,6 +162,19 @@ def _card(chat: LearnerChat, state: ChatState, shown: Shown, n: int) -> None:
                 st.rerun()
 
 
+def _examples(chat: LearnerChat, state: ChatState,
+              examples: tuple[tuple[str, str], ...]) -> None:  # fmt: skip
+    """The demo cache's stored answers (D3.2): picked by number, so a question's text only
+    ever reaches st.text; no model call and nothing stored."""
+    st.caption("Stored answers to curated questions on the sample course. No live call.")
+    names = [f"Example {i}" for i in range(1, len(examples) + 1)]
+    pick = st.selectbox("Example question", names)
+    case_id, question = examples[names.index(pick)]
+    card = _safely(lambda: chat.replay(state, case_id))
+    if card is not None:
+        _card(chat, state, Shown(question=question, card=card, conversation_id=None), -1)
+
+
 def _history(chat: LearnerChat, state: ChatState) -> None:
     waiting = _safely(lambda: chat.replies_waiting(state)) or 0
     title = "Your history" + (f" ({waiting} replies from the teaching team)" if waiting else "")
@@ -211,6 +227,11 @@ def main() -> None:
     st.title("Course assistant")
     if st.session_state.pop("ca_deleted", False):
         st.success("Your history is deleted.")
+    examples = _safely(lambda: chat.replay_options(state)) or ()
+    if examples and st.radio("Mode", MODES, horizontal=True) == MODES[0]:
+        _examples(chat, state, examples)
+        _history(chat, state)
+        return
     options = chat.session_options(state)
     current = chat.scope_label(state)
     label = st.selectbox("Search in", options, index=options.index(current),

@@ -29,6 +29,9 @@ Purpose = Literal["answer", "route", "support", "integrity", "hint", "digest", "
 ErrorKind = Literal["transport", "parse", "config"]
 RETRY_STATUS = {408, 409, 429}
 MAX_ATTEMPTS = 3
+# hosted file-search calls one Responses call may make; sent as `max_tool_calls`, so the
+# provider can never search more often than the demo executor's bound prices in (D3.2)
+MAX_TOOL_CALLS = 3
 
 
 class InputItem(Model):
@@ -110,6 +113,7 @@ def build_kwargs(r: ResponsesRequest) -> dict[str, Any]:
         if r.filters is not None:
             tool["filters"] = _plain(r.filters)
         kwargs["tools"] = [tool]
+        kwargs["max_tool_calls"] = MAX_TOOL_CALLS
         kwargs["include"] = ["file_search_call.results"]
     if r.json_schema is not None:
         kwargs["text"] = {

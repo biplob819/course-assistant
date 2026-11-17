@@ -987,6 +987,7 @@ Each row becomes one line in `docs/graph/catalog.tsv` with status `not-started`.
 | DEM-01 | Learner and teaching pages in `portfolio-demos`; replay default; live behind a passcode | US10 |
 | DEM-02 | Secrets in the host secret store; aggregate-only logs | NFR7 |
 | DEM-03 | Off switch demonstrated live; nightly demo data reset | Trust |
+| DEM-04 | Live deploy on Streamlit Community Cloud: the owner's app, repo connection and secrets; post-deploy smoke check passes (owner attest) | US10 |
 
 **T3.1 Trust pack**
 
