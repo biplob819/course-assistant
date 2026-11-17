@@ -10,6 +10,7 @@ from course_assistant.schemas._base import (
     ConversationId,
     Model,
     NonBlank,
+    NonNegInt,
     Pid,
     PosInt,
     QuestionId,
@@ -140,7 +141,14 @@ class DigestRow(Model):
     week: WeekId
     session: SessionId
     topic: NonBlank  # a model-written label, never a quote
-    count: PosInt
+    count: PosInt  # distinct learners; a row under k (k = 5) is never written (B2.4)
+    gaps: NonNegInt = 0  # of those learners, how many had a question flagged a material gap
+
+    @model_validator(mode="after")
+    def _gaps_within_count(self) -> DigestRow:
+        if self.gaps > self.count:
+            raise ValueError("gaps cannot exceed count")
+        return self
 
 
 class PauseState(Model):

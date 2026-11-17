@@ -9,6 +9,7 @@ edited outside the app cannot come back as a valid record that breaks an invaria
 from __future__ import annotations
 
 import datetime as dt
+import re
 import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -24,6 +25,7 @@ from course_assistant.schemas import (
     Consent,
     Conversation,
     DeletionRequest,
+    DigestRow,
     Escalation,
     PauseState,
     Question,
@@ -70,6 +72,12 @@ def _add_years(t: dt.datetime, years: int) -> dt.datetime:
         if years >= 0:
             return t.replace(year=t.year + years, month=3, day=1)
         return t.replace(year=t.year + years, month=2, day=28)
+
+
+def _week(week: object) -> None:
+    """An ISO week id ("2026-W48"); it is used in a LIKE pattern, so nothing else passes."""
+    if not isinstance(week, str) or not re.fullmatch(r"\d{4}-W\d\d", week):
+        raise ValueError("not a week id")
 
 
 # the time stored on a retired-id marker: fixed, so the marker never records when the
@@ -264,6 +272,22 @@ class Store:
         return self._for_pid("question", Question, pid, "and conversation_id = ?",
                              (conversation_id,))  # fmt: skip
 
+    def questions_between(self, start: dt.datetime, end: dt.datetime) -> list[Question]:
+        """Every learner's questions asked in [start, end), oldest first (the weekly digest,
+        B2.4). Each row is checked against the pid inside its record, as `_for_pid` does."""
+        lo, hi = _iso(start - dt.timedelta(days=1)), _iso(end + dt.timedelta(days=1))
+        rows = self._con.execute(
+            "select pid, json from records where kind = 'question' and at >= ? and at <= ? "
+            "order by at, key", (lo, hi)).fetchall()  # fmt: skip
+        out = []
+        for pid, raw in rows:
+            q = self._load(Question, raw)
+            if q.learner_pid != pid:
+                raise ValueError("stored Question pid column does not match its record")
+            if start <= q.asked_at < end:
+                out.append(q)
+        return out
+
     def _owner(self, question_id: str) -> tuple[str | None, str | None]:
         row = self._con.execute(
             "select pid, conversation_id from records where kind = 'question' and key = ?",
@@ -398,6 +422,34 @@ class Store:
         # in the order recorded (keys are pid:counter), so the consent recorded last wins even
         # if its given-at time is earlier (verifier B2.2 pass 1)
         return self._for_pid("consent", Consent, pid, order="key")
+
+    # ---------- digest ----------
+
+    def put_digest(self, week: str, rows: list[DigestRow], *, k: int,
+                   at: dt.datetime) -> None:  # fmt: skip
+        """Replace the week's digest rows in one transaction (B2.4). Counts only: a row under
+        k, a k under 5, or a row of another week is refused and nothing changes."""
+        _week(week)
+        if isinstance(k, bool) or not isinstance(k, int) or k < 5:
+            raise ValueError("digest k must be at least 5")
+        checked = [DigestRow.model_validate(r.model_dump()) for r in rows]
+        if any(r.week != week for r in checked):
+            raise ValueError("a digest row belongs to another week")
+        if any(r.count < k for r in checked):
+            raise ValueError("a digest row is below k")
+        with self._tx():
+            self._con.execute(
+                "delete from records where kind = 'digest' and key like ?", (f"{week}:%",)
+            )
+            for i, r in enumerate(checked):
+                self._put("digest", f"{week}:{i:06d}", r, at=at)
+
+    def digest(self, week: str) -> list[DigestRow]:
+        _week(week)
+        rows = self._list("digest", DigestRow, "and key like ?", (f"{week}:%",), order="key")
+        if any(r.week != week for r in rows):
+            raise ValueError("stored DigestRow key does not match its record")
+        return rows
 
     # ---------- pause ----------
 
