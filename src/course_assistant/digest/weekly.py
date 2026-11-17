@@ -323,9 +323,18 @@ class QuestionIndex:
     def __init__(self, questions: Iterable[str]) -> None:
         qs = list(questions)
         self.streams = [_stream(q) for q in qs]
-        self.short = [st for q, st in zip(qs, self.streams, strict=True)
-                      if 3 <= len(words(q)) < QUESTION_RUN_WORDS
-                      and len(st) >= MIN_WHOLE_LETTERS]  # fmt: skip
+        # short questions are found on the same tokens as labels (citation markers kept), and
+        # a 4-word one is also matched by each 3-word run of it (verifier B2.4 pass 6)
+        short: set[str] = set()
+        for q in qs:
+            toks = _label_tokens(display_label(q))
+            if 3 <= len(toks) < QUESTION_RUN_WORDS:
+                for i in range(len(toks) - 2):
+                    for j in range(i + 3, len(toks) + 1):
+                        st = "".join(toks[i:j])
+                        if len(st) >= MIN_WHOLE_LETTERS:
+                            short.add(st)
+        self.short = sorted(short)
 
     def copied(self, label: str) -> bool:
         tokens = _label_tokens(label)

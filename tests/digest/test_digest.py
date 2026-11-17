@@ -735,3 +735,12 @@ def test_a_shown_label_is_the_checked_text(store):
                                       ("is it ok", "Analysis it okay")])  # fmt: skip
 def test_a_short_question_matches_only_on_word_boundaries(q, label):
     assert label_problem(label, [q]) is None
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("q, label", [("(Session 1 overdue)", "Session 1 overdue"),
+                                      ("(session 2 grades appeal)", "Session 2 grades appeal"),
+                                      ("[1] father hospitalised", "1 father hospitalised"),
+                                      ("[12] my mum died", "my mum died")])  # fmt: skip
+def test_a_citation_shaped_short_question_is_still_a_short_question(q, label):
+    assert label_problem(label, [q]) == "copies a question"
