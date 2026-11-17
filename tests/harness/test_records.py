@@ -82,10 +82,17 @@ def test_portfolio_notes_stay_out_of_public_repo():
 
 @pytest.mark.contract
 def test_workflows_grant_least_privilege():
-    ci = _yaml_code(WORKFLOWS / "ci.yml")
-    assert re.search(r"^permissions:\n  contents: read$", ci, re.M)
-    assert "secrets." not in ci
-    assert sorted(p.name for p in WORKFLOWS.iterdir()) == ["ci.yml"]
+    assert sorted(p.name for p in WORKFLOWS.iterdir()) == ["ci.yml", "eval-gate.yml"]
+    for name in ("ci.yml", "eval-gate.yml"):
+        code = _yaml_code(WORKFLOWS / name)
+        assert re.search(r"^permissions:\n  contents: read$", code, re.M), name
+    assert "secrets." not in _yaml_code(WORKFLOWS / "ci.yml")
+    # E2.4: the release gate's secrets are read only by its live job, never by the offline one
+    gate = _yaml_code(WORKFLOWS / "eval-gate.yml")
+    offline, live = gate.split("\n  live:\n", 1)
+    assert "secrets." not in offline
+    assert set(re.findall(r"\{\{ secrets\.(\w+)", live)) == {"OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+                                                        "HELDOUT_BUNDLE"}  # fmt: skip
 
 
 def test_catalog_round_trip_is_byte_identical(tmp_path):

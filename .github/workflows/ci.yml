@@ -4,7 +4,7 @@ on:
   push:
   pull_request:
   schedule:
-    - cron: "0 3 * * 1"  # weekly hook; the golden-set eval job is added at E2.4
+    - cron: "0 3 * * 1"  # weekly; the release gate runs in eval-gate.yml (E2.4)
 
 permissions:
   contents: read

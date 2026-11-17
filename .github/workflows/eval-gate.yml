@@ -1,0 +1,114 @@
+name: eval-gate
+
+# The release gate (E2.4, Tech Spec §6.5): on every manifest or rules change, and weekly.
+# The offline job needs no secret. The live job runs only where the API keys and the held-out
+# bundle are configured as repository secrets; without them every live step is skipped.
+on:
+  push:
+    paths:
+      - "**/manifest.yaml"
+      - "sample_course/**"
+      - "src/course_assistant/answer/**"  # the rules constants (ROUTE/ANSWER/HINT/SUPPORT/INTEGRITY)
+      - "src/course_assistant/eval/**"
+      - "docs/measurements/tuning-log.jsonl"
+      - "golden/**"
+      - "tests/eval/evalreg/**"
+      - "scripts/release_gate.py"
+      - "scripts/eval_live.py"
+      - ".github/workflows/eval-gate.yml"
+  pull_request:
+    paths:
+      - "**/manifest.yaml"
+      - "sample_course/**"
+      - "src/course_assistant/answer/**"  # the rules constants (ROUTE/ANSWER/HINT/SUPPORT/INTEGRITY)
+      - "src/course_assistant/eval/**"
+      - "docs/measurements/tuning-log.jsonl"
+      - "golden/**"
+      - "tests/eval/evalreg/**"
+      - "scripts/release_gate.py"
+      - "scripts/eval_live.py"
+      - ".github/workflows/eval-gate.yml"
+  schedule:
+    - cron: "0 4 * * 1"  # weekly: a failure with no change on our side shows provider drift
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    name: release gate (offline)
+    runs-on: ubuntu-latest
+    env:
+      LOG_BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+      LOG_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the tuning log is checked append-only against history
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - run: uv sync --locked --all-extras
+      - name: gate tests (every exit code, flip, drift, coverage)
+        run: uv run pytest -q tests/eval/test_release.py tests/eval/test_evalreg.py
+      - name: offline release gate
+        run: make eval-offline JSON=1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-gate-offline
+          path: runs/gate/
+          if-no-files-found: error
+
+  live:
+    name: release gate (live, held-out)
+    needs: offline
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      HELDOUT_BUNDLE: ${{ secrets.HELDOUT_BUNDLE }}
+    steps:
+      - id: secrets
+        name: check for the live secrets
+        run: |
+          if [ -n "$OPENAI_API_KEY" ] && [ -n "$ANTHROPIC_API_KEY" ] && [ -n "$HELDOUT_BUNDLE" ]; then
+            echo "live=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "live=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::live release gate skipped: OPENAI_API_KEY, ANTHROPIC_API_KEY or HELDOUT_BUNDLE is not set"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.secrets.outputs.live == 'true'
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        if: steps.secrets.outputs.live == 'true'
+        with:
+          python-version: "3.13"
+      - if: steps.secrets.outputs.live == 'true'
+        run: uv sync --locked --all-extras
+      - name: restore the private held-out folder
+        if: steps.secrets.outputs.live == 'true'
+        run: echo "$HELDOUT_BUNDLE" | base64 -d | tar -xz -C golden/heldout
+      - name: ingest the sample course
+        if: steps.secrets.outputs.live == 'true'
+        run: uv run course-assistant ingest --config "$GATE_CONFIG"
+        env:
+          GATE_CONFIG: ${{ vars.GATE_CONFIG || 'sample_course/config.yaml' }}
+      - name: held-out run and release gate (report only, no flip)
+        id: gate
+        if: steps.secrets.outputs.live == 'true'
+        run: uv run python scripts/release_gate.py eval --config "$GATE_CONFIG" --yes --no-flip --out runs
+        env:
+          GATE_CONFIG: ${{ vars.GATE_CONFIG || 'sample_course/config.yaml' }}
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.secrets.outputs.live == 'true'
+        with:
+          name: release-gate-live
+          # verdict and summary only: the run folder itself holds case text
+          path: |
+            runs/gate-*/course-ta-heldout-*/gate.json
+            runs/gate-*/course-ta-heldout-*/evalkit/*/summary.json
+          if-no-files-found: warn

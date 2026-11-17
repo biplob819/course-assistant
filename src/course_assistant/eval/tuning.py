@@ -361,3 +361,100 @@ def results_for_log(results: Sequence[BarResult]) -> list[dict[str, Any]]:
     return [{"bar": r.bar, "replayable": r.replayable, "grounded_rate": round(r.grounded_rate, 6),
              "handover_rate": round(r.handover_rate, 6), "n_b1": r.n_b1,
              "n_handover": r.n_handover} for r in results]  # fmt: skip
+
+
+# ---------- append-only against git (CAL-02, D-55; E2.4 should-fix 1) ----------
+
+
+class _Git:
+    """git in one repository; every call returns None when git is unusable."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+
+    def run(self, *args: str) -> Any:
+        import subprocess
+
+        try:
+            return subprocess.run(["git", *args], cwd=self.root, capture_output=True, text=True)
+        except FileNotFoundError:
+            return None
+
+    def usable(self) -> bool:
+        done = self.run("rev-parse", "--git-dir")
+        return done is not None and done.returncode == 0
+
+    def exists(self, rev: str) -> bool:
+        done = self.run("rev-parse", "--verify", "-q", f"{rev}^{{commit}}")
+        return done is not None and done.returncode == 0
+
+    def show(self, rev: str, rel: str) -> str:
+        done = self.run("show", f"{rev}:{rel}")
+        return done.stdout if done is not None and done.returncode == 0 else ""
+
+    def lines(self, *args: str) -> list[str]:
+        done = self.run(*args)
+        if done is None or done.returncode:
+            return []
+        return [x for x in done.stdout.splitlines() if x.strip()]
+
+
+def _zero(sha: str) -> bool:
+    return not sha.strip() or set(sha.strip()) == {"0"}
+
+
+def _history_problems(git: _Git, base: str, rel: str) -> list[str]:
+    """Every commit in base..HEAD that touches the log must keep its first parent's log as a
+    prefix: a line added on a parent branch and dropped on a child is caught at the dropping
+    commit, whatever the merge-base held (E2.3 should-fix 1)."""
+    out = []
+    for sha in git.lines("rev-list", "--reverse", f"{base}..HEAD", "--", rel):
+        parents = git.lines("rev-list", "--parents", "-n", "1", sha)
+        first = parents[0].split()[1:2] if parents else []
+        if first and not git.show(sha, rel).startswith(git.show(first[0], rel)):
+            out.append(f"commit {sha[:12]} drops or rewrites tuning log lines of its parent")
+    return out
+
+
+def append_only_problems(path: Path, root: Path, env: Mapping[str, str]) -> list[str] | None:
+    """The working log must start with the log at HEAD and at the base it is compared with:
+    `LOG_BASE_SHA` when set (CI: the push's `before` or the PR base), the merge-base with the
+    default branch for a new branch, else HEAD^. Every commit between that base and HEAD must
+    keep its parent's log, and the default branch's tip must agree with the working log on
+    their common length. In CI a missing base or history fails; only a local run without git
+    skips (None)."""
+    ci = env.get("CI", "").lower() in ("1", "true", "yes")
+    git = _Git(root)
+    if not git.usable():
+        return ["no git history in CI: the append-only check cannot run"] if ci else None
+    rel = path.relative_to(root).as_posix()
+    work = path.read_text(encoding="utf-8")
+    out = []
+    if git.exists("HEAD") and not work.startswith(git.show("HEAD", rel)):
+        out.append("the working tuning log rewrites lines committed at HEAD")
+    base = env.get("LOG_BASE_SHA", "")
+    branch = env.get("LOG_DEFAULT_BRANCH", "")
+    tip = next((ref for ref in (f"origin/{branch}", branch) if branch and git.exists(ref)), None)
+    if _zero(base) and branch:  # a new branch: no `before` to compare
+        found = git.lines("merge-base", "HEAD", tip) if tip else []
+        if not found:
+            return [*out, f"no merge-base with the default branch {branch!r} to compare with"]
+        base = found[0].strip()
+    if tip is not None:
+        main = git.show(tip, rel)
+        if not (work.startswith(main) or main.startswith(work)):
+            out.append(f"the tuning log disagrees with the default branch {branch!r} on lines "
+                       "both hold")  # fmt: skip
+    if not _zero(base):
+        if not git.exists(base):
+            out.append(f"LOG_BASE_SHA {base[:12]} is not in this clone (checkout fetch-depth 0)")
+        else:
+            if not work.startswith(git.show(base, rel)):
+                out.append(f"the tuning log rewrites lines committed at LOG_BASE_SHA {base[:12]}")
+            out += _history_problems(git, base, rel)
+    elif git.exists("HEAD^"):
+        if not work.startswith(git.show("HEAD^", rel)):
+            out.append("the tuning log rewrites lines committed at HEAD^")
+    elif ci:
+        out.append("no base to compare the tuning log against in CI (LOG_BASE_SHA or HEAD^)")
+    return out

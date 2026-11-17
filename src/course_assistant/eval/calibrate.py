@@ -559,12 +559,12 @@ def score_probe(run_dir: Path, *, log: Path, heldout_ids: AbstractSet[str],
 # =============================== what counts as calibrated ===============================
 
 
-def _logged_for(log: Path, calibration: str, digest: str, rubric: str) -> bool:
+def _logged_for(log: Path, calibration: str, digest: str, rubric: str, run: str) -> bool:
     from course_assistant.eval.tuning import read_log
 
     return any(e["kind"] == "calibration_scored" and e.get("calibration") == calibration
                and e.get("digest") == digest and e.get("rubric_hash") == rubric
-               for e in read_log(log))  # fmt: skip
+               and e.get("run") == run for e in read_log(log))  # fmt: skip
 
 
 def certified_calibration(run_dir: Path, *, log: Path) -> dict[str, str]:
@@ -572,7 +572,10 @@ def certified_calibration(run_dir: Path, *, log: Path) -> dict[str, str]:
     counts only if the committed log holds a `calibration_scored` line for that held-out set
     and rubric. EvalKit's own `calibration_status` is not enough: `evalkit calibrate score`
     run directly certifies a folder without the per-case guard (verifier E2.3 pass 4). The
-    release gate (E2.4) and the regression gate read this."""
+    line must name this run folder and the current rubric (`JUDGE_PROMPT_HASH` for
+    groundedness, `RUBRIC_HASH` for integrity), so a copied folder or a changed rubric reads
+    as uncalibrated (E2.4 should-fix 2). The release gate (E2.4) and the regression gate read
+    this."""
     from evalkit import run as R
 
     out = {"groundedness": "uncalibrated", "integrity": "uncalibrated"}
@@ -580,14 +583,17 @@ def certified_calibration(run_dir: Path, *, log: Path) -> dict[str, str]:
     summary_path = run_dir / "summary.json"
     status = (json.loads(summary_path.read_text(encoding="utf-8")).get("calibration_status")
               if summary_path.is_file() else None)  # fmt: skip
-    if report is not None and status == "calibrated" and _logged_for(
-            log, "groundedness", report.heldout_digest, report.judge_prompt_hash):  # fmt: skip
+    if report is not None and status == "calibrated" \
+            and report.judge_prompt_hash == JUDGE_PROMPT_HASH and _logged_for(
+                log, "groundedness", report.heldout_digest, JUDGE_PROMPT_HASH,
+                run_dir.name):  # fmt: skip
         out["groundedness"] = "calibrated"
     probe = probe_dir(run_dir) / "calibration.json"
     if probe.is_file():
         current = json.loads(probe.read_text(encoding="utf-8")).get("current") or {}
-        if _logged_for(log, "integrity", str(current.get("heldout_digest")),
-                       str(current.get("rubric_hash"))):  # fmt: skip
+        if current.get("rubric_hash") == RUBRIC_HASH and _logged_for(
+                log, "integrity", str(current.get("heldout_digest")), RUBRIC_HASH,
+                run_dir.name):  # fmt: skip
             out["integrity"] = "calibrated"
     return out
 

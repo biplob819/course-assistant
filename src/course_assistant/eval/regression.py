@@ -13,7 +13,8 @@ only), the support sentences' verdicts (ids and booleans, no text) and `fixture.
     than 0.05 below the baseline (EvalKit's `kappa_regressions` rule);
 (f) a changed judge rubric, probe rubric, rules hash or ground version asks for a re-record.
 
-No held-out case ever enters a fixture: `record_fixture` refuses records of other splits.
+No held-out case ever enters a fixture: `record_fixture` refuses any case listed in the held-out
+MANIFEST or not marked tuning, before writing anything.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ import json
 import shutil
 import tempfile
 from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 from typing import Any, Literal
 
@@ -132,17 +134,45 @@ class FixtureSolutions:
 
 def record_fixture(run_dir: Path, out_dir: Path, *, recordings: Sequence[Recording],
                    probe_cache: Path, support: Sequence[Mapping[str, Any]], now: dt.datetime,
-                   solutions: SolutionBook,
-                   source: Literal["scripted", "live"]) -> Path:  # fmt: skip
+                   solutions: SolutionBook, source: Literal["scripted", "live"],
+                   heldout_ids: AbstractSet[str]) -> Path:  # fmt: skip
     """Write the fixture from a finished public-split run folder. `solutions` is the book the
     run's integrity judge read (only digests are kept); `source` says whether the run was
-    scripted with fake judges or live."""
+    scripted with fake judges or live; `heldout_ids` are the ids of the committed held-out
+    MANIFEST. Every case and record is checked against the MANIFEST (and must be marked
+    tuning) before anything is written, and the fixture is built in a temporary sibling folder
+    that replaces `out_dir` only when complete (E2.4 should-fix 3): a refusal or a failure
+    part-way leaves the tracked folder as it was."""
     records = R.read_records(run_dir)
     cases = R.read_cases(run_dir)
-    held = [c.id for c in cases.values() if c.meta.get("split") != "tuning"]
+    ids = set(cases) | {r.case_id for r in records}
+    held = sorted(i for i in ids if i in heldout_ids
+                  or cases.get(i) is None or cases[i].meta.get("split") != "tuning")  # fmt: skip
     if held:
-        raise ValueError(f"{len(held)} non-public case(s) in the run: a fixture is public only")
-    out_dir.mkdir(parents=True, exist_ok=True)
+        raise ValueError(f"{len(held)} held-out or unlisted case(s) in the run (MANIFEST): a "
+                         "fixture is public only")  # fmt: skip
+    out_dir.parent.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}-", dir=out_dir.parent))
+    try:
+        _write_fixture(work, run_dir, records, cases, recordings=recordings,
+                       probe_cache=probe_cache, support=support, now=now, solutions=solutions,
+                       source=source)  # fmt: skip
+        old = out_dir.with_name(f".{out_dir.name}-old")
+        shutil.rmtree(old, ignore_errors=True)
+        if out_dir.exists():
+            out_dir.rename(old)
+        work.rename(out_dir)
+        shutil.rmtree(old, ignore_errors=True)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return out_dir
+
+
+def _write_fixture(out_dir: Path, run_dir: Path, records: Sequence[Record],
+                   cases: Mapping[str, Case], *, recordings: Sequence[Recording],
+                   probe_cache: Path, support: Sequence[Mapping[str, Any]], now: dt.datetime,
+                   solutions: SolutionBook,
+                   source: Literal["scripted", "live"]) -> None:  # fmt: skip
     for name in ("records.jsonl", "summary.json"):
         shutil.copyfile(run_dir / name, out_dir / name)
     run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
@@ -172,7 +202,6 @@ def record_fixture(run_dir: Path, out_dir: Path, *, recordings: Sequence[Recordi
             "solution_digests": digests}  # fmt: skip
     (out_dir / "fixture.json").write_text(json.dumps(meta, indent=1, sort_keys=True) + "\n",
                                           encoding="utf-8")  # fmt: skip
-    return out_dir
 
 
 def regression_problems(fixture_dir: Path, rows: Sequence[Mapping[str, Any]], *, corpus: Corpus,

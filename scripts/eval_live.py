@@ -138,12 +138,19 @@ def plan_budget(cases: list[Any], max_cost: float) -> Any:
 
 def prepare(out_dir: Path, cases: list[Any], corpus: Any) -> Path:
     """Write the task folder and evalkit.yaml; return the task YAML path. The golden version
-    is accepted only for the corpus that was ingested (E2.3)."""
+    is accepted only for the corpus that was ingested (E2.3). Drift is applied first (E2.4
+    GAT-04): cases whose gold units are gone are retired or converted, and `drift.json` (ids
+    only) records which."""
     from course_assistant.eval.dataset import build_rows, golden_version_for, write_task_dir
+    from course_assistant.eval.release import drift
     from course_assistant.schemas.config import load_manifest
 
-    rows = build_rows(cases, corpus, golden_version_for(corpus, load_manifest(MANIFEST), ROOT))
+    version = golden_version_for(corpus, load_manifest(MANIFEST), ROOT)
+    found = drift(cases, corpus, version)
+    rows = build_rows(list(found.cases), corpus, version)
     task = write_task_dir(out_dir, rows)
+    (out_dir / "drift.json").write_text(json.dumps(found.record(corpus.corpus_version), indent=1)
+                                        + "\n", encoding="utf-8")  # fmt: skip
     (out_dir / "evalkit.yaml").write_text(evalkit_config(), encoding="utf-8")
     return task
 
@@ -213,7 +220,8 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"eval_live: {exc}", file=sys.stderr)
         return 3
-    code = _run(args, config, corpus, out_dir, task, len(cases), budget)
+    retired = json.loads((out_dir / "drift.json").read_text(encoding="utf-8"))["retired"]
+    code = _run(args, config, corpus, out_dir, task, len(cases) - len(retired), budget)
     if logs_heldout_score(args.split, replay=bool(args.replay)):
         from course_assistant.eval.tuning import log_heldout_scored
 

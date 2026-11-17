@@ -26,9 +26,11 @@ from tests.eval import offline_run as O  # noqa: E402
 from tests.eval import scripted_eval as E  # noqa: E402
 
 from course_assistant.eval.calibrate import judge_support, support_rows  # noqa: E402
+from course_assistant.eval.dataset import heldout_ids  # noqa: E402
 from course_assistant.eval.regression import PlaceholderSolutions, record_fixture  # noqa: E402
 
 OUT = ROOT / "tests" / "eval" / "evalreg"
+HELDOUT_MANIFEST = ROOT / "golden" / "heldout" / "MANIFEST.json"  # committed ids only
 
 
 def grounded_turn(case: Any, text: str, supported: bool) -> dict[str, list[Any]]:
@@ -71,7 +73,8 @@ def build(out: Path = OUT) -> Path:
         rows = support_rows(run.tap.sentences, judged)
         return record_fixture(run.run_dir, out, recordings=run.recorder.recordings,
                               probe_cache=cache, support=rows, now=O.NOW,
-                              solutions=PlaceholderSolutions(), source="scripted")  # fmt: skip
+                              solutions=PlaceholderSolutions(), source="scripted",
+                              heldout_ids=heldout_ids(HELDOUT_MANIFEST))  # fmt: skip
 
 
 def main(argv: list[str] | None = None) -> int:

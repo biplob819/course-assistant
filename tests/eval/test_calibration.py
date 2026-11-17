@@ -730,50 +730,10 @@ def _rev_exists(rev: str) -> bool | None:
     return done is not None and done.returncode == 0
 
 
-def _file_at(rev: str, rel: str) -> str:
-    done = _git("show", f"{rev}:{rel}")
-    return done.stdout if done is not None and done.returncode == 0 else ""
-
-
-def _zero(sha: str) -> bool:
-    return not sha.strip() or set(sha.strip()) == {"0"}
-
-
 def append_only_problems(path: Path, env: Mapping[str, str]) -> list[str] | None:
-    """The working log must start with the log at HEAD and at the base it is compared with:
-    `LOG_BASE_SHA` when set (CI: the push's `before` or the PR base), else HEAD^. In CI a
-    missing base or missing history fails; only a local run without git skips (None)."""
-    ci = env.get("CI", "").lower() in ("1", "true", "yes")
-    if _rev_exists("HEAD") is None:
-        return ["no git history in CI: the append-only check cannot run"] if ci else None
-    rel = path.relative_to(ROOT).as_posix()
-    work = path.read_text(encoding="utf-8")
-    out = []
-    if _rev_exists("HEAD") and not work.startswith(_file_at("HEAD", rel)):
-        out.append("the working tuning log rewrites lines committed at HEAD")
-    base = env.get("LOG_BASE_SHA", "")
-    if _zero(base) and env.get("LOG_DEFAULT_BRANCH"):  # a new branch: no `before` to compare
-        branch = env["LOG_DEFAULT_BRANCH"]
-        found = None
-        for ref in (f"origin/{branch}", branch):
-            done = _git("merge-base", "HEAD", ref)
-            if done is not None and done.returncode == 0:
-                found = done.stdout.strip()
-                break
-        if found is None:
-            return [*out, f"no merge-base with the default branch {branch!r} to compare with"]
-        base = found
-    if not _zero(base):
-        if not _rev_exists(base):
-            out.append(f"LOG_BASE_SHA {base[:12]} is not in this clone (checkout fetch-depth 0)")
-        elif not work.startswith(_file_at(base, rel)):
-            out.append(f"the tuning log rewrites lines committed at LOG_BASE_SHA {base[:12]}")
-    elif _rev_exists("HEAD^"):
-        if not work.startswith(_file_at("HEAD^", rel)):
-            out.append("the tuning log rewrites lines committed at HEAD^")
-    elif ci:
-        out.append("no base to compare the tuning log against in CI (LOG_BASE_SHA or HEAD^)")
-    return out
+    """`tuning.append_only_problems` on this repository (moved there in E2.4 so the release
+    gate runs the same check)."""
+    return tuning.append_only_problems(path, ROOT, env)
 
 
 def _append_only_problems(path: Path) -> list[str]:
@@ -1075,3 +1035,84 @@ def test_calibrate_script_refuses_paid_steps_and_tunes_from_a_run_offline(tuning
                                                                          0.6, 7)  # fmt: skip
     for c in R.read_cases(run).values():  # numbers only in the log, never case text
         assert c.question not in log.read_text(encoding="utf-8")
+
+
+# ================== E2.4 should-fix items (from E2.3's verifier pass 5) ==================
+
+
+def _scratch_git(path: Path, *args: str) -> str:
+    done = subprocess.run(["git", *args], cwd=path, capture_output=True, text=True, check=True)
+    return done.stdout.strip()
+
+
+def _scratch_repo(tmp_path: Path) -> tuple[Path, Path]:
+    repo = tmp_path / "repo"
+    log = repo / "docs" / "measurements" / "tuning-log.jsonl"
+    log.parent.mkdir(parents=True)
+    _scratch_git(repo.parent, "init", "-q", "-b", "main", str(repo))
+    for k, v in (("user.email", "t@example.invalid"), ("user.name", "t"),
+                 ("commit.gpgsign", "false")):  # fmt: skip
+        _scratch_git(repo, "config", k, v)
+    return repo, log
+
+
+def _commit(repo: Path, log: Path, lines: list[str], msg: str) -> str:
+    log.write_text("".join(x + "\n" for x in lines), encoding="utf-8")
+    _scratch_git(repo, "add", "-A")
+    _scratch_git(repo, "commit", "-q", "-m", msg)
+    return _scratch_git(repo, "rev-parse", "HEAD")
+
+
+@pytest.mark.safety
+def test_a_branch_dropping_a_line_committed_on_its_parent_branch_fails(tmp_path):
+    """E2.3 should-fix 1: the merge-base never had the line, so comparing with it alone passed.
+    Every pushed commit must keep its parent's log."""
+    if shutil.which("git") is None:
+        pytest.skip("no git here")
+    repo, log = _scratch_repo(tmp_path)
+    _commit(repo, log, ['{"n": 1}', '{"n": 2}'], "baseline on main")
+    _scratch_git(repo, "checkout", "-q", "-b", "parent")
+    _commit(repo, log, ['{"n": 1}', '{"n": 2}', '{"n": 3}'], "parent logs line 3")
+    _scratch_git(repo, "checkout", "-q", "-b", "child")
+    _commit(repo, log, ['{"n": 1}', '{"n": 2}'], "child drops line 3")
+    _commit(repo, log, ['{"n": 1}', '{"n": 2}', '{"n": 4}'], "child logs line 4")
+    new_branch = {"CI": "true", "LOG_BASE_SHA": "0" * 40, "LOG_DEFAULT_BRANCH": "main"}
+    found = tuning.append_only_problems(log, repo, new_branch)
+    assert found and any("drops or rewrites" in p for p in found)
+    # the same push seen from the parent branch alone is clean
+    _scratch_git(repo, "checkout", "-q", "parent")
+    assert tuning.append_only_problems(log, repo, new_branch) == []
+    # a branch behind main (main logged more since) is not a rewrite
+    _scratch_git(repo, "checkout", "-q", "main")
+    _commit(repo, log, ['{"n": 1}', '{"n": 2}', '{"n": 5}'], "main logs line 5")
+    _scratch_git(repo, "checkout", "-q", "-b", "behind", "main~1")
+    _scratch_git(repo, "commit", "-q", "--allow-empty", "-m", "unrelated commit")
+    assert tuning.append_only_problems(log, repo, new_branch) == []
+    # a branch that rewrites a line main holds disagrees with main's tip
+    _commit(repo, log, ['{"n": 1}', '{"n": 9}'], "rewrite line 2")
+    rewritten = tuning.append_only_problems(log, repo, new_branch)
+    assert rewritten and any("default branch" in p for p in rewritten)
+
+
+@pytest.mark.safety
+def test_certified_calibration_binds_to_the_run_and_the_current_rubric(cal_run, tmp_path,
+                                                                       monkeypatch):  # fmt: skip
+    """E2.3 should-fix 2: the log line's `run` must be this folder, and the rubric current."""
+    at = dt.datetime(2026, 11, 20, tzinfo=dt.UTC)
+    log = tmp_path / "log.jsonl"
+    run = fresh(cal_run, tmp_path / "c")
+    _label_groundedness(run, tmp_path)
+    C.score_groundedness(run, log=log, heldout_ids=MANIFEST_IDS)
+    C.export_probe(run, n=8, n_relabel=4, heldout_ids=MANIFEST_IDS)
+    _label_all(run, tmp_path, "i.csv")
+    C.score_probe(run, now=at, log=log, heldout_ids=MANIFEST_IDS)
+    both = {"groundedness": "calibrated", "integrity": "calibrated"}
+    assert C.certified_calibration(run, log=log) == both
+    copied = tmp_path / "copied-run"
+    shutil.copytree(run, copied)  # same files, another run folder: not what was logged
+    assert C.certified_calibration(copied, log=log) == {"groundedness": "uncalibrated",
+                                                        "integrity": "uncalibrated"}  # fmt: skip
+    monkeypatch.setattr(C, "RUBRIC_HASH", "a-changed-probe-rubric")
+    assert C.certified_calibration(run, log=log)["integrity"] == "uncalibrated"
+    monkeypatch.setattr(C, "JUDGE_PROMPT_HASH", "a-changed-judge-rubric")
+    assert C.certified_calibration(run, log=log)["groundedness"] == "uncalibrated"

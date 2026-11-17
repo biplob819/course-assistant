@@ -1,0 +1,381 @@
+#!/usr/bin/env python3
+"""The release gate (E2.4, Tech Spec §6.5): `make eval`, `make eval-check`, `make eval-offline`.
+
+    uv run --env-file .env python scripts/release_gate.py eval --config CONFIG.yaml --yes
+        a removal-only candidate goes live at once (no run); otherwise the held-out golden run
+        (scripts/eval_live.py), then the gate; the live pointer flips only on exit 0
+        (--no-flip in CI)
+    uv run python scripts/release_gate.py check RUN --config CONFIG.yaml [--calibration RUN]
+        the gate on an existing held-out run folder; no calls
+    uv run python scripts/release_gate.py offline
+        what needs no key and no private file: the regression fixture, the tuning log, drift
+        and coverage of the public split on the sample course
+    uv run python scripts/release_gate.py drift --config CONFIG.yaml
+        kept, retired and converted golden cases for the ingested corpus (ids only)
+
+Exit codes (EvalKit's): 0 passed, 1 a gate failed, 2 config or runtime error, 3 stopped at the
+cost cap, 4 judging pending. `--json` prints the verdict as one JSON object. `gate.json` and
+`offline.json` hold ids, numbers and messages only, never case text.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import subprocess
+import sys
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path[:0] = [str(ROOT / "src"), str(ROOT), str(ROOT / "scripts")]
+
+HELDOUT_DIR = ROOT / "golden" / "heldout"  # private (git-ignored) but the MANIFEST
+HELDOUT_MANIFEST = HELDOUT_DIR / "MANIFEST.json"
+PUBLIC = ROOT / "golden" / "public" / "cases.jsonl"
+TUNING_LOG = ROOT / "docs" / "measurements" / "tuning-log.jsonl"
+DECISIONS = ROOT / "docs" / "decisions.md"
+EVALREG = ROOT / "tests" / "eval" / "evalreg"
+ASSESSMENTS = ROOT / "sample_course" / "assessments.yaml"
+OFFLINE_OUT = ROOT / "runs" / "gate"
+TEXT_SUFFIXES = frozenset({".py", ".md", ".json", ".jsonl", ".yaml", ".yml", ".txt", ".toml",
+                           ".csv"})  # fmt: skip
+PUBLIC_MIN_B1, PUBLIC_MIN_B3 = 7, 0  # public half (E2.1); B3 groups sit by assessment (D-34)
+
+
+def heldout_ids() -> frozenset[str]:
+    from course_assistant.eval.dataset import heldout_ids as read_ids
+
+    return read_ids(HELDOUT_MANIFEST)
+
+
+def calibration_status(run_dir: Path) -> dict[str, str]:
+    """`certified_calibration` of the calibration run, against the committed log."""
+    from course_assistant.eval.calibrate import certified_calibration
+
+    return certified_calibration(run_dir, log=TUNING_LOG)
+
+
+def fixture_problems(fixture: Path | None = None) -> list[str]:
+    """`regression_problems` on the committed fixture, rebuilt from the public split."""
+    from tests.eval import scripted_eval as E
+
+    from course_assistant.eval import dataset
+    from course_assistant.eval.regression import regression_problems
+
+    fixture = fixture or EVALREG
+    try:
+        meta = json.loads((fixture / "fixture.json").read_text(encoding="utf-8"))
+        rows = dataset.build_rows([E.BY_ID[i] for i in meta["case_ids"]], E.CORPUS,
+                                  E.GOLDEN_VERSION)  # fmt: skip
+        return regression_problems(fixture, rows, corpus=E.CORPUS, config=E.CONFIG,
+                                   assessments=E.ASSESSMENTS, log=TUNING_LOG)  # fmt: skip
+    except Exception as exc:
+        return [f"the fixture cannot be checked ({type(exc).__name__})"]
+
+
+def log_problems(bar: float | None, env: Mapping[str, str], log_path: Path | None = None,
+                 ) -> list[str]:  # fmt: skip
+    """The tuning log: chain, continuity, the bar and ground version in use, fresh held-out,
+    append-only against git (where the log is this repository's)."""
+    from course_assistant.answer.ground import GroundStep
+    from course_assistant.eval import tuning
+
+    path = log_path or TUNING_LOG
+    if not path.is_file():
+        return ["no tuning log"]
+    log = tuning.read_log(path)
+    out = tuning.chain_problems(path)
+    out += tuning.continuity_problems(log, DECISIONS.read_text(encoding="utf-8"))
+    out += tuning.unlogged(log, bar, GroundStep.version())
+    if tuning.fresh_heldout_required(log):
+        out.append("the bar or support rules changed after the held-out split was scored: "
+                   "write a fresh held-out set first (§5.4)")  # fmt: skip
+    if path.resolve().is_relative_to(ROOT):
+        out += tuning.append_only_problems(path.resolve(), ROOT, env) or []
+    return out
+
+
+def tracked_texts() -> list[str]:
+    done = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=False)
+    texts = []
+    for f in done.stdout.decode("utf-8", errors="replace").split("\0"):
+        path = ROOT / f
+        if f and path.suffix in TEXT_SUFFIXES and path.is_file():
+            texts.append(path.read_text(encoding="utf-8", errors="ignore"))
+    return texts
+
+
+def private_heldout() -> list[Any] | None:
+    if not (HELDOUT_DIR / "cases.jsonl").is_file():
+        return None
+    from course_assistant.eval.dataset import load_heldout
+
+    return load_heldout(HELDOUT_DIR)
+
+
+def exposure(held: list[Any] | None) -> list[str] | None:
+    """D-54 where the private held-out file exists; None elsewhere."""
+    from course_assistant.eval.release import heldout_exposure
+
+    if held is None:
+        return None
+    return heldout_exposure({c.id: c.question for c in held}, tracked_texts())
+
+
+def evalkit_dir(folder: Path) -> Path:
+    if (folder / "run.json").is_file():
+        return folder
+    found = sorted((folder / "evalkit").glob("*/run.json"))
+    if len(found) != 1:
+        raise FileNotFoundError(f"{folder} holds {len(found)} EvalKit run folders (needs one)")
+    return found[0].parent
+
+
+def live_folder(run: Path) -> Path:
+    """The eval_live folder around an EvalKit run folder (RUN/evalkit/<run>)."""
+    return run.parent.parent if run.parent.name == "evalkit" else run
+
+
+def load_course(config_path: Path, store_path: Path | None) -> tuple[Any, Any, Any]:
+    from course_assistant.ingest import CorpusStore
+    from course_assistant.schemas.config import load_app_config, load_assessments
+
+    config = load_app_config(config_path)
+    store = CorpusStore(store_path or config_path.parent / "corpus_store", config.cohort)
+    return config, store, load_assessments(ASSESSMENTS)
+
+
+def check_run(run: Path, *, config_path: Path, store_path: Path | None,
+              calibration: Path | None, baseline_path: Path | None,
+              env: Mapping[str, str]) -> Any:  # fmt: skip
+    """Gather every input of the verdict for one held-out run folder and apply the gate."""
+    from evalkit import run as R
+
+    from course_assistant.eval import release
+    from course_assistant.eval.dataset import load_public
+    from course_assistant.eval.tuning import recorded_bar
+
+    config, store, assessments = load_course(config_path, store_path)
+    corpus = store.current()
+    if corpus is None:
+        raise FileNotFoundError("no ingested corpus: run course-assistant ingest first")
+    cases = R.read_cases(run)
+    golden_versions = {str(c.meta.get("golden_corpus_version")) for c in cases.values()}
+    drift_file = live_folder(run) / "drift.json"
+    recorded = json.loads(drift_file.read_text(encoding="utf-8")) if drift_file.is_file() else {}
+    retired = frozenset(str(x) for x in recorded.get("retired", ()))
+    held = private_heldout()
+    notes = []
+    if held is not None and len(golden_versions) == 1:  # recompute where the cases exist
+        found = release.drift(held, corpus, next(iter(golden_versions)))
+        if set(found.retired) != {i for i in retired if i in {c.id for c in held}}:
+            raise ValueError("drift.json does not match the drift of the held-out cases on "
+                             "this corpus: re-run the gate")  # fmt: skip
+    public = load_public(PUBLIC)
+    if len(golden_versions) == 1:
+        public = list(release.drift(public, corpus, next(iter(golden_versions))).cases)
+    items = release.coverage_of_golden(public) + release.coverage_of_run(cases.values())
+    try:
+        bar: float | None = recorded_bar(R.read_records(run))
+    except Exception:
+        bar = config.grounding_bar
+        notes.append("bar read from the config (the run recorded none)")
+    base = None
+    snapshots: list[str] = []
+    data = (json.loads(baseline_path.read_text(encoding="utf-8")) if baseline_path
+            else release.live_baseline(store))  # fmt: skip
+    if data is not None:
+        base, snapshots = data["values"], list(data.get("snapshots", []))
+    inputs = release.GateInputs(
+        heldout_ids=heldout_ids(),
+        calibration=calibration_status(calibration or run),
+        fixture_problems=fixture_problems(),
+        log_problems=log_problems(bar, env),
+        coverage_problems=release.coverage_problems(items, corpus, assessments),
+        exposure=exposure(held),
+        retired=retired,
+        baseline=base,
+        baseline_snapshots=snapshots,
+    )
+    result = release.verdict(run, inputs)
+    result.notes += notes
+    return result
+
+
+def _report(result: Any, as_json: bool, out: Path | None) -> int:
+    if out is not None:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(result.to_json(), encoding="utf-8")
+    if as_json:
+        print(result.to_json(), end="")
+        return int(result.exit_code)
+    print(f"release gate on {result.run}: exit {result.exit_code}")
+    for g in result.gates:
+        print(f"  {'PASS' if g.passed else 'FAIL'} {g.name}: {g.value:.4f} over {g.n} "
+              f"({g.target})")  # fmt: skip
+    for kind, lines in (("FAIL", result.failures), ("ERROR", result.errors),
+                        ("NOTE", result.notes)):  # fmt: skip
+        for line in lines:
+            print(f"  {kind} {line}")
+    return int(result.exit_code)
+
+
+def cmd_check(args: argparse.Namespace) -> int:
+    run = evalkit_dir(args.run)
+    result = check_run(run, config_path=args.config, store_path=args.store,
+                       calibration=evalkit_dir(args.calibration) if args.calibration else None,
+                       baseline_path=args.baseline, env=os.environ)  # fmt: skip
+    return _report(result, args.json, args.out or live_folder(run) / "gate.json")
+
+
+def cmd_eval(args: argparse.Namespace) -> int:
+    from course_assistant.answer.ask import Assistant
+    from course_assistant.eval.release import apply_removals, flip_live
+
+    if args.split != "heldout":
+        print("release_gate: the release gate runs on the held-out split (§6.5)", file=sys.stderr)
+        return 2
+    config, store, _ = load_course(args.config, args.store)
+    now = dt.datetime.now(dt.UTC)
+    if not args.no_flip and apply_removals(store, now=now):
+        print("release_gate: the candidate only removes units: live at once, no gate (§2.3)")
+        return 0
+    import eval_live
+
+    out = args.out / f"gate-{now.strftime('%Y%m%dT%H%M%SZ')}"
+    out.mkdir(parents=True, exist_ok=False)
+    argv = ["--config", str(args.config), "--split", "heldout", "--max-cost", str(args.max_cost),
+            "--out", str(out)]  # fmt: skip
+    if args.store:
+        argv += ["--store", str(args.store)]
+    if args.yes:
+        argv.append("--yes")
+    code = eval_live.main(argv)
+    if code in (2, 3):  # refused, or stopped at the cost cap: nothing to gate
+        return code
+    runs = sorted(out.glob("course-ta-heldout-*/evalkit/*/run.json"))
+    if len(runs) != 1:
+        print(f"release_gate: expected one run folder under {out}, found {len(runs)}",
+              file=sys.stderr)  # fmt: skip
+        return 2
+    run = runs[0].parent
+    result = check_run(run, config_path=args.config, store_path=args.store,
+                       calibration=evalkit_dir(args.calibration) if args.calibration else None,
+                       baseline_path=None, env=os.environ)  # fmt: skip
+    code = _report(result, args.json, live_folder(run) / "gate.json")
+    if result.exit_code == 0 and not args.no_flip:
+        state = flip_live(store, result, rules_hash=Assistant.rules_hash(),
+                          grounding_bar=config.grounding_bar, now=now)  # fmt: skip
+        print(f"live corpus version is now {state['corpus_version'][:12]}", file=sys.stderr)
+    return code
+
+
+def offline(env: Mapping[str, str]) -> dict[str, Any]:
+    """The offline gate: the parts that need no key and no private file."""
+    from tests.eval import scripted_eval as E
+
+    from course_assistant.eval import release
+    from course_assistant.eval.dataset import load_public
+
+    public = load_public(PUBLIC)
+    found = release.drift(public, E.CORPUS, E.GOLDEN_VERSION)
+    drifted = []
+    if found.retired or found.converted:
+        drifted.append(f"{len(found.retired)} retired and {len(found.converted)} converted "
+                       "public case(s) on the sample course: update the golden set")  # fmt: skip
+    items = release.coverage_of_golden(found.cases)
+    coverage = release.coverage_problems(items, E.CORPUS, E.ASSESSMENTS, min_b1=PUBLIC_MIN_B1,
+                                         min_b3=PUBLIC_MIN_B3)  # fmt: skip
+    problems = {
+        "fixture": fixture_problems(),
+        "tuning_log": log_problems(None, env),
+        "drift": drifted,
+        "coverage": coverage,
+    }
+    failed = any(problems.values())
+    return {"exit_code": 1 if failed else 0, "problems": problems,
+            "corpus_version": E.CORPUS.corpus_version, "public_cases": len(public)}  # fmt: skip
+
+
+def cmd_offline(args: argparse.Namespace) -> int:
+    result = offline(os.environ)
+    out = args.out or OFFLINE_OUT / "offline.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(result, indent=1, sort_keys=True) + "\n"
+    out.write_text(text, encoding="utf-8")
+    if args.json:
+        print(text, end="")
+    else:
+        print(f"offline release gate: exit {result['exit_code']}")
+        for part, lines in result["problems"].items():
+            for line in lines:
+                print(f"  FAIL {part}: {line}")
+    return int(result["exit_code"])
+
+
+def cmd_drift(args: argparse.Namespace) -> int:
+    from course_assistant.eval import release
+    from course_assistant.eval.dataset import golden_version_for, load_public
+    from course_assistant.schemas.config import load_manifest
+
+    _, store, _ = load_course(args.config, args.store)
+    corpus = store.current()
+    if corpus is None:
+        raise FileNotFoundError("no ingested corpus: run course-assistant ingest first")
+    version = golden_version_for(corpus, load_manifest(ROOT / "sample_course" / "manifest.yaml"),
+                                 ROOT)  # fmt: skip
+    cases = load_public(PUBLIC) + (private_heldout() or [])
+    record = release.drift(cases, corpus, version).record(corpus.corpus_version)
+    print(json.dumps(record, indent=1, sort_keys=True))
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)  # fmt: skip
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    e = sub.add_parser("eval")
+    e.add_argument("--config", required=True, type=Path)
+    e.add_argument("--split", default="heldout")
+    e.add_argument("--max-cost", type=float, default=40.0)
+    e.add_argument("--calibration", type=Path, help="the calibration run (default: this run)")
+    e.add_argument("--no-flip", action="store_true", help="report only (CI)")
+    e.add_argument("--yes", action="store_true", help="confirm that this run spends money")
+    e.add_argument("--out", type=Path, default=ROOT / "runs")
+    e.set_defaults(func=cmd_eval)
+    c = sub.add_parser("check")
+    c.add_argument("run", type=Path)
+    c.add_argument("--config", required=True, type=Path)
+    c.add_argument("--calibration", type=Path, help="the calibration run (default: RUN)")
+    c.add_argument("--baseline", type=Path, help="per-case baseline (default: the live one)")
+    c.add_argument("--out", type=Path, help="gate.json path (default: next to the run)")
+    c.set_defaults(func=cmd_check)
+    o = sub.add_parser("offline")
+    o.add_argument("--out", type=Path, help=f"result file (default {OFFLINE_OUT}/offline.json)")
+    o.set_defaults(func=cmd_offline)
+    d = sub.add_parser("drift")
+    d.add_argument("--config", required=True, type=Path)
+    d.set_defaults(func=cmd_drift)
+    for p in (e, c, o, d):
+        p.add_argument("--json", action="store_true", help="one JSON object on stdout")
+        if p is not o:
+            p.add_argument("--store", type=Path, help="corpus store folder (default: by config)")
+    args = ap.parse_args(argv)
+    try:
+        return int(args.func(args))
+    except (ValueError, OSError, KeyError) as exc:
+        from course_assistant.eval.dataset import DatasetError
+        from course_assistant.eval.release import ReleaseError
+
+        # our own errors name ids and counts; anything else may quote input, so only its class
+        own = isinstance(exc, ReleaseError | DatasetError | FileNotFoundError)
+        print(f"release_gate: {exc if own else type(exc).__name__}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

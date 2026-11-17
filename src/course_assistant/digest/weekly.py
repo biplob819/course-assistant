@@ -46,7 +46,9 @@ MAX_BATCH_CHARS = 60_000  # question characters per Luna call
 MAX_QUESTION_CHARS = 4_000  # as the route step: a longer question is cut for labelling
 MAX_LABEL_WORDS = 10
 MAX_LABEL_CHARS = 80
-RUN_WORDS = 8  # "shares an 8-word run" (DIG-03)
+RUN_WORDS = 8  # "shares an 8-word run" with the rules (DIG-03)
+QUESTION_RUN_WORDS = 5  # with a learner's question: a shorter run, and whole short questions
+# (verifier B2.4 pass 1: "my father is in hospital" is 5 words and slipped an 8-word check)
 
 _WEEK = TypeAdapter(WeekId)
 _SESSION = TypeAdapter(SessionId)
@@ -196,13 +198,17 @@ def parse_labels(result: ResponsesResult, n: int, sessions: Sequence[str]) -> li
 # ---------- the leak test (DIG-03) ----------
 
 
-def _grams(texts: Iterable[str]) -> dict[tuple[int, ...], set[tuple[str, ...]]]:
-    """Every run of RUN_WORDS words, indexed by its word lengths for the wildcard match."""
+def _grams(texts: Iterable[str], n: int = RUN_WORDS,
+           whole_short: bool = False) -> dict[tuple[int, ...], set[tuple[str, ...]]]:  # fmt: skip
+    """Every run of `n` words, indexed by its word lengths for the wildcard match. With
+    `whole_short`, a text shorter than `n` words (but at least 3) is indexed whole too."""
     out: dict[tuple[int, ...], set[tuple[str, ...]]] = {}
     for text in texts:
         w = words(text)
-        for i in range(len(w) - RUN_WORDS + 1):
-            gram = tuple(w[i : i + RUN_WORDS])
+        runs = [tuple(w[i : i + n]) for i in range(len(w) - n + 1)]
+        if whole_short and 3 <= len(w) < n:
+            runs.append(tuple(w))
+        for gram in runs:
             out.setdefault(tuple(map(len, gram)), set()).add(gram)
     return out
 
@@ -223,20 +229,23 @@ def _same(label: tuple[str, ...], gram: tuple[str, ...]) -> bool:
 
 
 def _shares_run(label: str, index: dict[tuple[int, ...], set[tuple[str, ...]]]) -> bool:
+    """Does any run of the label's words match an indexed run of the same length?"""
     w = words(label)
-    for i in range(len(w) - RUN_WORDS + 1):
-        window = tuple(w[i : i + RUN_WORDS])
-        bucket = index.get(tuple(map(len, window)), set())
-        if window in bucket or any(_same(window, g) for g in bucket):
-            return True
+    for size in sorted({len(k) for k in index}):
+        for i in range(len(w) - size + 1):
+            window = tuple(w[i : i + size])
+            bucket = index.get(tuple(map(len, window)), set())
+            if window in bucket or any(_same(window, g) for g in bucket):
+                return True
     return False
 
 
 class QuestionIndex:
-    """Every 8-word run of a set of questions, built once for a digest run."""
+    """Every 5-word run of the week's questions, and each whole question of 3-4 words, built
+    once for a digest run."""
 
     def __init__(self, questions: Iterable[str]) -> None:
-        self.grams = _grams(questions)
+        self.grams = _grams(list(questions), QUESTION_RUN_WORDS, whole_short=True)
 
 
 def _visible(text: str) -> bool:

@@ -26,6 +26,9 @@ from tests.eval import scripted_eval as E
 
 FIXTURE = Path(__file__).with_name("evalreg")
 TUNING_LOG = Path(__file__).resolve().parents[2] / "docs" / "measurements" / "tuning-log.jsonl"
+MANIFEST_IDS = dataset.heldout_ids(
+    Path(__file__).resolve().parents[2] / "golden" / "heldout" / "MANIFEST.json"
+)
 
 pytestmark = pytest.mark.evalreg
 
@@ -144,7 +147,8 @@ def test_fixture_is_public_only_and_holds_no_solution_or_rationale(tmp_path):
     with pytest.raises(ValueError, match="public only"):
         record_fixture(run.run_dir, tmp_path / "fx", recordings=run.recorder.recordings,
                        probe_cache=tmp_path / "none.jsonl", support=[], now=O.NOW,
-                       solutions=PlaceholderSolutions(), source="scripted")  # fmt: skip
+                       solutions=PlaceholderSolutions(), source="scripted",
+                       heldout_ids=MANIFEST_IDS)  # fmt: skip
 
 
 def test_committed_fixture_is_marked_scripted_and_holds_no_local_path():
@@ -177,7 +181,8 @@ def test_a_fixture_judged_with_real_solutions_replays_from_digests(tmp_path, mon
     rows = support_rows(run.tap.sentences, judge_support(run.tap.sentences, run.panel, E.CORPUS))
     out = record_fixture(run.run_dir, tmp_path / "fx", recordings=run.recorder.recordings,
                          probe_cache=cache, support=rows, now=O.NOW,
-                         solutions=RealishSolutions(), source="live")  # fmt: skip
+                         solutions=RealishSolutions(), source="live",
+                         heldout_ids=MANIFEST_IDS)  # fmt: skip
     assert problems(out) == []
     text = "\n".join((out / f).read_text(encoding="utf-8") for f in FILES)
     assert "private solution text" not in text
@@ -195,3 +200,40 @@ def test_a_calibrated_summary_without_a_logged_calibration_fails_the_gate(tmp_pa
     data["calibration_status"] = "calibrated"
     summary.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     assert any("calibration_scored" in p for p in problems(fx))
+
+
+@pytest.mark.safety
+def test_record_fixture_checks_the_manifest_before_writing_anything(tmp_path):
+    """E2.3 should-fix 3: a case listed in the held-out MANIFEST is refused whatever its meta
+    says, before the tracked folder is touched; a failure part-way leaves it as it was."""
+    case = E.first("B4")
+    run = O.offline_run(tmp_path / "run", [case], {case.id: E.script_for(case)})
+    assert O.E.BY_ID[case.id].split == "tuning"  # its meta says tuning
+    tracked = tmp_path / "evalreg"
+    tracked.mkdir()
+    (tracked / "fixture.json").write_text("{}\n", encoding="utf-8")
+    before = sorted(p.name for p in tmp_path.iterdir())
+    kw: dict[str, Any] = {"recordings": run.recorder.recordings,
+                          "probe_cache": tmp_path / "none.jsonl", "support": [], "now": O.NOW,
+                          "solutions": PlaceholderSolutions(), "source": "scripted"}  # fmt: skip
+    with pytest.raises(ValueError, match="public only"):
+        record_fixture(run.run_dir, tracked, heldout_ids=frozenset({case.id}), **kw)
+    assert sorted(p.name for p in tmp_path.iterdir()) == before
+    assert [p.name for p in tracked.iterdir()] == ["fixture.json"]
+    assert (tracked / "fixture.json").read_text(encoding="utf-8") == "{}\n"
+
+    class Broken:
+        def solution(self, assessment_id: str) -> str:
+            raise KeyError(assessment_id)
+
+    b3 = E.first("B3")
+    run3 = O.offline_run(tmp_path / "run3", [b3], {b3.id: E.script_for(b3)})
+    with pytest.raises(KeyError):
+        record_fixture(
+            run3.run_dir,
+            tracked,
+            heldout_ids=MANIFEST_IDS,
+            **{**kw, "recordings": run3.recorder.recordings, "solutions": Broken()},
+        )
+    assert [p.name for p in tracked.iterdir()] == ["fixture.json"]  # untouched
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted([*before, "run3"])

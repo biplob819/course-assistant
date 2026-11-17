@@ -224,7 +224,8 @@ def cmd_record_evalreg(args: argparse.Namespace) -> int:
     out = record_fixture(run, args.out, recordings=_recordings(args.run),
                          probe_cache=folder / "probe-verdicts.jsonl", support=support,
                          now=R.read_manifest(run).started_at,
-                         solutions=DirSolutionBook(SOLUTIONS), source="live")  # fmt: skip
+                         solutions=DirSolutionBook(SOLUTIONS), source="live",
+                         heldout_ids=heldout_ids())  # fmt: skip
     rt = _runtime(args)
     rows = [{"id": c.id, "question": c.question, "context": list(c.context),
              "label": c.reference_label, "meta": dict(c.meta)}
