@@ -245,11 +245,23 @@ MIN_WHOLE_LETTERS = 3  # a whole short question must carry at least this many le
 _BLANK_LETTERS = dict.fromkeys(map(ord, "\u115f\u1160\u3164\uffa0\u2800"), " ")
 
 
+def display_label(raw: str) -> str:
+    """The exact text a digest row shows: compatibility forms folded, then every character
+    that is not a letter, digit or hyphen becomes a space, and spaces collapse. Every leak
+    test runs on this text, so the checked label and the stored label are the same string
+    (verifier B2.4 pass 5: control characters and citation-shaped brackets were checked in
+    one form and stored in another)."""
+    folded = unicodedata.normalize("NFKC", raw)
+    kept = "".join(ch if ch == "-" or unicodedata.category(ch)[0] in "LN" else " " for ch in folded)
+    return " ".join(kept.split())
+
+
 def _stream(text: str) -> str:
-    """Letters and digits only, after normalisation (non-ASCII letters kept as they are)."""
+    """Letters and digits only, after normalisation (non-ASCII letters kept as they are);
+    citation markers are not removed, so nothing in a question hides from the test."""
     return "".join(
         c
-        for c in normalise(text)
+        for c in normalise(text, cites=False)
         if c.isalnum() and unicodedata.category(c) not in ("Lm", "Sk")  # modifier marks
     )
 
@@ -262,7 +274,7 @@ def _label_tokens(label: str) -> list[str]:
     cur = ""
     # normalise the whole label first, as the questions are (citation markers go, look-alikes
     # map); blank letters become spaces first so they still end a word (verifier pass 4)
-    for ch in normalise(label.translate(_BLANK_LETTERS)):
+    for ch in normalise(label.translate(_BLANK_LETTERS), cites=False):
         bit = _stream(ch)
         if bit:
             cur += bit
@@ -317,8 +329,11 @@ class QuestionIndex:
 
     def copied(self, label: str) -> bool:
         tokens = _label_tokens(label)
-        whole = "".join(tokens)
-        if any(_contains(whole, st) for st in self.short):
+        # a whole short question must line up with the label's word boundaries, so "a set up"
+        # does not refuse "dataset upload" (verifier B2.4 pass 5)
+        spans = {"".join(tokens[i:j]) for i in range(len(tokens))
+                 for j in range(i + 1, len(tokens) + 1)}  # fmt: skip
+        if any(len(sp) == len(st) and _contains(sp, st) for st in self.short for sp in spans):
             return True
         n = QUESTION_RUN_WORDS
         for i in range(len(tokens) - n + 1):
@@ -335,12 +350,16 @@ def _visible(text: str) -> bool:
 def label_problem(label: str, questions: Iterable[str] | QuestionIndex) -> str | None:
     """Why a label may not be shown, or None. `questions` is every question text of the week
     (or a `QuestionIndex` built from them once)."""
-    if not isinstance(label, str) or not _visible(label):
+    if not isinstance(label, str):
+        return "blank"
+    raw = label
+    label = display_label(label)  # the copy test always reads the text a row would show
+    if not _visible(label):
         return "blank"
     if len(label) > MAX_LABEL_CHARS or len(words(label)) > MAX_LABEL_WORDS:
         return "too long"
-    findings = scan(label)
-    if "pid" in findings or _IDS.search(normalise(label)):
+    findings = (*scan(label), *scan(raw))  # identifiers are looked for in both forms
+    if "pid" in findings or any(_IDS.search(normalise(t, cites=False)) for t in (raw, label)):
         return "identifier"
     index = questions if isinstance(questions, QuestionIndex) else QuestionIndex(questions)
     if index.copied(label):
@@ -471,7 +490,8 @@ def weekly_digest(week: str, *, store: Store, responder: Responder, config: AppC
     index = QuestionIndex(q.text for q in questions)
     gaps = {e.question_id for e in store.escalations("material_gap")}
     groups: dict[tuple[str, str], _Group] = {}
-    for item, session, topic in labelled:
+    for item, session, raw in labelled:
+        topic = display_label(raw)  # checked and stored as this exact text
         if label_problem(topic, index) is not None:
             continue  # a refused label is never shown and its questions are not counted
         g = groups.setdefault((session, " ".join(words(topic))), _Group())

@@ -694,3 +694,44 @@ def test_a_question_in_another_script_does_not_block_english_labels():
     for label in [*NEUTRAL, "how to size a golden set"]:
         assert label_problem(label, questions) is None, label
     assert label_problem("판사 보정이 뭐예요", questions) == "copies a question"
+
+
+# ---------- verifier pass 5 regressions: one form, checked and stored ----------
+
+_PERSONAL = "my father is in hospital, can I get an extension on the essay"
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("label", ["my\rfather is in hospital", "my\x85father is in hospital",
+                                   "my\x0bfather is in hospital", "my\x1ffather is in hospital",
+                                   "(session 1 my father is in hospital)",
+                                   "【my father is in hospital】"])  # fmt: skip
+def test_control_characters_and_brackets_never_hide_a_copy(store, label):
+    assert label_problem(label, [_PERSONAL]) == "copies a question"
+    cohort(store, 5, _PERSONAL)
+    rows, _, _ = run(store, Luna(labeler=lambda _t: label))
+    assert rows == () and store.digest(WEEK) == []
+
+
+@pytest.mark.privacy
+def test_a_citation_shaped_question_still_counts():
+    q = "(session 2 my father is in hospital) can I get an extension"
+    assert label_problem("my father is in hospital", [q]) == "copies a question"
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("label", ["(session 1 bob@example.com)", "(session 1 q-0000000000000001)"])
+def test_identifiers_inside_brackets_are_refused(label):
+    assert label_problem(label, [GOLDEN_Q]) == "identifier"
+
+
+def test_a_shown_label_is_the_checked_text(store):
+    cohort(store, 5)
+    rows, _, _ = run(store, Luna(labeler=lambda _t: "Golden set\tsizing [draft]"))
+    assert [r.topic for r in rows] == ["Golden set sizing draft"]
+
+
+@pytest.mark.parametrize("q, label", [("a set up?", "Dataset upload"),
+                                      ("is it ok", "Analysis it okay")])  # fmt: skip
+def test_a_short_question_matches_only_on_word_boundaries(q, label):
+    assert label_problem(label, [q]) is None

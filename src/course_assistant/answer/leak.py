@@ -196,7 +196,7 @@ _CONFUSABLES = str.maketrans(
 )
 
 
-def normalise(text: str) -> str:
+def normalise(text: str, *, cites: bool = True) -> str:
     """The text as the scan compares it: accents, combining marks, format and control
     characters and blank letters removed, compatibility forms folded, known look-alikes mapped
     to Latin, case folded, citation markers removed. Any other non-ASCII letter is left for
@@ -211,7 +211,8 @@ def normalise(text: str) -> str:
     folded = folded.translate(_CONFUSABLES).translate(_MORE_CONFUSABLES).casefold()
     # again after casefold, which can turn a mapped capital into an unmapped small letter
     folded = folded.translate(_CONFUSABLES).translate(_MORE_CONFUSABLES)
-    return _CITE.sub("", folded)
+    # citation markers belong to answers; the digest compares whole texts (cites=False)
+    return _CITE.sub("", folded) if cites else folded
 
 
 def _skeleton(text: str) -> str:
