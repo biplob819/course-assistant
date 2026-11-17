@@ -31,7 +31,8 @@ from tests.eval import scripted_eval as E
 
 ROOT = Path(__file__).resolve().parents[2]
 NOW = dt.datetime(2026, 11, 20, 12, 0, tzinfo=dt.UTC)
-RULES = ("B1", "B1", "B1", "B2", "B3", "B4", "B7", "B8", "B9", "B10")
+# two or more cases per gated metric, so every regression comparison can run (MIN_PAIRED)
+RULES = ("B1", "B1", "B1", "B2", "B3", "B3", "B4", "B7", "B8", "B9", "B9", "B10", "B10")
 CALIBRATED = {"groundedness": "calibrated", "integrity": "calibrated"}
 
 
@@ -249,13 +250,21 @@ def test_regression_against_the_live_baseline_is_paired_with_holm(held_run, tmp_
     v = release.verdict(run, inputs(run))
     many = {f"c{i}": 1.0 for i in range(40)}
     worse = {**many, **{f"c{i}": 0.0 for i in range(12)}}
-    found = release.regressions({"grounded": worse}, {"grounded": many})
-    assert len(found) == 1 and found[0].separated and found[0].diff < 0
-    assert not release.regressions({"grounded": many}, {"grounded": many})[0].separated
+
+    def every(grounded: dict[str, float]) -> dict[str, dict[str, float]]:
+        return {m: (grounded if m == "grounded" else many) for m in release.GATED_METRICS}
+
+    def grounded_of(found: list[Any]) -> Any:
+        return next(r for r in found if r.metric == "grounded")
+
+    found = release.regressions(every(worse), every(many))
+    assert grounded_of(found).separated and grounded_of(found).diff < 0
+    assert [r.metric for r in found if r.separated] == ["grounded"]
+    assert not grounded_of(release.regressions(every(many), every(many))).separated
     slight = {**many, "c0": 0.0}
-    assert not release.regressions({"grounded": slight}, {"grounded": many})[0].separated
-    better = release.regressions({"grounded": many}, {"grounded": worse})
-    assert not better[0].separated  # an improvement is never a regression
+    assert not grounded_of(release.regressions(every(slight), every(many))).separated
+    better = release.regressions(every(many), every(worse))
+    assert not grounded_of(better).separated  # an improvement is never a regression
     # wired into the verdict: a baseline the run falls below is a failure
     baseline = {m: dict(vals) for m, vals in v.values.items()}
     assert release.verdict(run, inputs(run, baseline=baseline)).exit_code == 0
@@ -1007,7 +1016,10 @@ def test_verdict_reads_only_inputs_the_check_order_lists(held_run, tmp_path, mon
 
 
 def rows_baseline(run: Path) -> dict[str, dict[str, float]]:
-    return {"grounded": {i: 1.0 for i in ids(run) if i.startswith("ta-b1-")}}
+    """A baseline with every gated metric over the run's applicable cases."""
+    cases = R.read_cases(run)
+    return {m: {i: 1.0 for i, c in cases.items() if c.meta["rule"] in rules}
+            for m, rules in release.METRIC_RULES.items()}  # fmt: skip
 
 
 def test_any_nonzero_eval_live_exit_blocks_the_flip(tmp_path, monkeypatch):
@@ -1143,3 +1155,61 @@ def test_a_corrupt_summary_exits_2_at_any_stop(held_run, tmp_path, body):
     (capped / "records.jsonl").write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")
     (capped / "summary.json").write_text(json.dumps({"judging_status": None}), encoding="utf-8")
     assert release.verdict(capped, inputs(capped)).exit_code == 3  # content: after the stop
+
+
+# ============ verifier pass 7 (E2.4): no regression comparison is ever skipped ============
+
+
+@pytest.mark.safety
+def test_an_accepted_baseline_compares_every_gated_metric(held_run, tmp_path):
+    """A baseline naming an unknown metric, lacking a gated one, or sharing fewer than
+    MIN_PAIRED applicable cases for any metric exits 2 before the stops; any baseline that is
+    accepted compares exactly the gated metrics."""
+    run = fresh(held_run, tmp_path)
+    full = rows_baseline(run)
+    some_id = sorted(ids(run))[0]
+    refused = {
+        "typo metric": {**full, "grounded_rate": full["grounded"]},
+        "only a typo": {"grounded_rate": full["grounded"]},
+        "lacks a metric": {m: v for m, v in full.items() if m != "identity"},
+        "one shared case": {**full, "integrity": dict(list(full["integrity"].items())[:1])},
+        "wrong cases for a metric": {**full, "grounded": {i: 1.0 for i in full["identity"]}},
+        "single metric": {"integrity": {some_id: 1.0}},
+    }  # fmt: skip
+    for name, base in refused.items():
+        for stop in ("complete", "capped", "pending"):
+            r = fresh(held_run, tmp_path, f"{name[:8]}-{stop}".replace(" ", "_"))
+            if stop == "capped":
+                lines = (r / "records.jsonl").read_text("utf-8").splitlines()
+                (r / "records.jsonl").write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")
+            if stop == "pending":
+                edit_json(r / "summary.json", lambda d: {**d, "judging_status": "pending"})
+            v = release.verdict(r, inputs(r, baseline=base))
+            assert v.exit_code == 2, (name, stop, v.errors)
+            assert "baseline" in v.errors[0] and not v.regressions, (name, v.errors)
+    accepted = [full, {m: {**v, "ta-b1-999": 1.0} for m, v in full.items()}]
+    for base in accepted:
+        v = release.verdict(run, inputs(run, baseline=base))
+        assert v.exit_code == 0, v.errors
+        assert sorted(r.metric for r in v.regressions) == sorted(release.GATED_METRICS)
+    values = release.verdict(run, inputs(run)).values
+    with pytest.raises(ReleaseError, match="cannot be compared"):
+        release.regressions(values, {**full, "integrity": {some_id: 1.0}})
+    with pytest.raises(ReleaseError, match="unknown metric"):
+        release.regressions(values, {**full, "bogus": {some_id: 1.0}})
+
+
+def test_a_dangling_live_pointer_is_an_error_not_a_first_release(tmp_path):
+    _, store = _store(tmp_path)
+    for name in (release.LIVE_FILE, release.BASELINE_FILE):
+        link = store.dir / name
+        link.symlink_to(tmp_path / "nowhere.json")  # dangling
+        _, _, error = G.load_baseline(None, store)
+        assert error is not None, name
+        link.unlink()
+    loop = store.dir / release.LIVE_FILE
+    loop.symlink_to(loop)  # a looping symlink
+    _, _, error = G.load_baseline(None, store)
+    assert error is not None and "LIVE.json" in error
+    loop.unlink()
+    assert G.load_baseline(None, store) == (None, [], None)  # truly nothing live

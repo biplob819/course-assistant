@@ -165,8 +165,9 @@ def load_baseline(baseline_path: Path | None, store: Any,
         path, what = baseline_path, "the --baseline file"
     else:
         live = store.dir / release.LIVE_FILE
-        if not live.exists():
-            if (store.dir / release.BASELINE_FILE).exists():
+        # lexists: a dangling or looping symlink is a file that cannot be read, not an absence
+        if not os.path.lexists(live):
+            if os.path.lexists(store.dir / release.BASELINE_FILE):
                 return None, [], "live-baseline.json exists without LIVE.json: the store is " \
                     "inconsistent"  # fmt: skip
             return None, [], None  # nothing has gone live: a first release
