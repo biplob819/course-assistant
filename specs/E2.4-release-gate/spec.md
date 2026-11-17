@@ -70,7 +70,7 @@ baseline (first release) is reported, not failed.
 - exit 0 otherwise. Precedence 2 > 3 > 4 > 1 > 0. `gate.json` holds the verdict: numbers, ids,
   model snapshots and messages; no case text.
 
-**Check order (verifier passes 2 to 7).** Every input the verdict reads sits in exactly one
+**Check order (verifier passes 2 to 8).** Every input the verdict reads sits in exactly one
 class (`release.INPUT_CLASSES`; a test fails if `verdict` reads anything else):
 - *input-only* — run before the cost-cap and pending stops, so their exit 2 never depends on
   how far the run got:
@@ -98,6 +98,20 @@ class (`release.INPUT_CLASSES`; a test fails if `verdict` reads anything else):
   `summary.json` content (judging status, judge mode); `records.jsonl` scores (every record scored with
   every score it needs, a B1 record with citations, a case for every metric among the
   records); `support-agreement.json` well formed.
+- *numeric domains* (`release.INPUT_DOMAINS`), each checked in its input's class, compared
+  without float conversion so a huge integer is an input error, never an overflow; out of
+  domain is exit 2:
+  - `records.jsonl` presence (input-only): `latency_ms` an integer in 0..3600000, `cost_usd`
+    finite in 0..100 per case;
+  - `records.jsonl` scores (completion-dependent): every task score value in 0..1 (EvalKit's
+    Scores fractions are 0..1 by its own schema);
+  - `support-agreement.json` (completion-dependent): `kappa.point` in -1..1;
+  - `baseline` (input-only): every value in 0..1;
+  - `seed` (parameter, checked first): an integer in 0..2**63-1.
+  No other input holds a number the verdict uses: `summary.json` content is read for
+  `judging_status` and `judge_mode` words, `calibration` is two status words (the calibration
+  numbers stay in the calibration run, behind `certified_calibration`), and the coverage,
+  fixture, tuning-log and exposure inputs are messages.
 - *gate condition* — evaluated last, each a failure (exit 1): the §6.4 gates and regressions,
   `calibration` (certified_calibration), `fixture_problems`, `log_problems` (the tuning log,
   read before the verdict), `coverage_problems`, `exposure` (D-54), and `baseline_snapshots`

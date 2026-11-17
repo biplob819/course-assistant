@@ -53,6 +53,26 @@ METRIC_RULES = {"grounded": {"B1"}, "citation_validity": {"B1"}, "locator_correc
                 "leak": {"B8", "B10"}, "identity": {"B9"}}  # fmt: skip
 GATED_METRICS = tuple(METRIC_RULES)
 MIN_PAIRED = 2  # shared cases a paired bootstrap needs
+# numeric domains of every number the verdict reads (spec "Check order"); a value outside its
+# domain is an input error (exit 2), compared without float conversion so a huge integer
+# cannot overflow
+MAX_LATENCY_MS = 3_600_000  # one hour for one case
+MAX_CASE_COST_USD = 100.0  # one case
+MAX_SEED = 2**63 - 1
+
+
+def in_range(x: Any, lo: float, hi: float, *, integer: bool = False) -> bool:
+    """x is a real number (not a bool) within [lo, hi]; floats must be finite. Works on any
+    int size without converting it to float."""
+    if isinstance(x, bool) or not isinstance(x, int | float):
+        return False
+    if integer and not isinstance(x, int):
+        return False
+    if isinstance(x, float) and not math.isfinite(x):
+        return False
+    return lo <= x <= hi
+
+
 MIN_B1_PER_SESSION, MIN_B3_PER_ASSESSMENT = 15, 3  # §6.3 coverage rule
 EXPOSURE_MIN_CHARS = 25  # D-54
 LIVE_FILE, BASELINE_FILE = "LIVE.json", "live-baseline.json"
@@ -291,11 +311,10 @@ def baseline_problem(baseline: Any, cases: Mapping[str, Case]) -> str | None:
     to (by rule), so every comparison can run."""
     ok = isinstance(baseline, Mapping) and all(
         isinstance(m, str) and isinstance(vals, Mapping)
-        and all(isinstance(i, str) and isinstance(x, int | float) and not isinstance(x, bool)
-                and math.isfinite(x) for i, x in vals.items())
+        and all(isinstance(i, str) and in_range(x, 0.0, 1.0) for i, x in vals.items())
         for m, vals in baseline.items())  # fmt: skip
     if not ok:
-        return "the live baseline is malformed (metric -> case id -> number)"
+        return "the live baseline is malformed (metric -> case id -> number in [0, 1])"
     shared = {i for vals in baseline.values() for i in vals} & set(cases)
     if not shared:
         return ("the live baseline shares no cases with this run: nothing can be compared "
@@ -343,6 +362,16 @@ INPUT_CLASSES: dict[str, str] = {
     "seed": "parameter",
 }
 
+# The numeric domain of every number the verdict reads, by input (spec "Check order"). Inputs
+# not listed hold no number the verdict uses (ids, names, verdict words, messages).
+INPUT_DOMAINS: dict[str, str] = {
+    "records.jsonl presence": "latency_ms integer 0..3600000; cost_usd 0..100 (finite)",
+    "records.jsonl scores": "task score values 0..1; EvalKit Scores fractions 0..1 (its schema)",
+    "support-agreement.json": "kappa.point -1..1",
+    "baseline": "every value 0..1",
+    "seed": "integer 0..2**63-1",
+}
+
 
 def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
     """Input-only checks (the cases file, the MANIFEST ids, the cases' content, duplicates,
@@ -353,6 +382,8 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
     support file) run after the stops: a capped or pending run is 3 or 4 first. Precedence
     2 > 3 > 4 > 1 within each class."""
     v = Verdict(exit_code=EXIT_PASS, run=run_dir.name)
+    if not in_range(inputs.seed, 0, MAX_SEED, integer=True):
+        return _stop(v, EXIT_ERROR, f"the bootstrap seed must be an integer in [0, {MAX_SEED}]")
     try:
         R.read_manifest(run_dir)
         lines = [x for x in (run_dir / "cases.jsonl").read_text("utf-8").splitlines() if x.strip()]
@@ -401,6 +432,14 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
     if doubled:
         return _stop(v, EXIT_ERROR, f"{len(doubled)} case(s) have more than one record: "
                      f"{', '.join(doubled)}")  # fmt: skip
+    # numbers written with each completion (input-only, like the record's presence)
+    bad = sorted(r.case_id for r in records
+                 if not in_range(r.completion.latency_ms, 0, MAX_LATENCY_MS, integer=True)
+                 or not in_range(r.completion.cost_usd, 0.0, MAX_CASE_COST_USD))  # fmt: skip
+    if bad:
+        return _stop(v, EXIT_ERROR, f"{len(bad)} record(s) have latency or cost outside its "
+                     f"domain (latency 0..{MAX_LATENCY_MS} ms, cost 0..{MAX_CASE_COST_USD} USD): "
+                     f"{', '.join(bad)}")  # fmt: skip
     if inputs.baseline_error is not None:  # given or expected but missing or malformed
         return _stop(v, EXIT_ERROR, inputs.baseline_error)
     if inputs.baseline is not None:  # the baseline against the run's case ids: input-only
@@ -426,6 +465,13 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
     if len(scored) != len(records):
         return _stop(v, EXIT_ERROR, f"judging is complete but {len(records) - len(scored)} "
                      "record(s) have no scores")  # fmt: skip
+    # numbers written when a record is scored (completion-dependent): task scores in [0, 1]
+    # (EvalKit's Scores fractions are already [0, 1] by its own schema)
+    off = sorted({r.case_id for r in records for ts in r.task_scores.values()
+                  if not in_range(ts.value, 0.0, 1.0)})  # fmt: skip
+    if off:
+        return _stop(v, EXIT_ERROR, f"{len(off)} record(s) have a task score outside [0, 1]: "
+                     f"{', '.join(off)}")  # fmt: skip
     if not any(_rule(cases[r.case_id]) == "B1" and r.completion.answer is not None
                and r.completion.answer.citations for r in records):  # fmt: skip
         return _stop(v, EXIT_ERROR, "no case for the citation_validity gate")
@@ -437,9 +483,11 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
     if support.is_file():
         try:
             kappa = json.loads(support.read_text("utf-8"))["kappa"]["point"]
-            v.monitors["support_kappa"] = float(kappa)
         except (ValueError, TypeError, KeyError):
             return _stop(v, EXIT_ERROR, "support-agreement.json is malformed")
+        if not in_range(kappa, -1.0, 1.0):
+            return _stop(v, EXIT_ERROR, "support-agreement.json: kappa outside [-1, 1]")
+        v.monitors["support_kappa"] = float(kappa)
     v.gates, errors = gates(v.values, [r.completion.latency_ms for r in records], inputs.seed)
     if errors:
         v.errors += errors

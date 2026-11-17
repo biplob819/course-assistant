@@ -680,7 +680,7 @@ def test_a_malformed_run_file_exits_2_with_a_fixed_message_in_gate_json(
     data = json.loads((live / "gate.json").read_text(encoding="utf-8"))
     assert data["exit_code"] == 2
     want = {"support": "support-agreement.json is malformed",
-            "baseline": "the live baseline is malformed (metric -> case id -> number)",
+            "baseline": "the live baseline is malformed (metric -> case id -> number in [0, 1])",
             }.get(plant, "the gate could not run (TypeError)")  # fmt: skip
     assert data["errors"] == [want]
 
@@ -1213,3 +1213,101 @@ def test_a_dangling_live_pointer_is_an_error_not_a_first_release(tmp_path):
     assert error is not None and "LIVE.json" in error
     loop.unlink()
     assert G.load_baseline(None, store) == (None, [], None)  # truly nothing live
+
+
+# ========= verifier pass 8 (E2.4): every number the gate reads checked to its domain =========
+
+
+def _set_completion(field: str, value: Any) -> Any:
+    def plant(run: Path) -> None:
+        b1 = first_id(run, "B1")
+
+        def fn(r: dict[str, Any]) -> dict[str, Any]:
+            if r["case_id"] == b1:
+                r["completion"][field] = value
+            return r
+
+        edit_records(run, fn)
+
+    return plant
+
+
+def _set_task_score(name: str, value: Any) -> Any:
+    def plant(run: Path) -> None:
+        b1 = first_id(run, "B1") if name == "locator_correct" else first_id(run, "B3")
+
+        def fn(r: dict[str, Any]) -> dict[str, Any]:
+            if r["case_id"] == b1:
+                r["task_scores"][name]["value"] = value
+            return r
+
+        edit_records(run, fn)
+
+    return plant
+
+
+def _set_kappa(value: Any) -> Any:
+    def plant(run: Path) -> None:
+        (run.parent.parent / "support-agreement.json").write_text(
+            json.dumps({"kappa": {"point": value}}), encoding="utf-8")  # fmt: skip
+
+    return plant
+
+
+@pytest.mark.safety
+def test_every_numeric_input_out_of_its_domain_exits_2_as_its_class_says(held_run, tmp_path):
+    """One plant per numeric input in release.INPUT_DOMAINS: input-only inputs and the seed
+    exit 2 at every stop; completion-dependent ones give 3 capped and 4 pending first."""
+    input_only, completion = (2, 2, 2), (2, 3, 4)
+    huge = 10**400
+
+    def base_all(value: Any) -> Any:
+        return lambda run: {m: {i: value for i in vals} for m, vals in rows_baseline(run).items()}
+
+    def base_one(value: Any) -> Any:
+        def make(run: Path) -> dict[str, dict[str, float]]:
+            b = rows_baseline(run)
+            first = sorted(b["grounded"])[0]
+            b["grounded"][first] = value
+            return b
+
+        return make
+
+    table: list[tuple[str, str, Any, Any, tuple[int, int, int]]] = [
+        # (name, INPUT_DOMAINS key, run plant, inputs override, codes for complete/capped/pending)
+        ("baseline -1e6 everywhere", "baseline", None, {"baseline": base_all(-1e6)}, input_only),
+        ("baseline 1.5", "baseline", None, {"baseline": base_one(1.5)}, input_only),
+        ("baseline 10**400", "baseline", None, {"baseline": base_one(huge)}, input_only),
+        ("latency 10**10", "records.jsonl presence", _set_completion("latency_ms", 10**10), {},
+         input_only),
+        ("latency 10**400", "records.jsonl presence", _set_completion("latency_ms", huge), {},
+         input_only),
+        ("cost 1e6", "records.jsonl presence", _set_completion("cost_usd", 1e6), {}, input_only),
+        ("locator 1e9", "records.jsonl scores", _set_task_score("locator_correct", 1e9), {},
+         completion),
+        ("integrity -0.5", "records.jsonl scores", _set_task_score("integrity", -0.5), {},
+         completion),
+        ("kappa 5", "support-agreement.json", _set_kappa(5), {}, completion),
+        ("kappa 10**400", "support-agreement.json", _set_kappa(huge), {}, completion),
+        ("seed -1", "seed", None, {"seed": -1}, input_only),
+        ("seed 10**400", "seed", None, {"seed": huge}, input_only),
+    ]  # fmt: skip
+    assert {key for _, key, *_ in table} == set(release.INPUT_DOMAINS)  # every numeric input
+    for name, _, plant, override, codes in table:
+        for stop, want in zip(("complete", "capped", "pending"), codes, strict=True):
+            slug = "".join(ch if ch.isalnum() else "_" for ch in name)
+            run = fresh(held_run, tmp_path / f"{slug}-{stop}" / "evalkit", "r")
+            if plant is not None:
+                plant(run)
+            if stop == "capped":
+                b4 = first_id(run, "B4")
+                lines = (run / "records.jsonl").read_text("utf-8").splitlines()
+                keep = [x for x in lines if json.loads(x)["case_id"] != b4]
+                (run / "records.jsonl").write_text("\n".join(keep) + "\n", encoding="utf-8")
+            if stop == "pending":
+                edit_json(run / "summary.json", lambda d: {**d, "judging_status": "pending"})
+            given = {k: (val(run) if callable(val) else val) for k, val in override.items()}
+            v = release.verdict(run, inputs(run, **given))  # never raises, even for 10**400
+            assert v.exit_code == want, (name, stop, v.exit_code, v.errors, v.notes)
+    # an impossible baseline through the command line, as the verifier planted it
+    assert release.baseline_problem(base_all(-1e6)(held_run), R.read_cases(held_run))
