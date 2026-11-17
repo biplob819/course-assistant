@@ -21,6 +21,7 @@ cost cap, 4 judging pending. `--json` prints the verdict as one JSON object. `ga
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
 import json
 import os
@@ -153,6 +154,44 @@ def load_course(config_path: Path, store_path: Path | None) -> tuple[Any, Any, A
     return config, store, load_assessments(ASSESSMENTS)
 
 
+def load_baseline(baseline_path: Path | None, store: Any,
+                  ) -> tuple[Any, list[str], str | None]:  # fmt: skip
+    """(values, snapshots, error). A first release (no baseline) is allowed only with no
+    --baseline and no LIVE.json; a baseline given or expected but missing, unreadable or not
+    `{"values": {...}, "snapshots": [...]}` is an error (exit 2 before the stops)."""
+    from course_assistant.eval import release
+
+    if baseline_path is not None:
+        path, what = baseline_path, "the --baseline file"
+    else:
+        live = store.dir / release.LIVE_FILE
+        if not live.exists():
+            if (store.dir / release.BASELINE_FILE).exists():
+                return None, [], "live-baseline.json exists without LIVE.json: the store is " \
+                    "inconsistent"  # fmt: skip
+            return None, [], None  # nothing has gone live: a first release
+        try:
+            state = json.loads(live.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None, [], "LIVE.json is unreadable: the live baseline cannot be found"
+        if not isinstance(state, dict) or not state.get("corpus_version"):
+            return None, [], "LIVE.json is malformed: the live baseline cannot be found"
+        path, what = store.dir / release.BASELINE_FILE, "the live baseline (live-baseline.json)"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None, [], f"{what} is missing"
+    except (OSError, ValueError):
+        return None, [], f"{what} is unreadable or not JSON"
+    if not isinstance(data, dict) or set(data) - {"run", "values", "snapshots"} \
+            or "values" not in data or data["values"] is None:  # fmt: skip
+        return None, [], f"{what} is malformed (needs values and snapshots)"
+    snaps = data.get("snapshots", [])
+    if not isinstance(snaps, list) or not all(isinstance(x, str) for x in snaps):
+        return None, [], f"{what} is malformed (snapshots must be a list of names)"
+    return data["values"], list(snaps), None
+
+
 def check_run(run: Path, *, config_path: Path, store_path: Path | None,
               calibration: Path | None, baseline_path: Path | None,
               env: Mapping[str, str]) -> Any:  # fmt: skip
@@ -194,15 +233,7 @@ def check_run(run: Path, *, config_path: Path, store_path: Path | None,
     except Exception:
         bar = config.grounding_bar
         notes.append("bar read from the config (the run recorded none)")
-    base = None
-    snapshots: list[str] = []
-    data = (json.loads(baseline_path.read_text(encoding="utf-8")) if baseline_path
-            else release.live_baseline(store))  # fmt: skip
-    if data is not None:
-        if isinstance(data, dict):  # the verdict checks the values' shape (input-only)
-            base, snapshots = data.get("values"), list(data.get("snapshots") or [])
-        else:
-            base = data
+    base, snapshots, baseline_error = load_baseline(baseline_path, store)
     inputs = release.GateInputs(
         heldout_ids=heldout_ids(),
         calibration=calibration_status(calibration or run),
@@ -214,6 +245,7 @@ def check_run(run: Path, *, config_path: Path, store_path: Path | None,
         retired=retired,
         baseline=base,
         baseline_snapshots=snapshots,
+        baseline_error=baseline_error,
     )
     result = release.verdict(run, inputs)
     result.notes += notes
@@ -374,17 +406,35 @@ def cmd_drift(args: argparse.Namespace) -> int:
     return 0
 
 
+def _recover_out(argv: list[str]) -> Path | None:
+    """--out's value from a command line argparse refused: `--out X`, `--out=X` and the
+    unambiguous abbreviations `--o`, `--ou` (no other option starts with --o)."""
+    for i, tok in enumerate(argv):
+        name, eq, value = tok.partition("=")
+        if len(name) >= 3 and "--out".startswith(name):
+            if eq:
+                return Path(value) if value else None
+            if i + 1 < len(argv) and not argv[i + 1].startswith("-"):
+                return Path(argv[i + 1])
+    return None
+
+
 def _argv_error_gate(argv: list[str]) -> None:
-    """A command line that does not parse still leaves gate.json (exit 2): at --out's folder
-    when given (eval) or --out itself (check), else under runs/ for eval."""
-    out: Path | None = None
-    if "--out" in argv and argv.index("--out") + 1 < len(argv):
-        given = Path(argv[argv.index("--out") + 1])
-        out = given / "gate.json" if argv[0] == "eval" else given
-    elif argv[0] == "eval":
-        out = ROOT / "runs" / "gate.json"
-    if out is not None:
-        _stop_gate(out, 2, "the command line could not be parsed")
+    """A command line that does not parse still leaves gate.json (exit 2). For eval: always
+    runs/gate.json, and under --out too when it can be recovered; for check: --out when it can
+    be recovered."""
+    cmd = next((t for t in argv if t in ("eval", "check")), None)
+    given = _recover_out(argv)
+    targets: list[Path] = []
+    if cmd == "eval":
+        targets.append(ROOT / "runs" / "gate.json")
+        if given is not None:
+            targets.append(given / "gate.json")
+    elif cmd == "check" and given is not None:
+        targets.append(given)
+    for out in dict.fromkeys(targets):
+        with contextlib.suppress(OSError):
+            _stop_gate(out, 2, "the command line could not be parsed")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -423,8 +473,7 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         if not exc.code:  # --help
             raise
-        if argv_list and argv_list[0] in ("eval", "check"):
-            _argv_error_gate(argv_list)
+        _argv_error_gate(argv_list)
         return 2
     from course_assistant.eval.dataset import DatasetError
     from course_assistant.eval.release import ReleaseError

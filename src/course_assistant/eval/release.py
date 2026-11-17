@@ -215,6 +215,9 @@ class GateInputs:
     expected_cases: Mapping[str, Mapping[str, Any]] | None
     retired: AbstractSet[str] = frozenset()  # drift-retired held-out ids
     baseline: Mapping[str, Mapping[str, float]] | None = None
+    # set when a baseline was given (--baseline) or expected (LIVE.json exists) but is missing,
+    # unreadable or malformed: exit 2 before the stops, never a "first release"
+    baseline_error: str | None = None
     baseline_snapshots: Sequence[str] = ()
     seed: int = 7
 
@@ -291,13 +294,15 @@ INPUT_CLASSES: dict[str, str] = {
     "cases.jsonl": "input-only",
     "records.jsonl presence": "input-only",  # which cases have records, unknown, duplicated
     "records.jsonl scores": "completion-dependent",  # scores and citations
-    "summary.json": "completion-dependent",
+    "summary.json shape": "input-only",  # valid JSON object when present
+    "summary.json content": "completion-dependent",  # judging status, judge mode
     "support-agreement.json": "completion-dependent",
     # GateInputs fields
     "heldout_ids": "input-only",
     "retired": "input-only",  # from drift.json, read and recomputed before the verdict
     "expected_cases": "input-only",
     "baseline": "input-only",
+    "baseline_error": "input-only",  # a given or expected baseline missing or malformed
     "baseline_snapshots": "gate condition",
     "calibration": "gate condition",
     "fixture_problems": "gate condition",
@@ -365,17 +370,22 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
     if doubled:
         return _stop(v, EXIT_ERROR, f"{len(doubled)} case(s) have more than one record: "
                      f"{', '.join(doubled)}")  # fmt: skip
+    if inputs.baseline_error is not None:  # given or expected but missing or malformed
+        return _stop(v, EXIT_ERROR, inputs.baseline_error)
     if inputs.baseline is not None:  # the baseline against the run's case ids: input-only
         problem = baseline_problem(inputs.baseline, ids)
         if problem:
             return _stop(v, EXIT_ERROR, problem)
-    # ---- the stops: everything below depends on how far the run got ----
     summary: dict[str, Any] = {}
-    if summary_path.is_file():
+    if summary_path.is_file():  # its shape is input-only: a corrupt file is 2 at any stop
         try:
-            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            loaded = json.loads(summary_path.read_text(encoding="utf-8"))
         except ValueError:
             return _stop(v, EXIT_ERROR, "summary.json is not valid JSON")
+        if not isinstance(loaded, dict):
+            return _stop(v, EXIT_ERROR, "summary.json is not a JSON object")
+        summary = loaded
+    # ---- the stops: everything below depends on how far the run got ----
     if not summary_path.is_file() or answered != ids:
         return _stop(v, EXIT_COST_CAP, f"the run stopped with {len(ids - answered)} case(s) "
                      "unanswered (cost cap): resume with the same command")  # fmt: skip

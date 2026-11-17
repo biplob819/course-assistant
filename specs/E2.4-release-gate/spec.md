@@ -70,7 +70,7 @@ baseline (first release) is reported, not failed.
 - exit 0 otherwise. Precedence 2 > 3 > 4 > 1 > 0. `gate.json` holds the verdict: numbers, ids,
   model snapshots and messages; no case text.
 
-**Check order (verifier passes 2 to 5).** Every input the verdict reads sits in exactly one
+**Check order (verifier passes 2 to 6).** Every input the verdict reads sits in exactly one
 class (`release.INPUT_CLASSES`; a test fails if `verdict` reads anything else):
 - *input-only* — run before the cost-cap and pending stops, so their exit 2 never depends on
   how far the run got:
@@ -85,9 +85,13 @@ class (`release.INPUT_CLASSES`; a test fails if `verdict` reads anything else):
     with gold units;
   - `records.jsonl` presence: no record for an unknown case, no case recorded twice;
   - `baseline`: well formed (metric -> case id -> finite number) and sharing at least one case
-    id with the run.
+    id with the run; `baseline_error`: a baseline given (`--baseline`) or expected (`LIVE.json`
+    exists) that is missing, unreadable or not `{"values": ..., "snapshots": [...]}`, or an
+    unreadable `LIVE.json`. "No baseline" (a first release) is allowed only with no
+    `--baseline` and no `LIVE.json`;
+  - `summary.json` shape: a valid JSON object when present.
 - *completion-dependent* — run after the stops (a capped run is 3 and a pending one 4 first):
-  `summary.json` (judging status, judge mode); `records.jsonl` scores (every record scored with
+  `summary.json` content (judging status, judge mode); `records.jsonl` scores (every record scored with
   every score it needs, a B1 record with citations, a case for every metric among the
   records); `support-agreement.json` well formed.
 - *gate condition* — evaluated last, each a failure (exit 1): the §6.4 gates and regressions,

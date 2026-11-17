@@ -483,7 +483,8 @@ def test_release_gate_eval_flips_only_on_exit_0(tmp_path, monkeypatch):
         argv = ["eval", "--config", str(config), "--yes", "--out", str(tmp_path / f"o{code}")]
         assert G.main(argv) == code
         assert (release.live_state(store) is not None) == (code == 0), code
-    assert G.main(["eval", "--config", str(config), "--split", "public"]) == 2
+    public = ["eval", "--config", str(config), "--split", "public", "--out", str(tmp_path / "p")]
+    assert G.main(public) == 2
     monkeypatch.setattr(eval_live, "main", lambda argv: 3)  # stopped at the cost cap: no gate
     assert G.main(["eval", "--config", str(config), "--out", str(tmp_path / "cap")]) == 3
 
@@ -958,12 +959,29 @@ def test_verdict_reads_only_inputs_the_check_order_lists(held_run, tmp_path, mon
     run = fresh(held_run, tmp_path / "live" / "evalkit", "r")
     (tmp_path / "live" / "support-agreement.json").write_text(
         json.dumps({"kappa": {"point": 0.8}}), encoding="utf-8")  # fmt: skip
+    import builtins
+    import io
+
     files: set[str] = set()
-    real = Path.read_text
+    real_read, real_open, real_path_open = Path.read_text, builtins.open, Path.open
+    real_load = json.load
 
     def spy(self: Path, *a: Any, **k: Any) -> str:
         files.add(self.name)
-        return real(self, *a, **k)
+        return real_read(self, *a, **k)
+
+    def spy_open(file: Any, *a: Any, **k: Any) -> Any:
+        if isinstance(file, str | Path):
+            files.add(Path(file).name)
+        return real_open(file, *a, **k)
+
+    def spy_path_open(self: Path, *a: Any, **k: Any) -> Any:
+        files.add(self.name)
+        return real_path_open(self, *a, **k)
+
+    def spy_load(fp: Any, *a: Any, **k: Any) -> Any:
+        files.add(Path(str(getattr(fp, "name", "?"))).name)
+        return real_load(fp, *a, **k)
 
     class Spy:
         def __init__(self, inner: GateInputs) -> None:
@@ -974,6 +992,10 @@ def test_verdict_reads_only_inputs_the_check_order_lists(held_run, tmp_path, mon
             return getattr(self._inner, name)
 
     monkeypatch.setattr(Path, "read_text", spy)
+    monkeypatch.setattr(Path, "open", spy_path_open)
+    monkeypatch.setattr(builtins, "open", spy_open)
+    monkeypatch.setattr(io, "open", spy_open)
+    monkeypatch.setattr(json, "load", spy_load)
     spied = Spy(inputs(run, baseline=rows_baseline(run)))
     v = release.verdict(run, spied)  # type: ignore[arg-type]
     monkeypatch.undo()
@@ -1008,7 +1030,8 @@ def test_any_nonzero_eval_live_exit_blocks_the_flip(tmp_path, monkeypatch):
     assert G.main(["eval", "--config", str(config), "--yes", "--out", str(tmp_path / "w")]) == 2
 
 
-def test_an_unparsable_eval_command_line_writes_gate_json(tmp_path):
+def test_an_unparsable_eval_command_line_writes_gate_json(tmp_path, monkeypatch):
+    monkeypatch.setattr(G, "ROOT", tmp_path / "root")  # eval's default runs/gate.json
     out = tmp_path / "o"
     assert G.main(["eval", "--out", str(out)]) == 2  # no --config
     data = json.loads((out / "gate.json").read_text(encoding="utf-8"))
@@ -1019,3 +1042,104 @@ def test_an_unparsable_eval_command_line_writes_gate_json(tmp_path):
     check_out = tmp_path / "check-gate.json"
     assert G.main(["check", "--out", str(check_out)]) == 2  # no RUN, no --config
     assert json.loads(check_out.read_text(encoding="utf-8"))["exit_code"] == 2
+
+    assert (tmp_path / "root" / "runs" / "gate.json").is_file()  # the default, always
+    # --out=X, an unambiguous abbreviation, and a global flag before the subcommand
+    shapes = ((["eval", f"--out={tmp_path}/o1"], tmp_path / "o1"),
+              (["eval", "--ou", f"{tmp_path}/o2"], tmp_path / "o2"),
+              (["eval", "--o", f"{tmp_path}/o3", "--config"], tmp_path / "o3"))  # fmt: skip
+    for argv, where in shapes:
+        assert G.main(argv) == 2
+        assert json.loads((where / "gate.json").read_text(encoding="utf-8"))["exit_code"] == 2
+    (tmp_path / "root" / "runs" / "gate.json").unlink()
+    assert G.main(["--json", "eval"]) == 2
+    assert (tmp_path / "root" / "runs" / "gate.json").is_file()
+
+
+# ============ verifier pass 6 (E2.4): "no baseline" is explicit; summary shape ============
+
+
+@pytest.mark.safety
+def test_a_baseline_given_or_expected_but_malformed_exits_2_never_a_first_release(
+        held_run, tmp_path, monkeypatch):  # fmt: skip
+    config, store = _store(tmp_path)
+    good = {"grounded": {i: 1.0 for i in ids(held_run) if i.startswith("ta-b1-")}}
+    shapes: dict[str, Any] = {
+        "raw mapping": good, "empty": {}, "values null": {"values": None},
+        "typo": {"vals": good}, "snapshots a string": {"values": good, "snapshots": "abc"},
+        "a list": [good], "not json": "{oops",
+    }  # fmt: skip
+    for name, data in shapes.items():
+        run = fresh(held_run, tmp_path / name.replace(" ", "_"), "r")
+        private(tmp_path / name.replace(" ", "_"), run, monkeypatch)
+        b = tmp_path / f"{name.replace(' ', '_')}.json"
+        b.write_text(data if isinstance(data, str) else json.dumps(data), encoding="utf-8")
+        out = tmp_path / f"{name.replace(' ', '_')}-gate.json"
+        argv = ["check", str(run), "--config", str(config), "--baseline", str(b), "--out", str(out)]
+        assert G.main(argv) == 2, name
+        gate = json.loads(out.read_text(encoding="utf-8"))
+        assert gate["exit_code"] == 2 and "baseline" in gate["errors"][0], (name, gate["errors"])
+        assert "first release" not in " ".join(gate["notes"]), name
+    run = fresh(held_run, tmp_path / "missing", "r")
+    private(tmp_path / "missing", run, monkeypatch)
+    out = tmp_path / "missing-gate.json"
+    argv = ["check", str(run), "--config", str(config), "--out", str(out),
+            "--baseline", str(tmp_path / "nowhere.json")]  # fmt: skip
+    assert G.main(argv) == 2
+    assert "is missing" in json.loads(out.read_text(encoding="utf-8"))["errors"][0]
+    # with no --baseline: a first release only while nothing is live
+    plain = ["check", str(run), "--config", str(config), "--out", str(out)]
+    assert G.main(plain) == 1  # (uncalibrated) but the regression check was not refused
+    assert "no live baseline: first release, nothing to regress against" in json.loads(
+        out.read_text(encoding="utf-8"))["notes"]  # fmt: skip
+    release.flip_live(store, _passing(), rules_hash="rh", grounding_bar=0.5, now=NOW)
+    (store.dir / release.BASELINE_FILE).unlink()  # LIVE.json without its baseline
+    assert G.main(plain) == 2
+    assert "live-baseline.json) is missing" in json.loads(out.read_text("utf-8"))["errors"][0]
+    (store.dir / release.LIVE_FILE).unlink()  # a baseline file with no LIVE.json: inconsistent
+    (store.dir / release.BASELINE_FILE).write_text('{"values": null}', encoding="utf-8")
+    assert G.main(plain) == 2
+    assert "without LIVE.json" in json.loads(out.read_text("utf-8"))["errors"][0]
+    release.flip_live(store, _passing(), rules_hash="rh", grounding_bar=0.5, now=NOW)
+    for corrupt in ('{"values": null}', "{oops", "[]"):
+        (store.dir / release.BASELINE_FILE).write_text(corrupt, encoding="utf-8")
+        assert G.main(plain) == 2, corrupt
+    (store.dir / release.LIVE_FILE).write_text("{oops", encoding="utf-8")
+    assert G.main(plain) == 2
+    assert "LIVE.json is unreadable" in json.loads(out.read_text("utf-8"))["errors"][0]
+
+
+def test_a_corrupt_live_baseline_never_flips_in_eval_mode(tmp_path, monkeypatch):
+    config, store = _store(tmp_path)
+    release.flip_live(store, _passing(run="old"), rules_hash="rh", grounding_bar=0.5, now=NOW)
+    before = release.live_state(store)
+    (store.dir / release.BASELINE_FILE).write_text('{"values": null}', encoding="utf-8")
+    seen: list[Any] = []
+
+    def check(run_dir: Path, **k: Any) -> Verdict:
+        _, _, error = G.load_baseline(k["baseline_path"], store)
+        seen.append(error)
+        return dataclasses.replace(_passing(), exit_code=2 if error else 0, run=run_dir.name)
+
+    monkeypatch.setattr(G, "check_run", check)
+    monkeypatch.setattr(eval_live, "main", _fake_live(0))
+    assert G.main(["eval", "--config", str(config), "--yes", "--out", str(tmp_path / "o")]) == 2
+    assert seen and "malformed" in seen[0]
+    assert release.live_state(store) == before  # nothing flipped
+
+
+@pytest.mark.parametrize("body", ["{not json", "[1]"])
+def test_a_corrupt_summary_exits_2_at_any_stop(held_run, tmp_path, body):
+    """summary.json's shape is input-only; its content (judging status) is completion-dependent."""
+    for stop in ("complete", "capped", "pending"):
+        run = fresh(held_run, tmp_path, f"{stop}-{len(body)}")
+        if stop == "capped":
+            lines = (run / "records.jsonl").read_text("utf-8").splitlines()
+            (run / "records.jsonl").write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")
+        (run / "summary.json").write_text(body, encoding="utf-8")
+        assert release.verdict(run, inputs(run)).exit_code == 2, stop
+    capped = fresh(held_run, tmp_path, "null-status")
+    lines = (capped / "records.jsonl").read_text("utf-8").splitlines()
+    (capped / "records.jsonl").write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")
+    (capped / "summary.json").write_text(json.dumps({"judging_status": None}), encoding="utf-8")
+    assert release.verdict(capped, inputs(capped)).exit_code == 3  # content: after the stop
