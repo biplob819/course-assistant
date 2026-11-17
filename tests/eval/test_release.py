@@ -34,6 +34,7 @@ NOW = dt.datetime(2026, 11, 20, 12, 0, tzinfo=dt.UTC)
 # two or more cases per gated metric, so every regression comparison can run (MIN_PAIRED)
 RULES = ("B1", "B1", "B1", "B2", "B3", "B3", "B4", "B7", "B8", "B9", "B9", "B10", "B10")
 CALIBRATED = {"groundedness": "calibrated", "integrity": "calibrated"}
+RH = {"rules_hash": "rh", "grounding_bar": 0.5}  # the gated settings _passing flips record
 
 
 def _cases() -> list[Any]:
@@ -460,14 +461,14 @@ def test_removals_apply_at_once_and_additions_wait_for_the_gate(tmp_path):
     serving = release.serving_corpus(store)
     assert serving is not None and serving.corpus_version == smaller.corpus_version
     assert unit_key(removed) not in {unit_key(u) for u in serving.units}  # gone at once
-    assert release.apply_removals(store, now=NOW) is True  # removal-only: live with no gate
+    assert release.apply_removals(store, now=NOW, settings=RH) is True  # live with no gate
     assert (release.live_state(store) or {}).get("how") == "removal"
     assert release.live_corpus(store) == smaller
     # a candidate that adds a unit back and removes another: additions wait, removals do not
     gone = next(u for u in smaller.units if u.session == "s02")
     mixed = _sub(E.CORPUS, lambda u: unit_key(u) != unit_key(gone))
     store.save(mixed)
-    assert release.apply_removals(store, now=NOW) is False
+    assert release.apply_removals(store, now=NOW, settings=RH) is False
     assert release.live_corpus(store) == smaller  # the pointer did not move
     serving = release.serving_corpus(store)
     assert serving is not None
@@ -565,9 +566,9 @@ def test_apply_removals_and_serving_are_idempotent(tmp_path):
     smaller = _sub(E.CORPUS, lambda u: u.session != "s03")
     store.save(smaller)
     first = release.serving_corpus(store)
-    assert release.apply_removals(store, now=NOW) is True
+    assert release.apply_removals(store, now=NOW, settings=RH) is True
     state = release.live_state(store)
-    assert release.apply_removals(store, now=NOW) is False  # nothing left to apply
+    assert release.apply_removals(store, now=NOW, settings=RH) is False  # nothing left to apply
     assert release.live_state(store) == state
     assert release.serving_corpus(store) == first == release.serving_corpus(store)
 
@@ -939,8 +940,8 @@ def test_every_eval_mode_exit_writes_gate_json(tmp_path, monkeypatch):
         monkeypatch.setattr(eval_live, "main", _fake_live(vc))
         code, files = run(f"verdict{vc}", "--no-flip")
         assert code == vc and [f["exit_code"] for f in files] == [vc]
-    # removal-only candidate: live at once, and gate.json says so
-    release.flip_live(store, _passing(), rules_hash="rh", grounding_bar=0.5, now=NOW)
+    # removal-only candidate with every gated setting unchanged: live at once, gate.json says so
+    _flip_with_settings_now(store)
     store.save(_sub(E.CORPUS, lambda u: u.session != "s03"))
     code, files = run("removal")
     assert code == 0 and [f["exit_code"] for f in files] == [0]
@@ -1187,7 +1188,10 @@ def test_an_accepted_baseline_compares_every_gated_metric(held_run, tmp_path):
             v = release.verdict(r, inputs(r, baseline=base))
             assert v.exit_code == 2, (name, stop, v.errors)
             assert "baseline" in v.errors[0] and not v.regressions, (name, v.errors)
-    accepted = [full, {m: {**v, "ta-b1-999": 1.0} for m, v in full.items()}]
+    refused_outside = {m: {**v, "ta-b1-999": 1.0} for m, v in full.items()}
+    v = release.verdict(run, inputs(run, baseline=refused_outside))
+    assert v.exit_code == 2 and "outside the held-out MANIFEST" in v.errors[0]
+    accepted = [full]
     for base in accepted:
         v = release.verdict(run, inputs(run, baseline=base))
         assert v.exit_code == 0, v.errors
@@ -1311,3 +1315,85 @@ def test_every_numeric_input_out_of_its_domain_exits_2_as_its_class_says(held_ru
             assert v.exit_code == want, (name, stop, v.exit_code, v.errors, v.notes)
     # an impossible baseline through the command line, as the verifier planted it
     assert release.baseline_problem(base_all(-1e6)(held_run), R.read_cases(held_run))
+
+
+# ========= verifier pass 9 (E2.4): the removal shortcut needs every setting unchanged =========
+
+
+def _flip_with_settings_now(store: CorpusStore, **changed: Any) -> None:
+    """Flip as a gate on today's code and config would, with `changed` settings overridden
+    (as if the live run had used them)."""
+    from course_assistant.answer.ask import Assistant
+
+    settings = {**G.gated_settings(E.CONFIG), **changed}
+    release.flip_live(store, _passing(), rules_hash=settings["rules_hash"],
+                      grounding_bar=settings["grounding_bar"], now=NOW,
+                      settings=settings)  # fmt: skip
+    assert Assistant.rules_hash() == G.gated_settings(E.CONFIG)["rules_hash"]
+
+
+@pytest.mark.safety
+def test_a_removal_plus_any_gated_setting_change_runs_the_full_gate(tmp_path, monkeypatch):
+    """Verifier pass 9: a removal combined with a rules, bar or model change skipped the gate
+    and flipped LIVE.json with the old rules hash."""
+    changes: dict[str, dict[str, Any]] = {
+        "rules hash": {"rules_hash": "an-older-rules-hash"},
+        "grounding bar": {"grounding_bar": 0.99},
+        "answer model": {"answer_model": "an-older-answer-model"},
+        "check model": {"check_model": "an-older-check-model"},
+        "reasoning effort": {"reasoning_effort": {"x": "high"}},
+        "no recorded settings": {},  # a LIVE.json written before settings were recorded
+    }
+    for name, changed in changes.items():
+        root = tmp_path / name.replace(" ", "_")
+        config, store = _store(root)
+        if name == "no recorded settings":
+            release.flip_live(store, _passing(), rules_hash="rh", grounding_bar=0.5, now=NOW)
+            state = release.live_state(store) or {}
+            state.pop("settings")
+            (store.dir / release.LIVE_FILE).write_text(json.dumps(state), encoding="utf-8")
+        else:
+            _flip_with_settings_now(store, **changed)
+        before = release.live_state(store)
+        store.save(_sub(E.CORPUS, lambda u: u.session != "s03"))  # a removal-only corpus
+        called: list[int] = []
+        monkeypatch.setattr(eval_live, "main", lambda argv, c=called: c.append(1) or 2)
+        code = G.main(["eval", "--config", str(config), "--yes", "--out", str(root / "o")])
+        assert called, name  # the full gate ran
+        assert code == 2, name  # (the fake eval_live refused)
+        assert release.live_state(store) == before, name  # nothing flipped
+    # unchanged settings: the shortcut, with the recorded settings kept
+    config, store = _store(tmp_path / "unchanged")
+    _flip_with_settings_now(store)
+    store.save(_sub(E.CORPUS, lambda u: u.session != "s03"))
+    monkeypatch.setattr(eval_live, "main", lambda argv: pytest.fail("no gate needed"))
+    assert G.main(["eval", "--config", str(config), "--yes", "--out", str(tmp_path / "u")]) == 0
+    state = release.live_state(store) or {}
+    assert state["how"] == "removal" and state["settings"] == G.gated_settings(E.CONFIG)
+
+
+def test_a_live_baseline_must_match_the_live_run_and_cover_what_it_knows(held_run, tmp_path):
+    _, store = _store(tmp_path)
+    run = fresh(held_run, tmp_path)
+    full = rows_baseline(run)
+    release.flip_live(store, dataclasses.replace(_passing(run="live-run"), values=full),
+                      rules_hash="rh", grounding_bar=0.5, now=NOW)  # fmt: skip
+    assert G.load_baseline(None, store)[2] is None
+    data = json.loads((store.dir / release.BASELINE_FILE).read_text(encoding="utf-8"))
+    (store.dir / release.BASELINE_FILE).write_text(json.dumps({**data, "run": "other-run"}),
+                                                    encoding="utf-8")  # fmt: skip
+    assert "not the live run" in (G.load_baseline(None, store)[2] or "")
+    # coverage: a live baseline missing a known applicable case for a full-coverage metric
+    assert len(full["handover"]) == 3
+    b9 = sorted(full["handover"])[0]  # a handover case, still known through another metric
+    gap = {**full, "handover": {i: x for i, x in full["handover"].items() if i != b9},
+           "grounded": {**full["grounded"], b9: 1.0}}  # fmt: skip
+    v = release.verdict(run, inputs(run, baseline=gap, baseline_from_live=True))
+    assert v.exit_code == 2 and "does not hold every applicable run case" in v.errors[0]
+    # a hand-made --baseline keeps only the 2-case floor (spec: a known limit of check mode)
+    v = release.verdict(run, inputs(run, baseline=gap, baseline_from_live=False))
+    assert v.exit_code != 2 or "does not hold" not in " ".join(v.errors)
+    # drift-converted cases are exempt
+    v = release.verdict(run, inputs(run, baseline=gap, baseline_from_live=True,
+                                    converted=frozenset({b9})))  # fmt: skip
+    assert "does not hold" not in " ".join(v.errors)

@@ -161,6 +161,7 @@ def load_baseline(baseline_path: Path | None, store: Any,
     `{"values": {...}, "snapshots": [...]}` is an error (exit 2 before the stops)."""
     from course_assistant.eval import release
 
+    state: Any = {}
     if baseline_path is not None:
         path, what = baseline_path, "the --baseline file"
     else:
@@ -190,6 +191,9 @@ def load_baseline(baseline_path: Path | None, store: Any,
     snaps = data.get("snapshots", [])
     if not isinstance(snaps, list) or not all(isinstance(x, str) for x in snaps):
         return None, [], f"{what} is malformed (snapshots must be a list of names)"
+    if baseline_path is None and data.get("run") != state.get("run"):
+        return None, [], (f"{what} belongs to run {data.get('run')!r}, not the live run "
+                          f"{state.get('run')!r}")  # fmt: skip
     return data["values"], list(snaps), None
 
 
@@ -216,6 +220,7 @@ def check_run(run: Path, *, config_path: Path, store_path: Path | None,
     held = private_heldout()  # load_heldout: every line and the file match the MANIFEST
     notes = []
     expected: dict[str, Any] | None = None
+    converted: frozenset[str] = frozenset()
     if held is not None and len(golden_versions) == 1:  # recompute where the cases exist
         version = next(iter(golden_versions))
         found = release.drift(held, corpus, version)
@@ -223,6 +228,7 @@ def check_run(run: Path, *, config_path: Path, store_path: Path | None,
             raise ReleaseError("drift.json does not match the drift of the held-out cases on "
                                "this corpus: re-run the gate")  # fmt: skip
         retired = frozenset(found.retired)
+        converted = frozenset(found.converted)
         context = corpus_context(corpus)
         expected = {c.id: to_case(c, corpus, version, context=context) for c in found.cases}
     public = load_public(PUBLIC)
@@ -247,6 +253,8 @@ def check_run(run: Path, *, config_path: Path, store_path: Path | None,
         baseline=base,
         baseline_snapshots=snapshots,
         baseline_error=baseline_error,
+        baseline_from_live=baseline_path is None,
+        converted=converted,
     )
     result = release.verdict(run, inputs)
     result.notes += notes
@@ -279,6 +287,17 @@ def cmd_check(args: argparse.Namespace) -> int:
     return _report(result, args.json, args.out or live_folder(run) / "gate.json")
 
 
+def gated_settings(config: Any) -> dict[str, Any]:
+    """The settings §6.5 gates besides the corpus: the rules hash, the bar and the models (with
+    their effort). Recorded in LIVE.json at a flip; the removal-only shortcut needs them all
+    unchanged."""
+    from course_assistant.answer.ask import Assistant
+
+    return {"rules_hash": Assistant.rules_hash(), "grounding_bar": config.grounding_bar,
+            "answer_model": config.answer_model, "check_model": config.check_model,
+            "reasoning_effort": dict(config.reasoning_effort)}  # fmt: skip
+
+
 RANK = {2: 4, 3: 3, 4: 2, 1: 1, 0: 0}  # exit-code precedence: 2 > 3 > 4 > 1 > 0
 
 
@@ -304,7 +323,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
         return _stop_gate(args.gate_json, 2, "the release gate runs on the held-out split (§6.5)")
     config, store, _ = load_course(args.config, args.store)
     now = dt.datetime.now(dt.UTC)
-    if not args.no_flip and apply_removals(store, now=now):
+    if not args.no_flip and apply_removals(store, now=now, settings=gated_settings(config)):
         return _stop_gate(args.gate_json, 0, "the candidate only removes units: live at once, "
                           "no gate (§2.3)")  # fmt: skip
     import eval_live
@@ -342,7 +361,8 @@ def cmd_eval(args: argparse.Namespace) -> int:
     code = _report(result, args.json, args.gate_json)
     if result.exit_code == 0 and live_code == 0 and not args.no_flip:
         state = flip_live(store, result, rules_hash=Assistant.rules_hash(),
-                          grounding_bar=config.grounding_bar, now=now)  # fmt: skip
+                          grounding_bar=config.grounding_bar, now=now,
+                          settings=gated_settings(config))  # fmt: skip
         print(f"live corpus version is now {state['corpus_version'][:12]}", file=sys.stderr)
     return code
 

@@ -253,6 +253,8 @@ class GateInputs:
     # set when a baseline was given (--baseline) or expected (LIVE.json exists) but is missing,
     # unreadable or malformed: exit 2 before the stops, never a "first release"
     baseline_error: str | None = None
+    baseline_from_live: bool = False  # the live baseline (full coverage) or a --baseline file
+    converted: AbstractSet[str] = frozenset()  # drift-converted held-out ids (rule changed)
     baseline_snapshots: Sequence[str] = ()
     seed: int = 7
 
@@ -305,10 +307,20 @@ def case_content(case: Case) -> str:
     return json.dumps(_json(view), sort_keys=True)
 
 
-def baseline_problem(baseline: Any, cases: Mapping[str, Case]) -> str | None:
-    """A baseline must map metric -> case id -> finite number, name only gated metrics, name
-    every gated metric, and share at least MIN_PAIRED of the run's cases that metric applies
-    to (by rule), so every comparison can run."""
+# metrics whose values cover every case of their rules (citation_validity and locator_correct
+# cover only the B1 answers with citations or an applicable locator score)
+FULL_COVERAGE = ("grounded", "handover", "integrity", "injection", "leak", "identity")
+
+
+def baseline_problem(baseline: Any, cases: Mapping[str, Case], *,
+                     heldout_ids: AbstractSet[str] | None = None, live: bool = False,
+                     converted: AbstractSet[str] = frozenset()) -> str | None:  # fmt: skip
+    """A baseline must map metric -> case id -> number in [0, 1], name only and every gated
+    metric, use only MANIFEST held-out ids, and share at least MIN_PAIRED of the run's cases
+    each metric applies to (by rule), so every comparison can run. A live baseline (from the
+    last flip) must also hold, for each full-coverage metric, every applicable run case it
+    knows anywhere (cases it never saw, and cases drift converted to another rule, are
+    exempt); a hand-made --baseline keeps only the MIN_PAIRED floor (a known limit)."""
     ok = isinstance(baseline, Mapping) and all(
         isinstance(m, str) and isinstance(vals, Mapping)
         and all(isinstance(i, str) and in_range(x, 0.0, 1.0) for i, x in vals.items())
@@ -322,6 +334,10 @@ def baseline_problem(baseline: Any, cases: Mapping[str, Case]) -> str | None:
     unknown = sorted(set(baseline) - set(GATED_METRICS))
     if unknown:
         return f"the live baseline names unknown metric(s): {', '.join(unknown)}"
+    known = {i for vals in baseline.values() for i in vals}
+    if heldout_ids is not None and known - set(heldout_ids):
+        return (f"the live baseline names {len(known - set(heldout_ids))} case id(s) outside "
+                "the held-out MANIFEST")  # fmt: skip
     missing = [m for m in GATED_METRICS if m not in baseline]
     if missing:
         return f"the live baseline lacks gated metric(s): {', '.join(missing)}"
@@ -333,6 +349,17 @@ def baseline_problem(baseline: Any, cases: Mapping[str, Case]) -> str | None:
     if thin:
         return (f"the live baseline shares fewer than {MIN_PAIRED} of the run's cases for "
                 f"{', '.join(thin)}: those comparisons cannot run")  # fmt: skip
+    if live:
+        gaps = []
+        for m in FULL_COVERAGE:
+            rules = METRIC_RULES[m]
+            want = {i for i, c in cases.items()
+                    if _rule(c) in rules and i in known and i not in converted}  # fmt: skip
+            if want - set(baseline[m]):
+                gaps.append(f"{m} ({len(want - set(baseline[m]))})")
+        if gaps:
+            return ("the live baseline does not hold every applicable run case it knows: "
+                    f"{', '.join(gaps)}")  # fmt: skip
     return None
 
 
@@ -353,6 +380,8 @@ INPUT_CLASSES: dict[str, str] = {
     "expected_cases": "input-only",
     "baseline": "input-only",
     "baseline_error": "input-only",  # a given or expected baseline missing or malformed
+    "baseline_from_live": "input-only",  # live baselines must cover what they know
+    "converted": "input-only",  # drift-converted ids, exempt from that coverage
     "baseline_snapshots": "gate condition",
     "calibration": "gate condition",
     "fixture_problems": "gate condition",
@@ -443,7 +472,9 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
     if inputs.baseline_error is not None:  # given or expected but missing or malformed
         return _stop(v, EXIT_ERROR, inputs.baseline_error)
     if inputs.baseline is not None:  # the baseline against the run's case ids: input-only
-        problem = baseline_problem(inputs.baseline, cases)
+        problem = baseline_problem(inputs.baseline, cases, heldout_ids=inputs.heldout_ids,
+                                   live=inputs.baseline_from_live,
+                                   converted=inputs.converted)  # fmt: skip
         if problem:
             return _stop(v, EXIT_ERROR, problem)
     summary: dict[str, Any] = {}
@@ -691,9 +722,12 @@ def _write_live(store: CorpusStore, state: Mapping[str, Any]) -> None:
 
 
 def flip_live(store: CorpusStore, result: Verdict, *, rules_hash: str, grounding_bar: float,
-              now: dt.datetime) -> dict[str, Any]:  # fmt: skip
+              now: dt.datetime,
+              settings: Mapping[str, Any] | None = None) -> dict[str, Any]:  # fmt: skip
     """Make the candidate corpus live: only for a passing verdict on the corpus version the
-    store holds as `CURRENT`. Anything else raises and writes nothing."""
+    store holds as `CURRENT`. Anything else raises and writes nothing. `settings` are the
+    gated settings the run used (§6.5: rules hash, bar, model snapshots); they are recorded so
+    a later removal-only shortcut can prove nothing else changed."""
     if result.exit_code != EXIT_PASS:
         raise ReleaseError(f"the gate did not pass (exit {result.exit_code}): nothing flips")
     current = store.current()
@@ -702,6 +736,8 @@ def flip_live(store: CorpusStore, result: Verdict, *, rules_hash: str, grounding
                            "candidate: re-run the gate on the candidate")  # fmt: skip
     state = {"corpus_version": current.corpus_version, "how": "gate", "run": result.run,
              "rules_hash": rules_hash, "grounding_bar": grounding_bar,
+             "settings": _json({**(settings or {}), "rules_hash": rules_hash,
+                                "grounding_bar": grounding_bar}),
              "at": now.isoformat()}  # fmt: skip
     _atomic_write(store.dir / BASELINE_FILE, json.dumps(
         {"run": result.run, "values": result.values, "snapshots": result.snapshots},
@@ -720,13 +756,20 @@ def removal_only(live: Corpus, candidate: Corpus) -> bool:
     return _unit_ids(candidate) <= _unit_ids(live)
 
 
-def apply_removals(store: CorpusStore, *, now: dt.datetime) -> bool:
-    """A candidate that only removes units goes live at once, with no gate (§2.3). Returns
-    whether the pointer moved."""
+def apply_removals(store: CorpusStore, *, now: dt.datetime,
+                   settings: Mapping[str, Any]) -> bool:  # fmt: skip
+    """A candidate that only removes units goes live at once, with no gate (§2.3), but only
+    when every gated setting recorded in LIVE.json (rules hash, bar, models, effort) equals
+    `settings`, the ones in force now: a removal combined with any other change goes through
+    the full gate (§6.5). A LIVE.json without recorded settings never takes the shortcut.
+    Returns whether the pointer moved."""
     live, current = live_corpus(store), store.current()
     if live is None or current is None or live.corpus_version == current.corpus_version:
         return False
     if not removal_only(live, current):
+        return False
+    recorded = (live_state(store) or {}).get("settings")
+    if not isinstance(recorded, dict) or recorded != _json(dict(settings)):
         return False
     state = {**(live_state(store) or {}), "corpus_version": current.corpus_version,
              "how": "removal", "at": now.isoformat()}  # fmt: skip

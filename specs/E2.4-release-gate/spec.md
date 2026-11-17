@@ -70,7 +70,7 @@ baseline (first release) is reported, not failed.
 - exit 0 otherwise. Precedence 2 > 3 > 4 > 1 > 0. `gate.json` holds the verdict: numbers, ids,
   model snapshots and messages; no case text.
 
-**Check order (verifier passes 2 to 8).** Every input the verdict reads sits in exactly one
+**Check order (verifier passes 2 to 9).** Every input the verdict reads sits in exactly one
 class (`release.INPUT_CLASSES`; a test fails if `verdict` reads anything else):
 - *input-only* — run before the cost-cap and pending stops, so their exit 2 never depends on
   how far the run got:
@@ -89,7 +89,14 @@ class (`release.INPUT_CLASSES`; a test fails if `verdict` reads anything else):
     integrity, injection, leak, identity), each sharing at least `MIN_PAIRED` (2, what the
     paired bootstrap needs) of the run's cases that metric applies to by rule, so no
     comparison can be skipped; `regressions` itself raises (exit 2) when a gated metric
-    cannot be compared among the records; `baseline_error`: a baseline given (`--baseline`) or expected (`LIVE.json`
+    cannot be compared among the records; every baseline case id must be a MANIFEST held-out
+    id; a live baseline (`baseline_from_live`, from the last flip, whose `run` must equal
+    `LIVE.json`'s) must also hold, for each full-coverage metric (grounded, handover,
+    integrity, injection, leak, identity), every applicable run case it knows anywhere, with
+    drift-`converted` ids exempt. Known limit of `check` mode: a hand-made `--baseline` file is
+    held only to the `MIN_PAIRED` floor, so a baseline of two shared cases per metric, or of
+    all-0 or all-1 values, is accepted there (well formed but unhelpful; verifier pass 9 ruled
+    it a scope question); `baseline_error`: a baseline given (`--baseline`) or expected (`LIVE.json`
     exists) that is missing, unreadable or not `{"values": ..., "snapshots": [...]}`, or an
     unreadable `LIVE.json`. "No baseline" (a first release) is allowed only with no
     `--baseline` and no `LIVE.json`;
@@ -126,6 +133,12 @@ naming only its class (D-59).
 **D-54 held-out exposure** — `heldout_exposure(questions, texts)`: held-out ids whose question
 (25+ characters) appears in a tracked file. The gate runs it where the private held-out file
 exists and reports "skipped (private file absent)" elsewhere.
+
+**Removal-only shortcut (verifier pass 9).** `LIVE.json` records the gated settings of the
+run that flipped it (`settings`: rules hash, bar, answer and check models, reasoning effort).
+A removal-only candidate goes live without a run only when every recorded setting equals the
+one in force now (`gated_settings`); a removal combined with any other change, or a
+`LIVE.json` with no recorded settings, runs the full gate (§6.5).
 
 **Corpus-version flip (GAT-03)** — the corpus store gets `LIVE.json` (live corpus version,
 gate run, rules hash, bar, time) and `live-baseline.json` (per-case gate values):
