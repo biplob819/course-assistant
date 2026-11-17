@@ -242,7 +242,10 @@ def _shares_run(label: str, index: dict[tuple[int, ...], set[tuple[str, ...]]]) 
 # blank is ignored on both sides. Word counts come from the label's own tokens, where an unknown
 # mark splits a token (more tokens, so a stricter test) and never merges two.
 MIN_WHOLE_LETTERS = 3  # a whole short question must carry at least this many letters
+SPACELESS_RUN = 8  # characters, for a question in a script written without spaces
 _BLANK_LETTERS = dict.fromkeys(map(ord, "\u115f\u1160\u3164\uffa0\u2800"), " ")
+# control characters end a word too (verifier B2.4 pass 11: "my dad\rdied" merged to 2 tokens)
+_BLANK_LETTERS.update(dict.fromkeys([*range(0x20), *range(0x7F, 0xA0)], " "))
 
 
 def display_label(raw: str) -> str:
@@ -252,7 +255,13 @@ def display_label(raw: str) -> str:
     (verifier B2.4 pass 5: control characters and citation-shaped brackets were checked in
     one form and stored in another)."""
     folded = unicodedata.normalize("NFKC", raw)
-    kept = "".join(ch if ch == "-" or unicodedata.category(ch)[0] in "LN" else " " for ch in folded)
+    # combining marks stay with their letter (Thai, Devanagari vowel signs); format characters
+    # (zero-width) vanish; anything else that is not a letter, digit or hyphen is a space
+    kept = "".join(
+        ch if ch == "-" or unicodedata.category(ch)[0] in "LNM"
+        else "" if unicodedata.category(ch) == "Cf" else " "
+        for ch in folded
+    )  # fmt: skip
     return " ".join(kept.split())
 
 
@@ -353,6 +362,12 @@ class QuestionIndex:
             for toks in (_label_tokens(q), _label_tokens(q, split_marks=True)):
                 for i in range(len(toks) - n + 1):
                     runs.add("".join(toks[i : i + n]))
+                # a script written without spaces (Chinese, Japanese, Thai) puts a whole
+                # sentence in one token, so its 8-character runs count as runs too (pass 11)
+                for tok in toks:
+                    if len(tok) >= SPACELESS_RUN and not tok.isascii():
+                        for i in range(len(tok) - SPACELESS_RUN + 1):
+                            runs.add(tok[i : i + SPACELESS_RUN])
                 if 3 <= len(toks) < n:
                     for i in range(len(toks) - 2):
                         for j in range(i + 3, len(toks) + 1):
@@ -398,9 +413,19 @@ def _looks_like_an_id(raw: str) -> bool:
     ascii_digits = "".join(
         str(unicodedata.digit(ch)) if ch.isdigit() and not ch.isascii() else ch for ch in folded
     )
-    for tok in re.split(r"[^0-9A-Za-z]+", ascii_digits):
+    toks = re.split(r"[^0-9A-Za-z]+", ascii_digits)
+    for tok in toks:
         if len(tok) >= 8 and re.fullmatch(r"[0-9a-fA-F]+", tok) and re.search(r"[0-9]", tok):
             return True
+    # adjacent hex-only tokens joined, whatever separates them (pass 11: "2e34-5afd 911e-9c99")
+    joined = ""
+    for tok in [*toks, "_"]:
+        if tok and re.fullmatch(r"[0-9a-fA-F]+", tok):
+            joined += tok
+            continue
+        if len(joined) >= 12 and re.search(r"[0-9]", joined):
+            return True
+        joined = ""
     return False
 
 

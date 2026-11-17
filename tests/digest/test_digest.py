@@ -806,3 +806,37 @@ def test_small_capitals_never_hide_a_copy(store, q, label):
 @pytest.mark.privacy
 def test_a_small_capital_pid_is_an_identifier():
     assert label_problem("Learner 2ᴇ345ᴀꜰd911ᴇ9ᴄ99", [GOLDEN_Q]) == "identifier"
+
+
+# ---------- verifier pass 11 regressions ----------
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("q", ["my dad\rdied", "my\rdad\rdied", "my dad\x0bdied", "my dad\x85died"])
+def test_a_control_character_never_merges_a_short_question(store, q):
+    assert label_problem("my dad died", [q]) == "copies a question"
+    cohort(store, 5, q)
+    rows, _, _ = run(store, Luna(labeler=lambda _t: "my dad died"))
+    assert rows == () and store.digest(WEEK) == []
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("label", ["2e34-5afd 911e-9c99", "2e34 5afd/911e-9c99"])
+def test_a_pid_with_mixed_separators_is_an_identifier(label):
+    assert label_problem(label, [GOLDEN_Q]) == "identifier"
+
+
+@pytest.mark.privacy
+def test_a_spaceless_script_copy_is_refused():
+    q = "我父亲住院了我需要延期"
+    assert label_problem(q, [q]) == "copies a question"
+    assert label_problem(q[:9], [q]) == "copies a question"
+
+
+def test_display_keeps_combining_vowel_signs_and_drops_zero_width():
+    from course_assistant.digest.weekly import display_label
+
+    thai = "ผมป่วย"
+    assert display_label(thai) == thai
+    assert display_label("golden​set") == "goldenset"
+    assert display_label("neutral   label") == "neutral label"
