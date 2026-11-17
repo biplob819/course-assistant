@@ -7,6 +7,35 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Biplob Chakraborty" }]
 requires-python = ">=3.11"
+keywords = [
+    "llm",
+    "rag",
+    "education",
+    "teaching-assistant",
+    "grounding",
+    "citations",
+    "academic-integrity",
+    "evaluation",
+    "evalkit",
+    "streamlit",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Education",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Education",
+    "Topic :: Education :: Computer Aided Instruction (CAI)",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
 dependencies = [
     "pydantic>=2.7",
     "pyyaml>=6",
@@ -14,6 +43,12 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/biplob819/course-assistant"
+Documentation = "https://github.com/biplob819/course-assistant#readme"
+Repository = "https://github.com/biplob819/course-assistant"
+Issues = "https://github.com/biplob819/course-assistant/issues"
+Changelog = "https://github.com/biplob819/course-assistant/blob/main/changelog.md"
+Security = "https://github.com/biplob819/course-assistant/blob/main/SECURITY.md"
+EvalKit = "https://github.com/biplob819/evalkit"
 
 [project.scripts]
 course-assistant = "course_assistant.cli:main"
@@ -67,7 +102,29 @@ build-backend = "hatchling.build"
 packages = ["src/course_assistant"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/course_assistant", "README.md", "LICENSE", "changelog.md"]
+include = [
+    "src/course_assistant",
+    "README.md",
+    "LICENSE",
+    "changelog.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "PRIVACY.md",
+    "CODE_OF_CONDUCT.md",
+    "DATA_CARD.md",
+]
+# never shipped, even if an include above is widened (tests/harness/test_packaging.py)
+exclude = [
+    "golden/heldout",
+    "runs",
+    ".evalkit",
+    ".env",
+    ".private-terms",
+    "Portfolio notes.md",
+    "corpus",
+    "corpus_store",
+    ".streamlit/secrets.toml",
+]
 
 [tool.ruff]
 line-length = 100
