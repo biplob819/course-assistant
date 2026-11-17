@@ -875,3 +875,23 @@ def test_ascii_inside_a_spaceless_copy_never_hides_it(store, q, label):
     cohort(store, 5, q)
     rows, _, _ = run(store, Luna(labeler=lambda _t: label))
     assert rows == () and store.digest(WEEK) == []
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("q, label", [
+    ("我父亲住院", "我父亲住院课程"),
+    ("我父亲住院。", "关于我父亲住院"),
+    ("父が入院した", "父が入院した件"),
+    ("พ่อฉันป่วย", "พ่อฉันป่วยหนัก"),
+    ("爸爸3号住院", "爸爸3号住院统计"),
+])  # fmt: skip
+def test_a_short_spaceless_question_glued_into_a_label_is_refused(store, q, label):
+    assert label_problem(label, [q]) == "copies a question"
+    cohort(store, 5, q)
+    rows, _, _ = run(store, Luna(labeler=lambda _t: label))
+    assert rows == () and store.digest(WEEK) == []
+
+
+def test_one_long_shared_cyrillic_word_does_not_refuse_a_neutral_label():
+    q = "Как откалибровать судью для оценки?"
+    assert label_problem("Калибровка", [q]) is None

@@ -266,6 +266,21 @@ def display_label(raw: str) -> str:
     return " ".join(kept.split())
 
 
+_SPACELESS_SCRIPTS = ("CJK", "HIRAGANA", "KATAKANA", "THAI", "LAO", "KHMER", "MYANMAR",
+                      "IDEOGRAPHIC", "TIBETAN")  # fmt: skip
+
+
+@functools.cache
+def _spaceless(ch: str) -> bool:
+    """A letter of a script written without spaces between words."""
+    name = unicodedata.name(ch, "")
+    return any(name.startswith(k) or f" {k}" in name for k in _SPACELESS_SCRIPTS)
+
+
+def _mostly_spaceless(text: str) -> bool:
+    return sum(_spaceless(c) for c in text) * 2 > len(text)
+
+
 _LATIN_NAME = re.compile(
     r"LATIN (?:SMALL |CAPITAL )?LETTER (?:SMALL CAPITAL |SMALL |CAPITAL )?([A-Z])"
 )
@@ -374,16 +389,17 @@ class QuestionIndex:
             # comma cut a sentence into chunks under 8), when the run has no ASCII letter
             # (pass 13: a window counts when most of it is non-ASCII, so digits and Latin
             # letters inside it, such as "ICU" or "3", no longer hide it)
+            # pass 14: only scripts that are really written without spaces, so one long shared
+            # Cyrillic or Greek word no longer refuses a neutral label
             stream = _stream(q)
             for i in range(len(stream) - SPACELESS_RUN + 1):
                 window = stream[i : i + SPACELESS_RUN]
-                if sum(not c.isascii() for c in window) * 2 > len(window):
+                if _mostly_spaceless(window):
                     runs.add(window)
-            # a whole short question in such a script (4-7 characters) is a short question too
-            if MIN_SPACELESS <= len(stream) < SPACELESS_RUN and (
-                sum(not c.isascii() for c in stream) * 2 > len(stream)
-            ):
-                short.add(stream)
+            # a whole short spaceless question (4-7 characters) may sit anywhere in a label,
+            # since such a label is one token (pass 14: '我父亲住院课程')
+            if MIN_SPACELESS <= len(stream) < SPACELESS_RUN and _mostly_spaceless(stream):
+                runs.add(stream)
         self.short = sorted(short)
         self.runs = sorted(runs)
 
