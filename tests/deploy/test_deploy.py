@@ -628,3 +628,16 @@ def test_guide_says_the_app_is_locked_until_the_demo_cache_is_committed(tmp_path
     assert "offers live questions only" not in guide
     assert "demo/replay.json" in guide and "locked page" in guide
     assert deploy.course_problem({"CA_REPLAY": str(tmp_path / "replay.json")}) is not None
+
+
+def test_a_hash_with_too_many_iterations_is_refused():
+    """D3.2 verifier pass 2: 99,999,999 iterations would make each unlock cost minutes."""
+    from course_assistant.demo import passkey
+    from course_assistant.demo._errors import PasskeyConfigError
+
+    good = passkey.hash_passcode("123456", iterations=passkey.MIN_ITERATIONS)
+    huge = good.replace(f"${passkey.MIN_ITERATIONS}$", "$99999999$", 1)
+    with pytest.raises(ValueError):
+        passkey.hash_passcode("123456", iterations=passkey.MAX_ITERATIONS + 1)
+    with pytest.raises(PasskeyConfigError):
+        passkey.verify_passcode("123456", huge)

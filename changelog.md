@@ -149,3 +149,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FEAT] [D3.2] — demo deploy: Community Cloud entry point (learner page default with worked examples, team page), requirements and config, names-only secrets template, startup lock, live secret reads, trusted client IP, provider max_tool_calls, nightly store reset, smoke check, owner guide; DEM-04 live deploy is an owner-attest row (D-60)
 - [FIX] [D3.2] — verifier pass 1: canonical passkey hashes compared by value (equal-hash check and staff loader), deploy requirements pinned from uv.lock with drift and direct-import tests, guide matches the locked startup without a demo cache
 - [GREEN] [E2.4] — release gate; verifier pass 10 confirmed all four criteria; config and assessments hashes recorded for the removal shortcut
+- [GREEN] [D3.2] — demo deploy DEM-01..03 (verifier pass 2); DEM-04 live deploy pending owner attest; iteration cap

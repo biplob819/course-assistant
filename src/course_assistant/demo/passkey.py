@@ -33,6 +33,7 @@ SECRET_NAME = "DEMO_PASSKEY_HASH"
 SCHEME = "pbkdf2_sha256"
 ITERATIONS = 600_000
 MIN_ITERATIONS = 100_000
+MAX_ITERATIONS = 2_000_000  # more would make each unlock attempt a CPU denial of service
 SALT_BYTES = 16
 _CODE = re.compile(r"^[0-9]{6,12}$")
 _HASH = re.compile(
@@ -58,8 +59,8 @@ def hash_passcode(code: str, *, salt: bytes | None = None, iterations: int = ITE
     """`pbkdf2_sha256$<iterations>$<salt b64>$<digest b64>` for a 6-12 digit passcode."""
     if not valid_code(code):
         raise ValueError("a passcode is 6 to 12 digits")
-    if iterations < MIN_ITERATIONS:
-        raise ValueError(f"iterations must be at least {MIN_ITERATIONS}")
+    if not MIN_ITERATIONS <= iterations <= MAX_ITERATIONS:
+        raise ValueError(f"iterations must be {MIN_ITERATIONS} to {MAX_ITERATIONS}")
     salt = secrets.token_bytes(SALT_BYTES) if salt is None else salt
     if len(salt) < SALT_BYTES:
         raise ValueError(f"salt must be at least {SALT_BYTES} bytes")
@@ -78,7 +79,11 @@ def _parse(stored: str) -> tuple[int, bytes, bytes]:
     except (binascii.Error, ValueError):
         raise PasskeyConfigError(f"{SECRET_NAME} is not a passkey hash") from None
     iterations = int(m[1])
-    if iterations < MIN_ITERATIONS or len(salt) < SALT_BYTES or len(digest) != 32:
+    if (
+        not MIN_ITERATIONS <= iterations <= MAX_ITERATIONS
+        or len(salt) < SALT_BYTES
+        or len(digest) != 32
+    ):
         raise PasskeyConfigError(f"{SECRET_NAME} is not a passkey hash")
     # one text per hash (D3.2 verifier): no leading zeros, canonical base64 only, so two
     # spellings of one hash can never pass a text comparison as different hashes
