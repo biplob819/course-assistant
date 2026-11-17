@@ -754,3 +754,12 @@ def test_a_citation_shaped_short_question_is_still_a_short_question(q, label):
                                       ("q́uit the course now", "quit the course now")])  # fmt: skip
 def test_marks_inside_a_short_question_never_split_its_words(q, label):
     assert label_problem(label, [q]) == "copies a question"
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("label", ["Contact bob@example.com", "jane.doe@uni.edu golden set"])
+def test_an_email_in_a_model_label_never_reaches_a_row(store, label):
+    """End to end, not through label_problem alone (verifier pass 8)."""
+    cohort(store, 5)
+    rows, _, _ = run(store, Luna(labeler=lambda _t: label))
+    assert rows == () and store.digest(WEEK) == []

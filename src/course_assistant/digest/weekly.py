@@ -502,9 +502,11 @@ def weekly_digest(week: str, *, store: Store, responder: Responder, config: AppC
     gaps = {e.question_id for e in store.escalations("material_gap")}
     groups: dict[tuple[str, str], _Group] = {}
     for item, session, raw in labelled:
-        topic = display_label(raw)  # checked and stored as this exact text
-        if label_problem(topic, index) is not None:
+        # the model's own label goes to the test (which makes the display form inside, and also
+        # looks for identifiers in the raw text); the row stores that display form
+        if label_problem(raw, index) is not None:
             continue  # a refused label is never shown and its questions are not counted
+        topic = display_label(raw)
         g = groups.setdefault((session, " ".join(words(topic))), _Group())
         g.pids.add(item.pid)
         g.forms[" ".join(topic.split())] += 1
