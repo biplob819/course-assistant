@@ -626,3 +626,49 @@ def test_any_apostrophe_mark_still_counts_as_copying_a_question(mark):
     assert label_problem(f"my father{mark}s in hospital again",
                          ["My father's in hospital again, can I get extra time"]) == (
         "copies a question")  # fmt: skip
+
+
+# ---------- verifier pass 3 regressions: letter streams ----------
+
+_LONG_Q = "my father's ill in hospital, can I get an extension"
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("mark", ["΄", "´", "῾", "ˊ", "ˈ", "ʾ",
+                                  "ʿ", "ՙ", "ߴ", "ߵ", "⸲", "⸴",
+                                  "❛", "❜", "´", "‘"])  # fmt: skip
+def test_no_mark_inside_a_word_hides_a_copy(mark):
+    assert label_problem(f"my father{mark}s ill in hospital", [_LONG_Q]) == "copies a question"
+    q = _LONG_Q.replace("'", mark)
+    assert label_problem("my father's ill in hospital", [q]) == "copies a question"
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("blank", ["⠀", "ㅤ", "ﾠ", "ᅟ", "ᅠ"])
+def test_a_blank_letter_between_words_never_hides_a_copy(blank):
+    assert label_problem(f"My father's ill in{blank}hospital", [_LONG_Q]) == "copies a question"
+
+
+@pytest.mark.privacy
+def test_letter_stream_copy_end_to_end(store):
+    cohort(store, 5, _LONG_Q)
+    rows, _, _ = run(store, Luna(labeler=lambda _t: "my father΄s ill in hospital"))
+    assert rows == () and store.digest(WEEK) == []
+
+
+NEUTRAL = [
+    "golden set size",
+    "retrieval augmented generation",
+    "evaluation metrics choice",
+    "judge calibration",
+    "prompt injection defence",
+    "course deadlines and extensions",
+]
+
+
+@pytest.mark.parametrize("label", NEUTRAL)
+def test_neutral_labels_still_pass(label):
+    questions = ["How big should the golden set be?", "how does retrieval augmented generation "
+                 "work in practice", "which evaluation metrics should I use for my judge",
+                 "can I get an extension on the deadline for assignment two"]  # fmt: skip
+    assert label_problem(label, questions) is None

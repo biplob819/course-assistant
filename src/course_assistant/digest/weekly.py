@@ -198,17 +198,13 @@ def parse_labels(result: ResponsesResult, n: int, sessions: Sequence[str]) -> li
 # ---------- the leak test (DIG-03) ----------
 
 
-def _grams(texts: Iterable[str], n: int = RUN_WORDS,
-           whole_short: bool = False) -> dict[tuple[int, ...], set[tuple[str, ...]]]:  # fmt: skip
-    """Every run of `n` words, indexed by its word lengths for the wildcard match. With
-    `whole_short`, a text shorter than `n` words (but at least 3) is indexed whole too."""
+def _grams(texts: Iterable[str], n: int = RUN_WORDS) -> dict[tuple[int, ...], set[tuple[str, ...]]]:
+    """Every run of `n` words, indexed by its word lengths for the wildcard match."""
     out: dict[tuple[int, ...], set[tuple[str, ...]]] = {}
     for text in texts:
         w = words(text)
-        runs = [tuple(w[i : i + n]) for i in range(len(w) - n + 1)]
-        if whole_short and 3 <= len(w) < n:
-            runs.append(tuple(w))
-        for gram in runs:
+        for i in range(len(w) - n + 1):
+            gram = tuple(w[i : i + n])
             out.setdefault(tuple(map(len, gram)), set()).add(gram)
     return out
 
@@ -240,12 +236,84 @@ def _shares_run(label: str, index: dict[tuple[int, ...], set[tuple[str, ...]]]) 
     return False
 
 
+# ---- the question copy test compares letter streams (verifier B2.4 pass 3) ----
+# A list of word-splitting marks always misses one (apostrophe look-alikes, blank letters), so a
+# label and a question are compared as streams of letters and digits only: every mark, space and
+# blank is ignored on both sides. Word counts come from the label's own tokens, where an unknown
+# mark splits a token (more tokens, so a stricter test) and never merges two.
+MIN_RUN_LETTERS = 10  # a 5-token run must carry at least this many letters to count
+MIN_WHOLE_LETTERS = 6  # a whole short question must carry at least this many letters
+
+
+def _stream(text: str) -> str:
+    """Letters and digits only, after normalisation; a non-ASCII letter is a '?' wildcard."""
+    return "".join(
+        (c if c.isascii() else "?")
+        for c in normalise(text)
+        if c.isalnum() and unicodedata.category(c) not in ("Lm", "Sk")  # modifier marks
+    )
+
+
+def _label_tokens(label: str) -> list[str]:
+    """The label's words as letter streams. A character with no letters after normalisation
+    ends a word (spaces, blank letters, punctuation), except combining, format and
+    apostrophe-like marks, which never split one."""
+    tokens: list[str] = []
+    cur = ""
+    for ch in label:
+        bit = _stream(ch)
+        if bit:
+            cur += bit
+        elif unicodedata.category(ch) in ("Mn", "Me", "Cf", "Sk", "Lm") or _is_mark(ch):
+            continue
+        elif cur:
+            tokens.append(cur)
+            cur = ""
+    if cur:
+        tokens.append(cur)
+    return tokens
+
+
+def _is_mark(ch: str) -> bool:
+    """Apostrophe-like punctuation: a quote mark or prime that sits inside a word."""
+    name = unicodedata.name(ch, "")
+    return any(k in name for k in ("APOSTROPHE", "QUOTATION", "PRIME", "TONOS", "OXIA",
+                                   "DASIA", "PSILI", "ACCENT", "TURNED COMMA"))  # fmt: skip
+
+
+def _contains(hay: str, needle: str) -> bool:
+    """Is `needle` inside `hay`? A '?' on either side matches any one character."""
+    if "?" not in hay and "?" not in needle:
+        return needle in hay
+    n = len(needle)
+    return any(
+        all(a == b or a == "?" or b == "?" for a, b in zip(hay[i : i + n], needle, strict=True))
+        for i in range(len(hay) - n + 1)
+    )
+
+
 class QuestionIndex:
-    """Every 5-word run of the week's questions, and each whole question of 3-4 words, built
-    once for a digest run."""
+    """The week's questions as letter streams, and the whole streams of the short ones (3-4
+    words), built once for a digest run."""
 
     def __init__(self, questions: Iterable[str]) -> None:
-        self.grams = _grams(list(questions), QUESTION_RUN_WORDS, whole_short=True)
+        qs = list(questions)
+        self.streams = [_stream(q) for q in qs]
+        self.short = [st for q, st in zip(qs, self.streams, strict=True)
+                      if 3 <= len(words(q)) < QUESTION_RUN_WORDS
+                      and len(st) >= MIN_WHOLE_LETTERS]  # fmt: skip
+
+    def copied(self, label: str) -> bool:
+        tokens = _label_tokens(label)
+        whole = "".join(tokens)
+        if any(_contains(whole, st) for st in self.short):
+            return True
+        n = QUESTION_RUN_WORDS
+        for i in range(len(tokens) - n + 1):
+            run = "".join(tokens[i : i + n])
+            if len(run) >= MIN_RUN_LETTERS and any(_contains(q, run) for q in self.streams):
+                return True
+        return False
 
 
 def _visible(text: str) -> bool:
@@ -263,7 +331,7 @@ def label_problem(label: str, questions: Iterable[str] | QuestionIndex) -> str |
     if "pid" in findings or _IDS.search(normalise(label)):
         return "identifier"
     index = questions if isinstance(questions, QuestionIndex) else QuestionIndex(questions)
-    if _shares_run(label, index.grams):
+    if index.copied(label):
         return "copies a question"
     if "canary" in findings or "rules" in findings or _shares_run(label, _rules_grams()):
         return "copies the rules"
