@@ -266,7 +266,7 @@ def _stream(text: str) -> str:
     )
 
 
-def _label_tokens(label: str) -> list[str]:
+def _label_tokens(label: str, *, split_marks: bool = False) -> list[str]:
     """The label's words as letter streams. A character with no letters after normalisation
     ends a word (spaces, blank letters, punctuation), except combining, format and
     apostrophe-like marks, which never split one."""
@@ -278,7 +278,9 @@ def _label_tokens(label: str) -> list[str]:
         bit = _stream(ch)
         if bit:
             cur += bit
-        elif unicodedata.category(ch) in ("Mn", "Me", "Cf", "Sk", "Lm") or _is_mark(ch):
+        elif not split_marks and (
+            unicodedata.category(ch) in ("Mn", "Me", "Cf", "Sk", "Lm") or _is_mark(ch)
+        ):
             continue
         elif cur:
             tokens.append(cur)
@@ -325,21 +327,33 @@ class QuestionIndex:
         self.streams = [_stream(q) for q in qs]
         # short questions are found on the same tokens as labels (citation markers kept), and
         # a 4-word one is also matched by each 3-word run of it (verifier B2.4 pass 6)
+        # A mark between two words can merge them, and a mark inside a word can split it, so
+        # every question is tokenised both ways and the runs of both are kept (verifier B2.4
+        # pass 9: a modifier letter in place of a space turned a 5-word copy into 4 tokens).
         short: set[str] = set()
+        runs: set[str] = set()
+        n = QUESTION_RUN_WORDS
         for q in qs:
-            # straight into the tokeniser, where marks never split a word (pass 7: the
-            # display form turned apostrophes and soft hyphens into spaces)
-            toks = _label_tokens(q)
-            if 3 <= len(toks) < QUESTION_RUN_WORDS:
-                for i in range(len(toks) - 2):
-                    for j in range(i + 3, len(toks) + 1):
-                        st = "".join(toks[i:j])
-                        if len(st) >= MIN_WHOLE_LETTERS:
-                            short.add(st)
+            for toks in (_label_tokens(q), _label_tokens(q, split_marks=True)):
+                for i in range(len(toks) - n + 1):
+                    runs.add("".join(toks[i : i + n]))
+                if 3 <= len(toks) < n:
+                    for i in range(len(toks) - 2):
+                        for j in range(i + 3, len(toks) + 1):
+                            st = "".join(toks[i:j])
+                            if len(st) >= MIN_WHOLE_LETTERS:
+                                short.add(st)
         self.short = sorted(short)
+        self.runs = sorted(runs)
 
     def copied(self, label: str) -> bool:
-        tokens = _label_tokens(label)
+        # split mode gives the most word boundaries, so spans cover every reading of the label
+        tokens = _label_tokens(label, split_marks=True)
+        whole = "".join(tokens)
+        # a 5-word run of any question, anywhere in the label's letters, whatever the label's
+        # own spacing: no mark in the label can hide one
+        if any(_contains(whole, r) for r in self.runs):
+            return True
         # a whole short question must line up with the label's word boundaries, so "a set up"
         # does not refuse "dataset upload" (verifier B2.4 pass 5)
         spans = {"".join(tokens[i:j]) for i in range(len(tokens))
@@ -347,11 +361,31 @@ class QuestionIndex:
         if any(len(sp) == len(st) and _contains(sp, st) for st in self.short for sp in spans):
             return True
         n = QUESTION_RUN_WORDS
-        for i in range(len(tokens) - n + 1):
-            run = "".join(tokens[i : i + n])
-            if any(_contains(q, run) for q in self.streams):
-                return True
+        for toks in (tokens, _label_tokens(label)):
+            for i in range(len(toks) - n + 1):
+                run = "".join(toks[i : i + n])
+                if any(_contains(q, run) for q in self.streams):
+                    return True
         return False
+
+
+_AT_SIGNS = frozenset("@\uff20\ufe6b")
+
+
+def _looks_like_an_id(raw: str) -> bool:
+    """A topic label never needs an at sign or a long code: any '@' (in any width), or any
+    token of 8+ hex characters with a digit in it, digits from any script counted (verifier
+    B2.4 pass 9: spaced or ideographic emails, Arabic-Indic pids, bare 12-hex fragments)."""
+    folded = unicodedata.normalize("NFKC", raw)
+    if any(ch in _AT_SIGNS for ch in folded):
+        return True
+    ascii_digits = "".join(
+        str(unicodedata.digit(ch)) if ch.isdigit() and not ch.isascii() else ch for ch in folded
+    )
+    for tok in re.split(r"[^0-9A-Za-z]+", ascii_digits):
+        if len(tok) >= 8 and re.fullmatch(r"[0-9a-fA-F]+", tok) and re.search(r"[0-9]", tok):
+            return True
+    return False
 
 
 def _visible(text: str) -> bool:
@@ -369,6 +403,8 @@ def label_problem(label: str, questions: Iterable[str] | QuestionIndex) -> str |
         return "blank"
     if len(label) > MAX_LABEL_CHARS or len(words(label)) > MAX_LABEL_WORDS:
         return "too long"
+    if _looks_like_an_id(raw):
+        return "identifier"
     findings = (*scan(label), *scan(raw))  # identifiers are looked for in both forms
     if "pid" in findings or any(_IDS.search(normalise(t, cites=False)) for t in (raw, label)):
         return "identifier"

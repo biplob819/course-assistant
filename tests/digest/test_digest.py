@@ -763,3 +763,26 @@ def test_an_email_in_a_model_label_never_reaches_a_row(store, label):
     cohort(store, 5)
     rows, _, _ = run(store, Luna(labeler=lambda _t: label))
     assert rows == () and store.digest(WEEK) == []
+
+
+# ---------- verifier pass 9 regressions ----------
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("label", ["myˈfather is in hospital again",
+                                   "my fatherʼis in hospital again",
+                                   "my fatherـis in hospital again"])  # fmt: skip
+def test_a_mark_between_words_never_hides_a_5_word_copy(store, label):
+    q = "my father is in hospital again and I am behind"
+    assert label_problem(label, [q]) == "copies a question"
+    cohort(store, 5, q)
+    rows, _, _ = run(store, Luna(labeler=lambda _t: label))
+    assert rows == () and store.digest(WEEK) == []
+
+
+@pytest.mark.privacy
+@pytest.mark.parametrize("label", ["bob@example。com", "bob @ example . com",
+                                   "bob_smith@uni_ac_uk", "٣١٤١٥٩٢٦٥",
+                                   "golden set 3fa9c2d81b7e"])  # fmt: skip
+def test_spaced_emails_and_codes_are_identifiers(label):
+    assert label_problem(label, [GOLDEN_Q]) == "identifier"
