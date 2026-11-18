@@ -23,8 +23,7 @@ everything else to the teaching team. Every change is measured on a golden set w
 - **Learners**, who get an answer with a link to the exact slide, or a clear "not covered"
   and a button to ask a person.
 - **Engineers and evaluators** who want a worked example of a retrieval-grounded assistant
-  with a held-out golden set, two-vendor judges, calibration and a release gate that can say
-  no.
+  with a held-out golden set, calibrated LLM judges and a release gate that can say no.
 
 It is not a general chatbot. If the course materials do not say it, the assistant does not
 say it.
@@ -191,18 +190,37 @@ never committed: the repo holds only
 hash, so anyone can check the private file has not changed. Each held-out set is scored
 once; a fresh set is written for the next verdict (OWNER D-67, D-69, D-71).
 
-**Two-vendor judges.** Groundedness and integrity are judged by two models from different
-vendors (Claude Opus 5.5 and GPT Sol). A case passes only if **both** judges agree, so one
-vendor's blind spot cannot pass an answer on its own.
+**Judges.** The design is two judges from different vendors: a case passes only if **both**
+agree, so one vendor's blind spot cannot pass an answer on its own (D-12). The first full run
+used Claude Opus 5.5 and GPT Sol. While the Anthropic account is unfunded, live runs use one
+judge, GPT Sol, with GPT Luna extracting claims, and GPT Terra writes the answers so the judge
+never grades its own work (OWNER D-80). That loses the cross-vendor check and the
+self-preference measurement. Every gate verdict says it is single-judge, and EvalKit will not
+publish a headline from such a run. Dual judging returns, with a fresh calibration, when
+credit is restored.
 
-**Calibration.** The judges are checked against a model panel, not a person (OWNER D-76): two
-labellers from two vendors that are not judges (claude-fable-5-2, gpt-6.1-terra), with
-claude-sonnet-5-5 breaking a split, label 336 groundedness claims and 100 integrity
-conversations blind, then relabel them blind in fresh requests. So kappa is agreement with a
-model panel, and same-vendor model families may share blind spots; every gate verdict names the
-labeller, and a person's labels can replace the panel's later
-([labelling guide](https://github.com/biplob819/course-assistant/blob/main/docs/labelling.md)). Until calibration is certified through the tuning
-log, every report carries the `uncalibrated` stamp and the release gate fails.
+**Calibration.** The judges are checked against a model panel, not a person (OWNER D-76,
+D-79). The panel is two OpenAI models that are not judges, GPT Terra and GPT Luna, with GPT
+Terra at high reasoning effort breaking a split. A label needs two agreeing votes. The panel
+labelled 336 groundedness claims and 100 integrity conversations blind, then relabelled a
+sample in fresh requests. Calibration is certified (18 Nov 2026). Held-out agreement with the
+panel, Cohen's kappa with a 95% bootstrap interval:
+
+| Judge | Groundedness (155 claims) | Integrity (50 conversations) |
+| --- | --- | --- |
+| GPT Sol (the current judge) | 0.88 [0.75, 0.97] | 0.79 [0.00, 1.00] |
+| Claude Opus 5.5 (first run) | 0.68 [0.51, 0.84] | 0.00 [0.00, 1.00] |
+
+Read these with care:
+
+- **Integrity.** The intervals are wide because the 50 held-out conversations contain very
+  few violations, so they say little.
+- **Shared vendor.** The labellers and GPT Sol share a vendor, which may inflate Sol's
+  agreement. Terra and Luna are now also the answer model and the claim extractor, so
+  labelling and judging are not independent.
+
+Every gate verdict names the labeller, and a person's labels can replace the panel's later
+([labelling guide](https://github.com/biplob819/course-assistant/blob/main/docs/labelling.md)).
 
 **Statistics.** Bootstrap confidence intervals over cases, paired comparisons with Holm
 correction against the last live run, and each zero-tolerance gate reported with its
@@ -210,7 +228,8 @@ rule-of-three bound.
 
 **Release gate.** A change (new course version, rules, model snapshot or grounding bar) goes
 live only if, on the held-out split, every gate passes, no metric shows a separated
-regression, judging is dual and calibration is certified. `scripts/release_gate.py` exits
+regression, judging is dual (or single while OWNER D-80 stands, with a note on the verdict)
+and calibration is certified. `scripts/release_gate.py` exits
 with:
 
 | Exit code | Meaning |
@@ -228,8 +247,10 @@ offline gate on every change.
 ## Measured results
 
 > **First run, gate failing.** These are the honest numbers from the first full run on
-> 17 Nov 2026 ([report](https://github.com/biplob819/course-assistant/blob/main/docs/measurements/e2.5-report.md)). Both judges are **uncalibrated**
-> until the model-panel labels are scored (OWNER D-76). The gate fails. An improvement round on grounding and
+> 17 Nov 2026 ([report](https://github.com/biplob819/course-assistant/blob/main/docs/measurements/e2.5-report.md)). The run itself was **uncalibrated**.
+> Calibration has since been certified with the model panel (D-79; kappa above), but grounding,
+> locators and identity still fail the gate. The answer model has since moved to GPT Terra under a
+> single GPT Sol judge (OWNER D-80), so the next run is not directly comparable with this one. An improvement round on grounding and
 > locators is under way, tuned on the public half only, and will be followed by one score on a
 > fresh held-out set (OWNER D-71). This table will be replaced, not edited, when that run
 > exists.
