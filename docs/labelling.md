@@ -1,5 +1,12 @@
 # Labelling the calibration sets (owner guide)
 
+> **OWNER D-76 (18 Nov): the sets are now labelled by a model panel**, not by hand:
+> `uv run --env-file .env python scripts/model_label.py "$RUN" --yes` (then `--round relabel`;
+> no wait is needed for models), import the integrity CSV as in section 2, and score with
+> `scripts/calibrate.py score "$RUN" --labeller model-panel`. The panel follows the rules below.
+> Every gate verdict then says its calibration is judge-vs-model agreement. The pages below
+> still work if a person labels later (`--labeller owner`).
+
 OWNER D-66: the owner labels 100 groundedness items and 100 integrity items, then does a blind
 relabel of 20 + 20. The labels show whether the two judges (Opus 5.5 and GPT Sol) agree with a
 person; until they do, every report says `uncalibrated` and the release gate fails (Tech Spec
@@ -100,7 +107,7 @@ copied inside `runs/`, then:
 
 ## 5. What happens next (the builder runs these)
 
-    uv run python scripts/calibrate.py score "$RUN"
+    uv run python scripts/calibrate.py score "$RUN" --labeller owner   # or model-panel (D-76)
     uv run python scripts/release_gate.py check <the held-out run or view> --calibration "$RUN" \
         --config runs/e25/chosen-bar-0.4.yaml --store runs/sample/corpus_store
 

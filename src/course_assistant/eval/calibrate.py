@@ -173,7 +173,9 @@ def export_groundedness(run_dir: Path, *, heldout_ids: AbstractSet[str], force: 
     return sheet, cal / "sheet.csv", len(rows)
 
 
-def score_groundedness(run_dir: Path, *, log: Path, heldout_ids: AbstractSet[str]) -> Any:
+def score_groundedness(
+    run_dir: Path, *, log: Path, heldout_ids: AbstractSet[str], labeller: str = "owner"
+) -> Any:
     """The only supported way to certify groundedness: EvalKit's `cal_score`, guarded first by
     the committed per-case history (a held-out case already scored under another judge rubric
     is refused before scoring) and logged after. A run certified by `evalkit calibrate score`
@@ -205,7 +207,7 @@ def score_groundedness(run_dir: Path, *, log: Path, heldout_ids: AbstractSet[str
     report = R.cal_score(run_dir)
     log_calibration_scored(log, calibration="groundedness", digest=ek_digest(labels),
                            rubric_hash=JUDGE_PROMPT_HASH, run=run_dir.name,
-                           heldout_cases=held)  # fmt: skip
+                           heldout_cases=held, labeller=labeller)  # fmt: skip
     return report
 
 
@@ -518,7 +520,7 @@ def import_probe(run_dir: Path, csv_path: Path, *, kind: str = "integrity",
 
 
 def score_probe(run_dir: Path, *, log: Path, heldout_ids: AbstractSet[str],
-                kind: str = "integrity",
+                kind: str = "integrity", labeller: str = "owner",
                 now: dt.datetime | None = None) -> ProbeCalibration:  # fmt: skip
     """Score once per held-out set and rubric. `log` is the committed tuning log: it holds the
     digest-to-rubric history across run folders, and every scoring is appended to it."""
@@ -549,6 +551,7 @@ def score_probe(run_dir: Path, *, log: Path, heldout_ids: AbstractSet[str],
         rubric_hash=report.rubric_hash,
         run=run_dir.name,
         heldout_cases=[r.case_id for r in rows if r.split == "heldout"],
+        labeller=labeller,
     )
     entry = json.loads(report.model_dump_json())
     kept = [*history.get("history", []), entry]
@@ -559,12 +562,20 @@ def score_probe(run_dir: Path, *, log: Path, heldout_ids: AbstractSet[str],
 # =============================== what counts as calibrated ===============================
 
 
-def _logged_for(log: Path, calibration: str, digest: str, rubric: str, run: str) -> bool:
+def _logged_by(log: Path, calibration: str, digest: str, rubric: str, run: str) -> str | None:
+    """Who labelled the matching `calibration_scored` line ("owner" for lines written before
+    D-76), or None when no line matches."""
     from course_assistant.eval.tuning import read_log
 
-    return any(e["kind"] == "calibration_scored" and e.get("calibration") == calibration
-               and e.get("digest") == digest and e.get("rubric_hash") == rubric
-               and e.get("run") == run for e in read_log(log))  # fmt: skip
+    hits = [str(e.get("labeller", "owner")) for e in read_log(log)
+            if e["kind"] == "calibration_scored" and e.get("calibration") == calibration
+            and e.get("digest") == digest and e.get("rubric_hash") == rubric
+            and e.get("run") == run]  # fmt: skip
+    return hits[-1] if hits else None
+
+
+def _logged_for(log: Path, calibration: str, digest: str, rubric: str, run: str) -> bool:
+    return _logged_by(log, calibration, digest, rubric, run) is not None
 
 
 def certified_calibration(run_dir: Path, *, log: Path) -> dict[str, str]:
@@ -588,6 +599,10 @@ def certified_calibration(run_dir: Path, *, log: Path) -> dict[str, str]:
                 log, "groundedness", report.heldout_digest, JUDGE_PROMPT_HASH,
                 run_dir.name):  # fmt: skip
         out["groundedness"] = "calibrated"
+        out["groundedness_labeller"] = (
+            _logged_by(log, "groundedness", report.heldout_digest, JUDGE_PROMPT_HASH, run_dir.name)
+            or "owner"
+        )
     probe = probe_dir(run_dir) / "calibration.json"
     if probe.is_file():
         current = json.loads(probe.read_text(encoding="utf-8")).get("current") or {}
@@ -595,6 +610,12 @@ def certified_calibration(run_dir: Path, *, log: Path) -> dict[str, str]:
                 log, "integrity", str(current.get("heldout_digest")), RUBRIC_HASH,
                 run_dir.name):  # fmt: skip
             out["integrity"] = "calibrated"
+            out["integrity_labeller"] = (
+                _logged_by(
+                    log, "integrity", str(current.get("heldout_digest")), RUBRIC_HASH, run_dir.name
+                )
+                or "owner"
+            )
     return out
 
 

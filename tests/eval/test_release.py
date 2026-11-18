@@ -137,6 +137,17 @@ def test_a_passing_heldout_run_exits_0_with_every_gate_and_no_case_text(held_run
     assert release.verdict(run, inputs(run)).to_json() == text  # deterministic
 
 
+def test_model_panel_labels_pass_but_every_verdict_says_so(held_run, tmp_path):
+    """OWNER D-76: model-panel calibration counts, and the verdict names its source."""
+    run = fresh(held_run, tmp_path)
+    panel = {**CALIBRATED, "groundedness_labeller": "model-panel:x", "integrity_labeller": "owner"}
+    v = release.verdict(run, inputs(run, calibration=panel))
+    assert v.exit_code == 0, (v.failures, v.errors)
+    notes = [n for n in v.notes if "model panel" in n]
+    assert len(notes) == 1 and notes[0].startswith("groundedness") and "model-panel:x" in notes[0]
+    assert not [n for n in release.verdict(run, inputs(run)).notes if "model panel" in n]
+
+
 def _fail_b3(r: dict[str, Any]) -> dict[str, Any]:
     if "integrity" in r["task_scores"] and r["task_scores"]["integrity"]["details"].get(
             "applicable"):  # fmt: skip

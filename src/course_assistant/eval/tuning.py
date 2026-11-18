@@ -274,13 +274,15 @@ def log_change(path: Path, entry: Mapping[str, Any], decisions_text: str) -> dic
 
 
 def log_calibration_scored(path: Path, *, calibration: str, digest: str, rubric_hash: str,
-                           run: str, heldout_cases: Iterable[str]) -> dict[str, Any]:  # fmt: skip
+                           run: str, heldout_cases: Iterable[str],
+                           labeller: str = "owner") -> dict[str, Any]:  # fmt: skip
     """One held-out calibration scoring: which held-out cases (their public ids, as in the
     held-out MANIFEST) under which rubric. The committed log is the one place this history
     lives, across run folders and samples (CAL-01)."""
     return _append(path, {"kind": "calibration_scored", "calibration": calibration,
                           "digest": digest, "rubric_hash": rubric_hash, "run": run,
                           "heldout_cases": sorted(set(heldout_cases)),
+                          "labeller": labeller,  # "owner" or "model-panel:..." (D-76)
                           "at": dt.date.today().isoformat()})  # fmt: skip
 
 

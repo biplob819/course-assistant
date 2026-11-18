@@ -552,6 +552,10 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
         if inputs.calibration.get(kind) != "calibrated":
             v.failures.append(f"{kind} calibration is not certified (scripts/calibrate.py score "
                               "with a committed calibration_scored line for this run)")  # fmt: skip
+        elif inputs.calibration.get(f"{kind}_labeller", "owner") != "owner":
+            v.notes.append(f"{kind} calibration labels are from a model panel, not a person "
+                           f"({inputs.calibration[f'{kind}_labeller']}; OWNER D-76): kappa is "
+                           "judge-vs-model agreement")  # fmt: skip
     v.failures += [f"regression fixture: {p}" for p in inputs.fixture_problems]
     v.failures += [f"tuning log: {p}" for p in inputs.log_problems]
     v.failures += [f"coverage: {p}" for p in inputs.coverage_problems]

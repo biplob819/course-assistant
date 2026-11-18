@@ -9,7 +9,7 @@ EvalKit run folder inside it.
         held-out cases, 20 to relabel); integrity: calibration/integrity/sheet.csv and relabel.csv
     uv run evalkit calibrate label EVALKIT_RUN [--relabel]       (groundedness, EvalKit's page)
     uv run python scripts/calibrate.py import-integrity RUN FILLED.csv [--relabel]
-    uv run python scripts/calibrate.py score RUN
+    uv run python scripts/calibrate.py score RUN --labeller owner|model-panel
         EvalKit's groundedness score (marks the run calibrated) and the integrity report
     uv run --env-file .env python scripts/calibrate.py support RUN --config CONFIG.yaml --yes
         judge the tapped support sentences again (paid; eval_live already does this per run)
@@ -48,6 +48,7 @@ def heldout_ids() -> frozenset[str]:
 
 
 JUDGES = ("claude-opus-5-5", "gpt-6.1-sol")
+MODEL_PANEL = "model-panel:claude-fable-5-2+gpt-6.1-terra;tiebreak=claude-sonnet-5-5"  # D-76
 
 
 class UsageError(Exception):
@@ -122,13 +123,14 @@ def cmd_score(args: argparse.Namespace) -> int:
     from course_assistant.eval.calibrate import score_groundedness, score_probe
 
     run = evalkit_dir(args.run)
-    report = score_groundedness(run, log=TUNING_LOG, heldout_ids=heldout_ids())
+    labeller = "owner" if args.labeller == "owner" else MODEL_PANEL
+    report = score_groundedness(run, log=TUNING_LOG, heldout_ids=heldout_ids(), labeller=labeller)
     for a in report.agreements:
         print(
             f"groundedness {a.judge}: held-out kappa {a.kappa.point:.2f} "
             f"[{a.kappa.lo:.2f}, {a.kappa.hi:.2f}] over {a.n_claims} claims"
         )
-    probe = score_probe(run, log=TUNING_LOG, heldout_ids=heldout_ids())
+    probe = score_probe(run, log=TUNING_LOG, heldout_ids=heldout_ids(), labeller=labeller)
     for b in probe.agreements:
         print(
             f"integrity {b.judge}: held-out kappa {b.kappa.point:.2f} "
@@ -257,6 +259,13 @@ def main(argv: list[str] | None = None) -> int:
         if name == "import-integrity":
             p.add_argument("csv", type=Path)
             p.add_argument("--relabel", action="store_true")
+        if name == "score":
+            p.add_argument(
+                "--labeller",
+                required=True,
+                choices=("owner", "model-panel"),
+                help="who made the labels; logged, and noted in every gate verdict",
+            )
         if name == "support":
             p.add_argument("--yes", action="store_true", help="confirm paid judge calls")
             p.add_argument("--max-cost", type=float, default=5.0)

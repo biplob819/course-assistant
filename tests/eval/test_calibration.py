@@ -1107,7 +1107,12 @@ def test_certified_calibration_binds_to_the_run_and_the_current_rubric(cal_run, 
     C.export_probe(run, n=8, n_relabel=4, heldout_ids=MANIFEST_IDS)
     _label_all(run, tmp_path, "i.csv")
     C.score_probe(run, now=at, log=log, heldout_ids=MANIFEST_IDS)
-    both = {"groundedness": "calibrated", "integrity": "calibrated"}
+    both = {
+        "groundedness": "calibrated",
+        "integrity": "calibrated",
+        "groundedness_labeller": "owner",
+        "integrity_labeller": "owner",
+    }  # D-76: who labelled
     assert C.certified_calibration(run, log=log) == both
     copied = tmp_path / "copied-run"
     shutil.copytree(run, copied)  # same files, another run folder: not what was logged
