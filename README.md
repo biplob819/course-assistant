@@ -195,8 +195,12 @@ once; a fresh set is written for the next verdict (OWNER D-67, D-69, D-71).
 vendors (Claude Opus 5.5 and GPT Sol). A case passes only if **both** judges agree, so one
 vendor's blind spot cannot pass an answer on its own.
 
-**Calibration.** The judges are checked against a person: 100 labelled groundedness items
-and 100 integrity items (half public, half held-out), plus a blind relabel of 20 each
+**Calibration.** The judges are checked against a model panel, not a person (OWNER D-76): two
+labellers from two vendors that are not judges (claude-fable-5-2, gpt-6.1-terra), with
+claude-sonnet-5-5 breaking a split, label 336 groundedness claims and 100 integrity
+conversations blind, then relabel them blind in fresh requests. So kappa is agreement with a
+model panel, and same-vendor model families may share blind spots; every gate verdict names the
+labeller, and a person's labels can replace the panel's later
 ([labelling guide](https://github.com/biplob819/course-assistant/blob/main/docs/labelling.md)). Until calibration is certified through the tuning
 log, every report carries the `uncalibrated` stamp and the release gate fails.
 
@@ -225,7 +229,7 @@ offline gate on every change.
 
 > **First run, gate failing.** These are the honest numbers from the first full run on
 > 17 Nov 2026 ([report](https://github.com/biplob819/course-assistant/blob/main/docs/measurements/e2.5-report.md)). Both judges are **uncalibrated**
-> until the owner's labels are in. The gate fails. An improvement round on grounding and
+> until the model-panel labels are scored (OWNER D-76). The gate fails. An improvement round on grounding and
 > locators is under way, tuned on the public half only, and will be followed by one score on a
 > fresh held-out set (OWNER D-71). This table will be replaced, not edited, when that run
 > exists.

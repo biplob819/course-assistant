@@ -34,8 +34,14 @@ graded against the dual verdict each run with kappa and a CI (Tech Spec §5.8).
 
 ## Calibration
 
-100 groundedness and 100 integrity items, labelled by the owner, plus a blind relabel of 20 + 20
-(OWNER D-66; `docs/labelling.md`). "Calibrated" means a certified calibration bound to the run
+336 groundedness claims and 100 integrity conversations, labelled blind by a model panel, not by
+a person (OWNER D-76, which replaces the labelling part of OWNER D-66; `docs/labelling.md`): two
+labellers from two vendors that are not judges (claude-fable-5-2, gpt-6.1-terra), with
+claude-sonnet-5-5 breaking a split, and a blind relabel by the same panel in fresh requests and a
+new order. **Limitation:** each judge's kappa measures agreement with that panel, not with a
+person, and same-vendor model families may share blind spots (the Claude labellers with the Claude
+judge, the GPT labellers with the GPT judge). Every gate verdict names the labeller, and a person's
+labels can replace the panel's later with a new scoring (the log keeps both). "Calibrated" means a certified calibration bound to the run
 and the current rubric hashes, never a summary stamp alone (D-57). Every report carries
 `uncalibrated` until then. Status: `PENDING (D-71)`.
 

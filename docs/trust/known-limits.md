@@ -14,7 +14,7 @@
 | Streaming the answer is not built: both checks read the whole draft before anything is shown | D-61 (2) |
 | Hint cache off until integrity labels clear it | D-70 |
 | One small English sample course, builder-written questions, small zero-tolerance sets (B8, B9: 10 each) | `DATA_CARD.md`, Known gaps |
-| Judging uncalibrated until the owner's labels | OWNER D-66 |
+| Judging uncalibrated until the model-panel labels are scored; then kappa measures agreement with a model panel, not with a person, and same-vendor model families may share blind spots; a person's labels can replace the panel's later | OWNER D-76 |
 | Runtime support check agrees weakly with the judges (kappa 0.15) | Tech Spec §6.4 |
 | Provider retention up to 30 days for abuse monitoring unless zero data retention applies | Tech Spec §7 |
 | Out-of-app notification of teaching-team replies decided at sign-off; the app holds no email | Tech Spec §7 |
@@ -48,4 +48,4 @@ These are duties the code does not implement. They are not presented as controls
 ## Open owner steps
 
 Live demo deploy and attest (D-60, DEM-04); demo replay cache build (`specs/D3.1-demo-guard/tasks.md`);
-calibration labels (OWNER D-66); fresh held-out run `PENDING (D-71)`.
+optional: a person's calibration labels to replace the model panel's (OWNER D-76); fresh held-out run `PENDING (D-71)`.

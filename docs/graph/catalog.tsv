@@ -124,7 +124,7 @@ TRU-02	T3.1	not-started		Data card (sample course, golden set, known gaps) and p
 TRU-03	T3.1	not-started		DPDP mapping with a UK GDPR column; every control linked to its test [NFR2]
 TRU-04	T3.1	not-started		Incident runbook: detect, pause, notify the fiduciary, 72-hour detailed report [NFR2]
 PAG-01	T3.2	not-started		Case study under the nine architecture areas, with headline numbers carrying their CIs and stamps
-PAG-02	T3.2	not-started		Architecture and data-flow diagrams as SVG; 90-second video
+PAG-02	T3.2	not-started		Architecture and data-flow diagrams as SVG; walkthrough GIF (`docs/assets/walkthrough.gif`, D-75)
 PIL-01	P4.1	not-started		Private manifest for one cohort ingested on the agreed host [US7]
 PIL-02	P4.1	not-started		Teaching-team cases added to the golden set; teaching-team calibration relabel [US8]
 PIL-03	P4.1	not-started		SSO, pid HMAC from platform ids, notice and consent live [NFR3, NFR7]

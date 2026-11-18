@@ -39,7 +39,7 @@ team (`README.md`, How it works; Tech Spec §2.2). Statuses: `answered`, `not_co
 
 ## Measured results and their status
 
-First full run, 17 Nov 2026, dual judges, **uncalibrated** (OWNER D-66). Source:
+First full run, 17 Nov 2026, dual judges, **uncalibrated** (calibration labels now come from a model panel, OWNER D-76). Source:
 `docs/measurements/e2.5-report.md`, Tech Spec §6.4.
 
 | Metric (target) | First run, held-out (215) | Status | Release value |
@@ -62,6 +62,6 @@ Release gate on the first run's held-out records: exit 1 (`docs/measurements/e2.
 ## Known limits
 
 See [`known-limits.md`](known-limits.md). In short: one small English sample course
-(`DATA_CARD.md`, Known gaps); judging uncalibrated (OWNER D-66); runtime support check agrees
+(`DATA_CARD.md`, Known gaps); judging uncalibrated, and once scored its kappa is agreement with a model panel, not a person (OWNER D-76); runtime support check agrees
 weakly with the judges (kappa 0.15, Tech Spec §6.4); the deterministic leak scan has a stated
 scope (D-51); provider model drift is caught only by the weekly gate (Tech Spec §6.5, §12).

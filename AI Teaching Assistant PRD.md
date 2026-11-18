@@ -37,7 +37,7 @@ The project shows how to put a model in front of learners responsibly. It answer
 | Demo | Learner chat and teaching-team view on the sample course; replay by default, live with a passcode | Shared Streamlit app portfolio-demos | Fri 27 Nov |
 | Golden set and results | 280 cases scored by EvalKit on GPT-6.1 Sol and GPT-6 Luna | Repo and EvalKit dashboard | Fri 27 Nov |
 | Trust pack | Behavioral spec, data card, privacy notice, DPDP mapping, incident runbook | Repo and project page | Sat 28 Nov |
-| Project page and video | Case study under the nine architecture areas; 90-second video | Portfolio site on Cloudflare Pages | Sat 28 Nov |
+| Project page and walkthrough | Case study under the nine architecture areas; walkthrough GIF (D-75) | Portfolio site on Cloudflare Pages | Sat 28 Nov |
 | Pilot report | Use, answer quality, handovers and learner ratings after four weeks | Programme owners first; a public summary only if they agree | Six weeks after sign-off |
 
 ## Personas, user stories and flows
@@ -288,7 +288,7 @@ Before the pilot, success is passing the golden set; during it, success is learn
 - **Monday 16 November.** Send the one-page sign-off proposal to the programme owners.
 - **Thursday 26 November.** Write the three-session sample course; build ingest, the answer path and the grounding check.
 - **Friday 27 November.** Teaching-team view, golden set and EvalKit run on Sol and Luna; demo page live.
-- **Saturday 28 November.** Project page and video.
+- **Saturday 28 November.** Project page and walkthrough GIF (D-75).
 - **After sign-off.** Week 1, index one cohort's approved materials and add the teaching team's questions to the golden set; weeks 2 to 5, pilot with learners who opt in; week 6, the pilot report to the programme owners, then a public summary if they agree.
 
 **Risks.**

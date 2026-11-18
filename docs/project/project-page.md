@@ -92,7 +92,7 @@ hard limit (Tech Spec §8; `docs/deploy.md`). Status: pending owner deploy (D-60
 
 ## Demo and links
 
-`[Video placeholder: 90 seconds, see demo-script.md]` · `DEMO_URL pending owner deploy`
+![Walkthrough: ten real screens, 2.5 s each](../assets/walkthrough.gif) (shot list: [`docs/walkthrough.md`](../walkthrough.md); D-75, in place of a video) · `DEMO_URL pending owner deploy`
 
 Source: github.com/biplob819/course-assistant · EvalKit: github.com/biplob819/evalkit ·
 Tech Spec, PRD and decisions in the repo (`README.md`, Links).

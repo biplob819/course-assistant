@@ -687,7 +687,7 @@ Status vocabulary: `not-started | spec | building | green`. There is one new pro
 | **D3.2** | Demo deploy | D3.1, B2.5, B2.3 | Both pages in `portfolio-demos`, replay default, passcodes, off switch shown working | US10 |
 | **T3.1** | Trust pack | B2.2, E2.5, D3.2 | Behavioral spec, data card, privacy notice, DPDP and UK GDPR mapping, incident runbook (72-hour report), off-switch test evidence | NFR2, NFR7 |
 | **R3.1** | Open-source packaging and v0.1.0 | T3.1, D3.2 | PyPI `course-assistant` by trusted publishing, `init` and `doctor`, docs (quickstart on the sample course, bring your own course, evaluate your course), community files, privacy statement, eval GitHub Action example, tag v0.1.0 | US7, US8, US10 |
-| **T3.2** | Project page and video | T3.1, E2.5, D3.2 | Case study under the nine architecture areas on Cloudflare Pages, 90-second video | — |
+| **T3.2** | Project page and walkthrough | T3.1, E2.5, D3.2 | Case study under the nine architecture areas on Cloudflare Pages, walkthrough GIF (D-75) | — |
 | **P4.1** | Pilot cohort onboarding | G0.1, E2.4, D3.2 | Private manifest ingested, teaching-team cases added, pilot host, SSO, Langfuse decision, calibration relabel by the teaching team, app and retrieval wired to the live corpus pointer (`serving_corpus`, two vector-store attribute sets; D-57) | US7, US8 |
 | **P4.2** | Pilot operations | P4.1 | Four weeks: weekly gate runs, purge job, incident drill, metrics | US5, US6, US8 |
 | **P4.3** | Pilot report and teardown | P4.2 | Pilot report to the programme owners, `make teardown` with proof that the store and files are gone | NFR4 |
@@ -1068,12 +1068,12 @@ Each row becomes one line in `docs/graph/catalog.tsv` with status `not-started`.
 | OSS-08 | Tag v0.1.0, semver policy, a clean-venv install of the published package runs `--version`, `doctor` and the sample-course replay; the PyPI publish itself (owner attest) | D-21, D-60 |
 | OSS-09 | README with screenshots of both pages, a step-by-step guide, and every important link (PyPI, docs, live demo, EvalKit, sample course licence, issue tracker, security policy) | OWNER D-46 |
 
-**T3.2 Project page and video**
+**T3.2 Project page and walkthrough**
 
 | Cap | Capability | Trace |
 | --- | --- | --- |
 | PAG-01 | Case study under the nine architecture areas, with headline numbers carrying their CIs and stamps | — |
-| PAG-02 | Architecture and data-flow diagrams as SVG; 90-second video | — |
+| PAG-02 | Architecture and data-flow diagrams as SVG; walkthrough GIF (`docs/assets/walkthrough.gif`, D-75) | — |
 
 **P4.1–P4.3 Pilot**
 

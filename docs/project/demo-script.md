@@ -1,4 +1,8 @@
-# Demo video script
+# Demo video script (superseded)
+
+> **Superseded by the walkthrough GIF (D-75).** The deliverable is now
+> `docs/assets/walkthrough.gif`, with its shot list in [`docs/walkthrough.md`](../walkthrough.md).
+> No video is recorded. This script is kept as history only.
 
 > **Draft (OWNER D-72).** Recorded on the sample course with the replay cache (Tech Spec §8).
 > No learner data. Do not show `.env`, passcodes, held-out files, the ledger or real course material.
