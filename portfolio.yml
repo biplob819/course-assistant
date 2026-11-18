@@ -1,0 +1,17 @@
+# Read by the portfolio site (biplob819.github.io), which pulls docs/case-study.md.
+title: "course-assistant: a grounded teaching assistant with an honest release gate"
+slug: course-assistant
+summary: "A course assistant that answers only from approved session materials, cites the slide or page, gives hints on graded work and hands everything else to the teaching team, with every release gated on EvalKit."
+case_study: docs/case-study.md
+repo: https://github.com/biplob819/course-assistant
+links:
+  report: https://github.com/biplob819/course-assistant/blob/main/docs/measurements/e2.5-report.md
+  data_card: https://github.com/biplob819/course-assistant/blob/main/DATA_CARD.md
+  decisions: https://github.com/biplob819/course-assistant/blob/main/docs/decisions.md
+  demo: null  # set when the Streamlit demo is live (docs/deploy.md)
+images:
+  walkthrough: docs/assets/walkthrough.gif  # D-75: replaces the video
+  dataflow: docs/assets/dataflow.svg
+  architecture: docs/assets/architecture.svg
+tech: [Python, uv, OpenAI API, Anthropic API, Pydantic, pypdf, python-pptx, SQLite, Streamlit, EvalKit, GitHub Actions]
+status: draft  # the release gate still fails; owner approval pending

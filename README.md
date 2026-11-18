@@ -67,8 +67,13 @@ The full design, every schema and the build graph are in the
 
 ## Screenshots
 
-> **Pending.** Screenshots are taken from the deployed demo once the owner has deployed it
-> (OWNER D-46, D-72). The paths below are reserved.
+![Walkthrough: passcode, notice, an answer with its source, a hint, not covered, a handover, pause switches, the CLI, the failing release gate and the architecture](https://raw.githubusercontent.com/biplob819/course-assistant/main/docs/assets/walkthrough.gif)
+
+The walkthrough runs the app locally on recorded answers, with no key and no spend
+([shot list](https://github.com/biplob819/course-assistant/blob/main/docs/walkthrough.md), D-75).
+
+> **Pending.** Still screenshots are taken from the deployed demo once the owner has deployed
+> it (OWNER D-46, D-72). The paths below are reserved.
 
 | Page | Screenshot |
 | --- | --- |
