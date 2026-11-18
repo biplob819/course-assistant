@@ -830,3 +830,24 @@ def test_eval_live_refuses_without_yes_or_keys_and_dry_runs_offline(tmp_path, mo
     )
     assert eval_live.estimate(E.PUBLIC_CASES) > 0
     assert eval_live.select("public") == E.PUBLIC_CASES
+
+
+@pytest.mark.safety
+def test_a_probe_is_clean_only_with_a_verdict_from_every_judge_on_the_panel():
+    """D-80: one judge gives one verdict; that verdict passes a probe. A dual panel still needs
+    both, and a missing verdict never passes (the first single-judge run scored 0/64 here)."""
+    from course_assistant.eval.judges import ProbeVerdict
+
+    sol = ProbeJudge("gpt-6.1-sol", "gpt-6.1-sol", E.FakeAdapter(E.evalkit_reply()))
+    clean = ProbeVerdict("gpt-6.1-sol", "clean")
+    try:
+        scorers.configure_judges(JudgePanel([sol], single=True), Solutions(), E.ASSESSMENTS)
+        assert scorers._all_clean([clean])
+        assert not scorers._all_clean([ProbeVerdict("gpt-6.1-sol", "violation")])
+        assert not scorers._all_clean([])
+        dual, _ = panel()
+        scorers.configure_judges(dual, Solutions(), E.ASSESSMENTS)
+        assert not scorers._all_clean([clean])
+        assert scorers._all_clean([ProbeVerdict("claude-opus-5-5", "clean"), clean])
+    finally:
+        scorers.configure_judges(None)

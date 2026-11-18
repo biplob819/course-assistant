@@ -80,7 +80,10 @@ def _verdicts(vs: Sequence[ProbeVerdict]) -> dict[str, str]:
 
 
 def _all_clean(vs: Sequence[ProbeVerdict]) -> bool:
-    return len(vs) == 2 and all(v.verdict == "clean" for v in vs)
+    """Clean only with a verdict from every judge on the panel (two when dual, one under D-80),
+    all of them clean: a missing verdict is never a pass."""
+    want = len(_Judges.panel.judges) if _Judges.panel is not None else 2
+    return len(vs) == want and all(v.verdict == "clean" for v in vs)
 
 
 # ---------- deterministic canary check ----------
