@@ -266,13 +266,22 @@ def family(alias: str) -> str:
         ("gpt", "o1", "o3", "o4")) else alias  # fmt: skip
 
 
+SINGLE_JUDGE_DECISION = "D-80"  # OWNER: one OpenAI judge while the Anthropic account is unfunded
+
+
 class JudgePanel:
-    """Exactly two judges of different families (dual, D-12)."""
+    """Exactly two judges of different families (dual, D-12), or, with `single=True`, exactly
+    one (OWNER D-80). The scorers' "under every judge" rules then read one verdict."""
 
     def __init__(self, judges: Sequence[ProbeJudge], *, cache: Path | None = None,
                  budget: RunBudget | None = None, max_cost_usd: float | None = None,
-                 retry_sleep: Any = None) -> None:  # fmt: skip
-        if len(judges) != 2 or family(judges[0].alias) == family(judges[1].alias):
+                 retry_sleep: Any = None, single: bool = False) -> None:  # fmt: skip
+        if single:
+            if len(judges) != 1:
+                raise ValueError(
+                    f"a single-judge panel has exactly one judge ({SINGLE_JUDGE_DECISION})"
+                )
+        elif len(judges) != 2 or family(judges[0].alias) == family(judges[1].alias):
             raise ValueError("a judge panel needs exactly two judges of different families (D-12)")
         if budget is not None and max_cost_usd is not None:
             raise ValueError("give a RunBudget or max_cost_usd, not both")
@@ -463,3 +472,12 @@ def _support_parser(inp: ek_judge.JudgeInput) -> Callable[[str], str]:
 
 def briefs(assessments: AssessmentList) -> Mapping[str, str]:
     return {a.assessment_id: f"{a.title}\n{a.brief}" for a in assessments.assessments}
+
+
+def build_panel(aliases: Sequence[str], prices: Any, **kw: Any) -> JudgePanel:
+    """The panel for these judge aliases, each on its family's EvalKit adapter: two aliases
+    are dual (D-12), one is single (D-80)."""
+    from evalkit.adapters import get_adapter
+
+    judges = [ProbeJudge(a, a, get_adapter(family(a)), price=prices[a]) for a in aliases]
+    return JudgePanel(judges, single=len(judges) == 1, **kw)

@@ -33,6 +33,7 @@ from evalkit import run as R
 from evalkit.schemas import Case, Record
 from evalkit.stats import Resamples, holm, interval, paired, percentile_ms
 
+from course_assistant.eval.judges import SINGLE_JUDGE_DECISION
 from course_assistant.ingest.corpus import Corpus, CorpusStore, unit_key
 from course_assistant.ingest.corpus import corpus_version as version_of
 from course_assistant.schemas.config import GoldenCase
@@ -546,7 +547,10 @@ def verdict(run_dir: Path, inputs: GateInputs) -> Verdict:
         if drift and inputs.baseline_snapshots:
             v.notes.append(f"model snapshots differ from the live run ({', '.join(drift)}): "
                            "a weekly failure with no change of ours is provider drift")  # fmt: skip
-    if summary.get("judge_mode") != "dual":
+    if summary.get("judge_mode") == "single" and SINGLE_JUDGE_DECISION:
+        v.notes.append(f"single judge (OWNER {SINGLE_JUDGE_DECISION}): one vendor grades, "
+                       "no cross-family check; EvalKit publishes no headline from it")  # fmt: skip
+    elif summary.get("judge_mode") != "dual":
         v.failures.append("judge_mode is not dual (§6.5)")
     for kind in ("groundedness", "integrity"):
         if inputs.calibration.get(kind) != "calibrated":

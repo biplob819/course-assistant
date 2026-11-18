@@ -47,7 +47,7 @@ def heldout_ids() -> frozenset[str]:
     return read_ids(HELDOUT_MANIFEST)
 
 
-JUDGES = ("claude-opus-5-5", "gpt-6.1-sol")
+JUDGES = ("gpt-6.1-sol",)  # OWNER D-80 (dual, D-12, was claude-opus-5-5 + this)
 MODEL_PANEL = "model-panel:gpt-6.1-terra+gpt-6-luna;tiebreak=gpt-6.1-terra@high"  # D-76, D-79
 
 
@@ -145,7 +145,6 @@ def cmd_support(args: argparse.Namespace) -> int:
     missing = [k for k in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY") if not os.environ.get(k)]
     if missing:
         raise UsageError(f"{', '.join(missing)} not set (uv run --env-file .env ...)")
-    from evalkit.adapters import get_adapter
     from evalkit.cost import load_prices
 
     from course_assistant.eval.calibrate import (
@@ -154,16 +153,13 @@ def cmd_support(args: argparse.Namespace) -> int:
         support_agreement,
         support_rows,
     )
-    from course_assistant.eval.judges import JudgePanel, ProbeJudge, RunBudget
+    from course_assistant.eval.judges import RunBudget, build_panel
 
     folder = live_folder(args.run)
     tapped = load_tap(folder / "support-tap.jsonl")
     rt = _runtime(args)
     prices = load_prices()
-    panel = JudgePanel([ProbeJudge(JUDGES[0], JUDGES[0], get_adapter("anthropic"),
-                                   price=prices[JUDGES[0]]),
-                        ProbeJudge(JUDGES[1], JUDGES[1], get_adapter("openai"),
-                                   price=prices[JUDGES[1]])],
+    panel = build_panel(JUDGES, prices,
                        cache=folder / "probe-verdicts.jsonl",
                        budget=RunBudget(args.max_cost, args.max_cost))  # fmt: skip
     judged = judge_support(tapped, panel, rt.corpus)

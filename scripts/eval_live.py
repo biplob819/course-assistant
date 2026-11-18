@@ -10,8 +10,9 @@ CONFIG.yaml is an AppConfig whose vector store has been filled by
 What it does, under runs/course-ta-<split>-<stamp>/ (git-ignored):
 1. builds the EvalKit cases from the golden split (public, held-out or both; held-out is read
    only if it matches golden/heldout/MANIFEST.json) with the corpus units as context, and
-   writes cases.jsonl, course-ta.yaml and an evalkit.yaml (system `course-ta`, judges
-   claude-opus-5-5 and gpt-6.1-sol, extractor claude-haiku-5-5);
+   writes cases.jsonl, course-ta.yaml and an evalkit.yaml (system `course-ta`, judge
+   gpt-6.1-sol, extractor gpt-6-luna: OWNER D-80; until then the dual judges claude-opus-5-5
+   and gpt-6.1-sol with extractor claude-haiku-5-5);
 2. installs the runtime (live `respond` through a `Recorder`, spend to runs/ledger.jsonl) and
    the dual probe judges (EvalKit's Anthropic and OpenAI adapters; solutions read from
    golden/heldout/solutions/ by the integrity judge only), then runs `evalkit run`;
@@ -27,8 +28,9 @@ probe count and reserve every call before making it; EvalKit gets the rest as it
 config's bar and the code's ground version against docs/measurements/tuning-log.jsonl
 (`--allow-unlogged` is for the tuning run itself).
 
-Refuses without --yes and both API keys. --dry-run writes the folder and prints the case count
-and the estimate, with no key and no call. Never prints a case, a reply or a solution.
+Refuses without --yes and the API keys its judges and extractor need. --dry-run writes the
+folder and prints the case count and the estimate, with no key and no call.
+Never prints a case, a reply or a solution.
 """
 
 from __future__ import annotations
@@ -49,8 +51,8 @@ HELDOUT = ROOT / "golden" / "heldout"
 SOLUTIONS = HELDOUT / "solutions"
 MANIFEST = ROOT / "sample_course" / "manifest.yaml"
 ASSESSMENTS = ROOT / "sample_course" / "assessments.yaml"
-JUDGES = ("claude-opus-5-5", "gpt-6.1-sol")
-EXTRACTOR = "claude-haiku-5-5"
+JUDGES = ("gpt-6.1-sol",)  # OWNER D-80: single judge (dual, D-12, was claude-opus-5-5 + this)
+EXTRACTOR = "gpt-6-luna"  # OWNER D-80 (was claude-haiku-5-5)
 SYSTEM_ALIAS = "course-ta"
 # measured on the E2.5 public tuning run (course-ta-public-20261117T060529Z: 214 cases, 110
 # probes, 98 answered; ledger): the figures below keep at least 1.5 times these
@@ -264,7 +266,10 @@ def main(argv: list[str] | None = None) -> int:
             print("eval_live: this run makes paid API calls; pass --yes to confirm",
                   file=sys.stderr)  # fmt: skip
             return 2
-        missing = [k for k in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY") if not os.environ.get(k)]
+        from course_assistant.eval.judges import family
+
+        need = {"OPENAI_API_KEY"} | {f"{family(m).upper()}_API_KEY" for m in (*JUDGES, EXTRACTOR)}
+        missing = sorted(k for k in need if not os.environ.get(k))
         if missing:
             print(f"eval_live: {', '.join(missing)} not set (uv run --env-file .env ...)",
                   file=sys.stderr)  # fmt: skip
@@ -345,7 +350,6 @@ def _run(args: argparse.Namespace, config: Any, corpus: Any, out_dir: Path, task
          n: int, budget: Any) -> int:  # fmt: skip
     import openai
     from evalkit import cli as evalkit_cli
-    from evalkit.adapters import get_adapter
     from evalkit.cost import load_prices as evalkit_prices
 
     from course_assistant.answer import responder
@@ -357,7 +361,7 @@ def _run(args: argparse.Namespace, config: Any, corpus: Any, out_dir: Path, task
         support_agreement,
         support_rows,
     )
-    from course_assistant.eval.judges import DirSolutionBook, JudgePanel, ProbeJudge
+    from course_assistant.eval.judges import DirSolutionBook, build_panel
     from course_assistant.llm import JsonlSink, Ledger, load_prices
     from course_assistant.schemas.config import load_assessments
 
@@ -379,10 +383,7 @@ def _run(args: argparse.Namespace, config: Any, corpus: Any, out_dir: Path, task
     system.configure(system.Runtime(config=config, corpus=corpus, assessments=assessments,
                                     source=tap))  # fmt: skip
     prices = evalkit_prices()
-    panel = JudgePanel([ProbeJudge(JUDGES[0], JUDGES[0], get_adapter("anthropic"),
-                                   price=prices[JUDGES[0]]),
-                        ProbeJudge(JUDGES[1], JUDGES[1], get_adapter("openai"),
-                                   price=prices[JUDGES[1]])],
+    panel = build_panel(JUDGES, prices,
                        cache=out_dir / "probe-verdicts.jsonl", budget=budget)  # fmt: skip
     scorers.configure_judges(panel, DirSolutionBook(SOLUTIONS), assessments)
     try:

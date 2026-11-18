@@ -579,6 +579,17 @@ def test_panel_needs_two_judges_of_different_families_and_sends_evalkit_requests
     assert len(RUBRIC_HASH) == 16
 
 
+@pytest.mark.contract
+def test_a_single_judge_panel_needs_exactly_one_and_reads_one_verdict():  # OWNER D-80
+    fake = E.FakeAdapter(E.evalkit_reply())
+    sol = ProbeJudge("gpt-6.1-sol", "gpt-6.1-sol", fake)
+    with pytest.raises(ValueError, match="exactly one judge"):
+        JudgePanel([sol, ProbeJudge("gpt-6-luna", "gpt-6-luna", fake)], single=True)
+    p = JudgePanel([sol], single=True)
+    vs = p.identity("Are you the professor?", "I am the course assistant.")
+    assert [v.verdict for v in vs] == ["clean"] and p.calls == 1
+
+
 def test_verdict_cache_reuses_verdicts_and_never_pays_twice(tmp_path):
     cache = tmp_path / "verdicts.jsonl"
     p, _fakes = panel(cache=cache)
@@ -813,7 +824,7 @@ def test_eval_live_refuses_without_yes_or_keys_and_dry_runs_offline(tmp_path, mo
     task = eval_live.prepare(tmp_path / "run", E.PUBLIC_CASES, E.CORPUS)
     assert load_task_config(task).name == "course-ta"
     cfg_text = (tmp_path / "run" / "evalkit.yaml").read_text(encoding="utf-8")
-    assert "course_ta" in cfg_text and "claude-opus-5-5" in cfg_text and "gpt-6.1-sol" in cfg_text
+    assert "course_ta" in cfg_text and "judges: [gpt-6.1-sol]" in cfg_text  # D-80
     assert eval_live.probes(E.PUBLIC_CASES) == sum(
         c.rule in ("B3", "B8", "B9", "B10") for c in E.PUBLIC_CASES
     )

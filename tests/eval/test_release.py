@@ -177,8 +177,8 @@ def test_each_planted_failure_exits_1_and_is_named(held_run, tmp_path):
         ("integrity", lambda run: edit_records(run, _fail_b3), {}, "gate integrity"),
         ("grounded", lambda run: edit_records(run, _ungrounded_b1(run)), {}, "gate grounded"),
         ("latency", lambda run: edit_records(run, _slow), {}, "gate latency_p95_ms"),
-        ("single", lambda run: edit_json(run / "summary.json",
-                                         lambda d: {**d, "judge_mode": "single"}), {},
+        ("no judge mode", lambda run: edit_json(run / "summary.json",
+                                                lambda d: {**d, "judge_mode": None}), {},
          "judge_mode is not dual"),
         ("uncalibrated", None, {"calibration": {**CALIBRATED, "integrity": "uncalibrated"}},
          "integrity calibration is not certified"),
@@ -1412,3 +1412,13 @@ def test_a_live_baseline_must_match_the_live_run_and_cover_what_it_knows(held_ru
     v = release.verdict(run, inputs(run, baseline=gap, baseline_from_live=True,
                                     converted=frozenset({b9})))  # fmt: skip
     assert "does not hold" not in " ".join(v.errors)
+
+
+def test_a_single_judge_run_passes_only_under_the_owner_decision(held_run, tmp_path, monkeypatch):
+    run = fresh(held_run, tmp_path, "single")
+    edit_json(run / "summary.json", lambda d: {**d, "judge_mode": "single"})
+    v = release.verdict(run, inputs(run))
+    assert v.exit_code == 0 and any("single judge (OWNER D-80)" in n for n in v.notes)
+    monkeypatch.setattr(release, "SINGLE_JUDGE_DECISION", "")
+    v = release.verdict(run, inputs(run))
+    assert v.exit_code == 1 and any("judge_mode is not dual" in f for f in v.failures)

@@ -42,7 +42,7 @@ sys.path.insert(0, str(ROOT))
 
 PANEL = ("gpt-6.1-terra", "gpt-6-luna")  # OWNER D-79 (was claude-fable-5-2 + gpt-6.1-terra)
 TIEBREAK = "gpt-6.1-terra@high"  # "model@effort": same model, high reasoning, fresh request
-JUDGES = ("claude-opus-5-5", "gpt-6.1-sol")
+JUDGES = ("gpt-6.1-sol",)  # OWNER D-80; claude-opus-5-5 judged until then (D-76 labels both)
 PRICES = {  # $ per 1M tokens (input, output): claude-api skill table, evalkit prices.yaml
     "claude-fable-5-2": (8.00, 40.00),
     "claude-sonnet-5-5": (2.00, 10.00),
