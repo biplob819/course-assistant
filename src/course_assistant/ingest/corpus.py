@@ -44,6 +44,15 @@ def corpus_version(units: Iterable[Unit | CorpusUnit]) -> str:
     return hashlib.sha256("\n".join(sorted(u.version for u in units)).encode()).hexdigest()
 
 
+# The vector-store attributes a search selects a corpus version by (P4.1): every file carries
+# its ingest's `corpus_version`; while a candidate that adds or changes units waits for the
+# release gate, the files of the served view also carry that view's id as `served_version`
+# (else ""). A search filters on exactly one of the two, never both (`ingest.serving`).
+VERSION_KEY = "corpus_version"
+SERVED_KEY = "served_version"
+VERSION_KEYS = (VERSION_KEY, SERVED_KEY)
+
+
 V = TypeVar("V", bound=Versioned)
 _NUMBER = re.compile(r"(\d+)$")
 

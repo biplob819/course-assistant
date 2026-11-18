@@ -27,14 +27,19 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, ClassVar, Literal, TypeVar, get_args
 
-from course_assistant.answer.answer import AnswerDraft, AnswerStep, resolve_inline
+from course_assistant.answer.answer import (
+    AnswerDraft,
+    AnswerStep,
+    checked_version_key,
+    resolve_inline,
+)
 from course_assistant.answer.ground import GroundReport, GroundStep
 from course_assistant.answer.hint import Hint, HintCache, HintStep
 from course_assistant.answer.integrity import IntegrityResult, IntegrityStep
 from course_assistant.answer.leak import Finding, scan
 from course_assistant.answer.replay import Live, Responder, Source
 from course_assistant.answer.route import RouteStep
-from course_assistant.ingest.corpus import Corpus
+from course_assistant.ingest.corpus import VERSION_KEY, Corpus
 from course_assistant.llm import (
     FileCitation,
     LLMError,
@@ -278,11 +283,15 @@ class Assistant:
                  timer: Callable[[], float] = time.monotonic,
                  new_id: Callable[[], str] = lambda: uuid.uuid4().hex[:16],
                  alert: Callable[[str, str], None] | None = None,
-                 hint_cache: HintCache | None = None) -> None:  # fmt: skip
+                 hint_cache: HintCache | None = None,
+                 version_key: str = VERSION_KEY) -> None:  # fmt: skip
         if not isinstance(assessments, AssessmentList):
             raise TypeError("assessments must be an AssessmentList")
         self.config = config
         self.corpus = corpus
+        # P4.1: the attribute the searches find the served version's files by (the pilot's
+        # `ServedCorpus.read` names it; `served_version` while a candidate waits for the gate)
+        self.version_key = checked_version_key(version_key)
         self.assessments = assessments
         self.store = store
         self.source: Source = responder if hasattr(responder, "call") else Live(responder)  # type: ignore[arg-type]
@@ -473,7 +482,9 @@ class Assistant:
     def _run(self, question: str, session: str | None, window: list[tuple[str, str]],
              replies: list[str], qid: str, calls: _Calls) -> dict[str, Any]:  # fmt: skip
         route_step = RouteStep(self.config, calls.bind("route"))
-        answer_step = AnswerStep(self.config, self.corpus, calls.bind("answer"))
+        answer_step = AnswerStep(
+            self.config, self.corpus, calls.bind("answer"), version_key=self.version_key
+        )
         out: dict[str, Any] = {"route": None, "route_obj": None, "discarded": False,
                                "leak": (), "kept_draft": None, "ground": None,
                                "integrity": None, "draft": None, "hint": None,
@@ -554,7 +565,8 @@ class Assistant:
             return  # no known brief: the generic fixed hint, no call
         bound = calls.bind("hint")
         step = HintStep(self.config, self.corpus, bound, IntegrityStep(self.config, bound),
-                        cache=self.hint_cache, rules_hash=self.rules_hash())  # fmt: skip
+                        cache=self.hint_cache, rules_hash=self.rules_hash(),
+                        version_key=self.version_key)  # fmt: skip
         try:
             hint = step.run(brief, replies, self.assessments)
         except LLMError:

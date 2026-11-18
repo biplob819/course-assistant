@@ -212,6 +212,7 @@ class OpsTile:
     handover_share: float | None
     p95_latency_ms: int | None
     spend_usd: float
+    corpus_version: str = ""  # the served corpus id (P4.1), read-only
 
 
 def _chip(file_id: str, unit_index: int, corpus: Corpus, label: str, session: str) -> SourceChip:
@@ -517,4 +518,5 @@ class TeachingTeam:
         self._audit("view_ops")
         return OpsTile(questions=len(questions), answers=len(answers), status_mix=status_mix,
                        handed_over=sent, handover_share=sent / len(questions) if questions
-                       else None, p95_latency_ms=p95, spend_usd=spend)  # fmt: skip
+                       else None, p95_latency_ms=p95, spend_usd=spend,
+                       corpus_version=self.corpus.corpus_version)  # fmt: skip

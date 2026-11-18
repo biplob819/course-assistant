@@ -12,7 +12,8 @@ environment or the host's secret store (D3.1 `read_secret`), never from a file i
 
 The view serves the same corpus as the learner page (P4.1 groundwork, `wiring.Serving`): with
 `CA_CONFIG`, only the gate-approved version named by `LIVE.json` minus removed units, re-read
-at every page run (the "Live corpus version" line shows its id); with no readable pointer the
+at every page run (the Materials "Live corpus version" line and the Ops "Served corpus
+version" line show its id, read-only); with no readable pointer the
 view locks with the fixed `wiring.SERVING_LOCKED`. With the demo cache alone, its replay corpus.
 """
 

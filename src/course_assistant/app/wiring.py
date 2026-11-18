@@ -64,8 +64,10 @@ class Serving:
     (`ingest.serving.ServedCorpus`) or the demo's fixed replay corpus. `version()` is the id
     last served, for the trace lines of calls made outside one Assistant."""
 
-    def __init__(self, read: Callable[[], Corpus]) -> None:
+    def __init__(self, read: Callable[[], Corpus],
+                 read_keyed: Callable[[], tuple[Corpus, str]] | None = None) -> None:  # fmt: skip
         self._read = read
+        self._read_keyed = read_keyed
         self._last: str | None = None
 
     @classmethod
@@ -77,14 +79,23 @@ class Serving:
 
     def __call__(self) -> Corpus:
         """The served corpus now; `GuardRefused(SERVING_LOCKED)` when there is none."""
+        return self.served()[0]
+
+    def served(self) -> tuple[Corpus, str]:
+        """The served corpus now and the vector-store attribute its files are found by
+        (`ingest.serving.ServedCorpus.read`; `corpus_version` for a fixed corpus)."""
+        from course_assistant.ingest.corpus import VERSION_KEY
         from course_assistant.ingest.serving import ServingError
 
         try:
-            corpus = self._read()
+            if self._read_keyed is not None:
+                corpus, key = self._read_keyed()
+            else:
+                corpus, key = self._read(), VERSION_KEY
         except ServingError:
             raise GuardRefused(SERVING_LOCKED) from None
         self._last = corpus.corpus_version
-        return corpus
+        return corpus, key
 
     def version(self) -> str | None:
         return self._last
@@ -151,8 +162,8 @@ def pilot_serving(config_path: Path, config: AppConfig) -> Serving:
     from course_assistant.ingest import CorpusStore
     from course_assistant.ingest.serving import ServedCorpus
 
-    serving = Serving(ServedCorpus(CorpusStore(config_path.parent / "corpus_store",
-                                               config.cohort)))  # fmt: skip
+    served = ServedCorpus(CorpusStore(config_path.parent / "corpus_store", config.cohort))
+    serving = Serving(served, served.read)
     try:
         serving()
     except GuardRefused:
@@ -293,9 +304,10 @@ def from_env(env: Mapping[str, str] | None = None,
     def assistant_for(source: Source) -> Assistant:
         """One request's Assistant on the corpus served now; its trace lines carry exactly
         that version."""
-        served = serving()
+        served, key = serving.served()
         return Assistant(config, served, assessments, stores(), source,
-                         sink=VersionedSink(raw_sink, lambda: served.corpus_version))  # fmt: skip
+                         sink=VersionedSink(raw_sink, lambda: served.corpus_version),
+                         version_key=key)  # fmt: skip
 
     demo = LiveDemo(gate, guard, assistant_for=assistant_for, owner_responder=owner,
                     responder_for_key=for_key, prices=prices, cache=cache)  # fmt: skip

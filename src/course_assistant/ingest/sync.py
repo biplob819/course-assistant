@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from course_assistant.ingest.corpus import Corpus, CorpusStore, Ledger, Record, corpus_version
 from course_assistant.ingest.corpus import ordered as order_units
+from course_assistant.ingest.serving import served_tag
 from course_assistant.ingest.split import (
     Dropped,
     IngestError,
@@ -32,7 +33,7 @@ if TYPE_CHECKING:
     from openai.types.vector_stores import VectorStoreFile, VectorStoreFileDeleted
 
 ATTRIBUTE_KEYS = ("session", "kind", "locator", "unit_index", "manifest_id", "version",
-                  "corpus_version")  # fmt: skip
+                  "corpus_version", "served_version")  # fmt: skip
 Attributes = dict[str, str | int]
 
 
@@ -131,19 +132,27 @@ class Plan(Model):
         return "\n".join(lines)
 
 
-def attributes(unit: Unit, unit_index: int, version: str) -> Attributes:
+def attributes(unit: Unit, unit_index: int, version: str, served: str = "") -> Attributes:
+    """`served` is the served view's id on a file of that view while a candidate that adds or
+    changes units waits for the release gate, else "" (P4.1, `ingest.serving.served_tag`)."""
     return {"session": unit.session, "kind": unit.kind, "locator": unit.key,
             "unit_index": unit_index, "manifest_id": unit.manifest_id,
-            "version": unit.version, "corpus_version": version}  # fmt: skip
+            "version": unit.version, "corpus_version": version,
+            "served_version": served}  # fmt: skip
 
 
 @single_exit
-def plan(manifest: Manifest, store_state: Ledger, *, root: Path) -> Plan:
-    """What apply must do to make the store match the manifest. Reads local files only."""
+def plan(manifest: Manifest, store_state: Ledger, *, root: Path,
+         live: Corpus | None = None) -> Plan:  # fmt: skip
+    """What apply must do to make the store match the manifest. Reads local files only.
+    `live` is the corpus the live pointer names (`ingest.serving.live_corpus`), or None."""
     split = units_from_manifest(manifest, root)
     units = order_units(split.units)
     version = corpus_version(units)
-    targets = tuple(Target(unit=u, unit_index=i, attributes=attributes(u, i, version))
+    tag = served_tag(live, ((u.key, u.version) for u in units), version)
+    served_id, served_units = tag if tag is not None else ("", frozenset[str]())
+    targets = tuple(Target(unit=u, unit_index=i, attributes=attributes(
+                        u, i, version, served_id if u.version in served_units else ""))
                     for i, u in enumerate(units, start=1))  # fmt: skip
     kept: dict[str, Record] = {}  # key -> the one completed record that still serves it
     deletions: list[Record] = []

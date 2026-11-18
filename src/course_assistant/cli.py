@@ -329,6 +329,7 @@ def _vector_store_api() -> VectorStoreAPI:
 
 def _ingest(args: argparse.Namespace) -> int:
     from course_assistant.ingest import CorpusStore, IngestError, apply, plan
+    from course_assistant.ingest.serving import live_corpus
     from course_assistant.schemas import ConfigError, load_app_config, load_manifest
 
     base = args.config.parent
@@ -339,7 +340,7 @@ def _ingest(args: argparse.Namespace) -> int:
             raise ConfigError(f"manifest cohort {manifest.cohort} is not config cohort "
                               f"{config.cohort}")  # fmt: skip
         store = CorpusStore(args.store or base / "corpus_store", config.cohort)
-        p = plan(manifest, store.ledger(), root=args.root or base)
+        p = plan(manifest, store.ledger(), root=args.root or base, live=live_corpus(store))
         print(p.render(dry_run=args.dry_run))
         if args.dry_run:
             return EXIT_OK

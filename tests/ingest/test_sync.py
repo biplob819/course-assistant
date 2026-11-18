@@ -54,8 +54,9 @@ def test_new_units_are_uploaded_and_attached_with_all_seven_attributes(sample_pl
     uploads = fake.names("upload")
     attaches = fake.names("attach")
     assert len(uploads) == len(attaches) == len(sample_plan.targets) == len(corpus.units)
+    # the seven ING-03 attributes, then P4.1's served_version (empty: nothing is live here)
     assert ATTRIBUTE_KEYS == ("session", "kind", "locator", "unit_index", "manifest_id",
-                              "version", "corpus_version")  # fmt: skip
+                              "version", "corpus_version", "served_version")  # fmt: skip
     by_file = {u.file_id: u for u in corpus.units}
     for (filename, data), (vs, file_id, attrs) in zip(uploads, attaches, strict=True):
         u = by_file[file_id]
@@ -66,6 +67,7 @@ def test_new_units_are_uploaded_and_attached_with_all_seven_attributes(sample_pl
         assert attrs["unit_index"] == u.unit_index and isinstance(attrs["unit_index"], int)
         assert attrs["manifest_id"] == u.manifest_id and attrs["version"] == u.version
         assert attrs["corpus_version"] == corpus.corpus_version
+        assert attrs["served_version"] == ""
         assert attrs["locator"] == f"{u.session}:{u.kind}:{attrs['locator'].rsplit(':', 1)[1]}"
         assert u.vs_file_id == u.file_id
     assert fake.attached["file-0001"].attributes == dict(attaches[0][2])

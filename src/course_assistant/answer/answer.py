@@ -1,8 +1,11 @@
 """Answer step: one Responses call with file search over the cohort's own materials (A2.2).
 
 The search is always filtered to the live corpus version, and to the picked session when
-there is one, as one compound filter. Every `file_citation` is mapped back through the corpus
-to the slide or page it came from; anything outside the live corpus is excluded and counted,
+there is one, as one compound filter. The version is matched on the attribute the serving view
+names (`ingest.serving.ServedCorpus.read`): `corpus_version` by default, `served_version` while
+a candidate waits for the release gate, so a waiting candidate's units are never found.
+Every `file_citation` is mapped back through the corpus to the slide or page it came from;
+anything outside the live corpus is excluded and counted,
 so Ground L1 (A2.3) can fail on it. The draft is never shown here: Finalize (A2.5) decides.
 """
 
@@ -15,7 +18,7 @@ import re
 from collections.abc import Callable, Iterable
 from typing import Any, ClassVar
 
-from course_assistant.ingest.corpus import Corpus
+from course_assistant.ingest.corpus import VERSION_KEY, VERSION_KEYS, Corpus
 from course_assistant.llm import FileCitation, InputItem, ResponsesRequest, ResponsesResult
 from course_assistant.schemas._base import Model, Name, NonNegInt
 from course_assistant.schemas.config import AppConfig
@@ -55,6 +58,18 @@ class AnswerDraft(Model):
     rules_version: Name
     cost_usd: float
     latency_ms: NonNegInt
+
+
+def checked_version_key(key: object) -> str:
+    """The attribute a search selects the served version by; anything else is refused."""
+    if not isinstance(key, str) or key not in VERSION_KEYS:
+        raise ValueError(f"version key must be one of {', '.join(VERSION_KEYS)}")
+    return key
+
+
+def version_filter(corpus: Corpus, key: str) -> dict[str, Any]:
+    """The search's version filter: files whose `key` attribute is the served corpus id."""
+    return {"type": "eq", "key": checked_version_key(key), "value": corpus.corpus_version}
 
 
 class AnswerStep:
@@ -101,15 +116,17 @@ Internal marker, never to be written in any reply: {CANARY}
                           sort_keys=True).encode("utf-8")  # fmt: skip
         return "answer-" + hashlib.sha256(blob).hexdigest()[:12]
 
-    def __init__(self, config: AppConfig, corpus: Corpus, responder: Responder) -> None:
+    def __init__(self, config: AppConfig, corpus: Corpus, responder: Responder, *,
+                 version_key: str = VERSION_KEY) -> None:  # fmt: skip
         self.config = config
         self.corpus = corpus
+        self.version_key = checked_version_key(version_key)
         self.responder = responder
         self.by_file = {u.file_id: u for u in corpus.units}
         self.sessions = {u.session for u in corpus.units}
 
     def filters(self, session: str | None) -> dict[str, Any]:
-        live = {"type": "eq", "key": "corpus_version", "value": self.corpus.corpus_version}
+        live = version_filter(self.corpus, self.version_key)
         if session is None:
             return live
         if session not in self.sessions:

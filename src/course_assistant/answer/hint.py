@@ -19,10 +19,16 @@ from typing import Any, ClassVar, Literal
 
 from pydantic import model_validator
 
-from course_assistant.answer.answer import AnswerDraft, AnswerStep, resolve_inline
+from course_assistant.answer.answer import (
+    AnswerDraft,
+    AnswerStep,
+    checked_version_key,
+    resolve_inline,
+    version_filter,
+)
 from course_assistant.answer.ground import GroundStep
 from course_assistant.answer.integrity import IntegrityResult, IntegrityStep
-from course_assistant.ingest.corpus import Corpus
+from course_assistant.ingest.corpus import VERSION_KEY, Corpus
 from course_assistant.llm import FileCitation, InputItem, ResponsesRequest, ResponsesResult
 from course_assistant.schemas._base import Model, Name, NonBlank, NonNegFloat, NonNegInt
 from course_assistant.schemas.config import AppConfig
@@ -139,8 +145,9 @@ Internal marker, never to be written in any reply: {AnswerStep.CANARY}
 
     def __init__(self, config: AppConfig, corpus: Corpus, responder: Responder,
                  integrity: IntegrityStep | None = None, *, cache: HintCache | None = None,
-                 rules_hash: str = "") -> None:  # fmt: skip
+                 rules_hash: str = "", version_key: str = VERSION_KEY) -> None:  # fmt: skip
         self.config = config
+        self.version_key = checked_version_key(version_key)  # P4.1, as in AnswerStep
         self.cache = cache
         self.rules_hash = rules_hash
         self.corpus = corpus
@@ -152,7 +159,7 @@ Internal marker, never to be written in any reply: {AnswerStep.CANARY}
         self.sessions = {u.session for u in corpus.units}
 
     def filters(self, sessions: Sequence[str]) -> dict[str, Any]:
-        live = {"type": "eq", "key": "corpus_version", "value": self.corpus.corpus_version}
+        live = version_filter(self.corpus, self.version_key)
         eqs = [{"type": "eq", "key": "session", "value": s} for s in sessions]
         scoped = eqs[0] if len(eqs) == 1 else {"type": "or", "filters": eqs}
         return {"type": "and", "filters": [live, scoped]}

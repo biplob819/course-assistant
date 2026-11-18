@@ -184,11 +184,30 @@ def test_a_live_turn_answers_and_traces_only_the_served_version(tmp_path, monkey
     searches = [json.dumps(kw["tools"]) for step, kw in client.calls if step == "answer"]
     candidate = with_addition().corpus_version
     assert len(searches) == 2 and all(LIVE_V in f and candidate not in f for f in searches)
+    assert '"served_version"' not in searches[0] and '"served_version"' in searches[1]
     records = traces(course)
     assert records and all(r.get("version") == LIVE_V for r in records)
     raw = (course.app_dir / "trace.jsonl").read_text(encoding="utf-8")
     assert with_addition().corpus_version not in raw
     assert S01 not in raw  # ids only, no unit ids
+
+
+def test_each_request_searches_the_served_files_only_while_a_candidate_waits(tmp_path):
+    course = Course(tmp_path)
+    chat = chat_for(course)
+    ready(chat)
+    assert chat.demo.assistant_for(object()).version_key == "corpus_version"
+    candidate = with_addition()
+    course.ingest(candidate)
+    waiting = chat.demo.assistant_for(object())
+    assert waiting.corpus == CORPUS and waiting.version_key == "served_version"
+    course.mark_live(candidate.corpus_version)  # the gate passed: no re-sync, no restart
+    flipped = chat.demo.assistant_for(object())
+    assert flipped.corpus == candidate and flipped.version_key == "corpus_version"
+    removal = without_session("s02", candidate)
+    course.ingest(removal)  # removal-only: served at once, on its own corpus_version
+    gone = chat.demo.assistant_for(object())
+    assert gone.corpus == removal and gone.version_key == "corpus_version"
 
 
 def test_a_removal_reaches_the_running_chat_at_once(tmp_path):
@@ -291,6 +310,22 @@ def test_the_staff_view_shows_the_served_version_not_the_newer_ingest(tmp_path):
     course.mark_live(removal.corpus_version)
     assert team.locked_reason(st) is None
     assert team.manifest_view(st).corpus_version == removal.corpus_version
+
+
+def test_the_ops_view_shows_the_served_version_read_only(tmp_path):
+    course = Course(tmp_path)
+    team = team_for(course)
+    st = TeamState.new()
+    team.unlock(st, STAFF_CODE)
+    course.ingest(with_addition())
+    assert team.locked_reason(st) is None
+    assert team.ops(st).corpus_version == LIVE_V  # not the waiting candidate
+    removal = without_session("s02")
+    course.ingest(removal)
+    assert team.locked_reason(st) is None
+    assert team.ops(st).corpus_version == removal.corpus_version
+    assert course.live_file.exists() and json.loads(
+        course.live_file.read_text(encoding="utf-8"))["corpus_version"] == LIVE_V  # fmt: skip
 
 
 @pytest.mark.safety
