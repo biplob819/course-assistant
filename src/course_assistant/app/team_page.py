@@ -238,6 +238,7 @@ def _ops(team: TeachingTeam, state: TeamState) -> None:
     p95 = "n/a" if tile.p95_latency_ms is None else f"{tile.p95_latency_ms / 1000:.1f} s"
     c.metric("Answer time, p95", p95)
     st.metric("Spend to date (USD)", f"{tile.spend_usd:.2f}")
+    st.text(f"Served corpus version: {tile.corpus_version}")  # read-only (P4.1)
     st.subheader("Status mix")
     for status_name, count in tile.status_mix:  # fixed labels and integers
         st.markdown(f"{status_name}: {count}")

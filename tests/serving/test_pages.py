@@ -128,3 +128,23 @@ def test_the_staff_view_shows_the_served_corpus_version(course):
     course.mark_live(removal.corpus_version)
     at.run()
     assert f"Live corpus version: {removal.corpus_version}" in everything(at)
+
+
+def test_the_ops_section_shows_the_served_corpus_version(course):
+    course.mark_live(CORPUS.corpus_version)
+    candidate = with_addition()
+    course.ingest(candidate)
+    at = entry()
+    at.switch_page(str(deploy.PAGES[1].path))
+    at.run()
+    labelled(at.text_input, "Teaching-team passkey").input(STAFF_CODE)
+    labelled(at.button, "Unlock").click()
+    at.run()
+    labelled(at.radio, "Section").set_value("Ops")
+    at.run()
+    shown = everything(at)
+    assert f"Served corpus version: {CORPUS.corpus_version}" in shown
+    assert candidate.corpus_version not in shown
+    course.mark_live(candidate.corpus_version)
+    at.run()
+    assert f"Served corpus version: {candidate.corpus_version}" in everything(at)
