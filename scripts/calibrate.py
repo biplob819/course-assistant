@@ -48,7 +48,7 @@ def heldout_ids() -> frozenset[str]:
 
 
 JUDGES = ("claude-opus-5-5", "gpt-6.1-sol")
-MODEL_PANEL = "model-panel:claude-fable-5-2+gpt-6.1-terra;tiebreak=claude-sonnet-5-5"  # D-76
+MODEL_PANEL = "model-panel:gpt-6.1-terra+gpt-6-luna;tiebreak=gpt-6.1-terra@high"  # D-76, D-79
 
 
 class UsageError(Exception):

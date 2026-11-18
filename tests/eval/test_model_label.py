@@ -25,6 +25,7 @@ class _Scripted(M.Panel):
 def test_the_labellers_are_never_the_judges():
     assert not set(M.PANEL) & set(M.JUDGES)
     assert M.TIEBREAK not in M.JUDGES
+    assert not {m.split("@")[0] for m in (*M.PANEL, M.TIEBREAK)} & set(M.JUDGES)  # D-79
     assert set(M.JUDGES) == set(C.JUDGES)
     assert all(m in C.MODEL_PANEL for m in (*M.PANEL, M.TIEBREAK))
 

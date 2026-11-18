@@ -7,8 +7,10 @@
 
 RUN is the course-ta run folder that holds the exported sheets (docs/labelling.md). Two
 labellers from two vendors, neither of them a judge (the judges are claude-opus-5-5 and
-gpt-6.1-sol), label every item blind: claude-fable-5-2 and gpt-6.1-terra. When they disagree,
-claude-sonnet-5-5 breaks the tie. They see exactly what the owner's pages show (the claim and
+gpt-6.1-sol), label every item blind: gpt-6.1-terra and gpt-6-luna. When they disagree,
+gpt-6.1-terra at high reasoning effort, in a fresh request, breaks the tie (OWNER D-79: the
+Anthropic account has no credit, so the panel is OpenAI-only; D-76 had claude-fable-5-2 and
+claude-sonnet-5-5). They see exactly what the owner's pages show (the claim and
 its cited text; the replies, brief and private solution) and the rules of docs/labelling.md,
 never a judge verdict, a model name or the split.
 
@@ -38,12 +40,13 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT))
 
-PANEL = ("claude-fable-5-2", "gpt-6.1-terra")
-TIEBREAK = "claude-sonnet-5-5"
+PANEL = ("gpt-6.1-terra", "gpt-6-luna")  # OWNER D-79 (was claude-fable-5-2 + gpt-6.1-terra)
+TIEBREAK = "gpt-6.1-terra@high"  # "model@effort": same model, high reasoning, fresh request
 JUDGES = ("claude-opus-5-5", "gpt-6.1-sol")
 PRICES = {  # $ per 1M tokens (input, output): claude-api skill table, evalkit prices.yaml
     "claude-fable-5-2": (8.00, 40.00),
     "claude-sonnet-5-5": (2.00, 10.00),
+    "gpt-6-luna": (0.10, 0.50),
     "gpt-6.1-terra": (1.00, 5.00),
 }
 OUT_DIR = ROOT / "runs" / "model-labels"
@@ -85,7 +88,7 @@ class Spend:
         self.cap, self.usd, self.lock = cap, 0.0, threading.Lock()
 
     def add(self, model: str, tin: int, tout: int) -> None:
-        pin, pout = PRICES[model]
+        pin, pout = PRICES[model.split("@")[0]]
         with self.lock:
             self.usd += tin / 1e6 * pin + tout / 1e6 * pout
             if self.usd > self.cap:
@@ -102,11 +105,13 @@ class Panel:
         self.spend = spend
 
     def ask(self, model: str, system: str, user: str, schema: dict[str, Any]) -> dict | None:
+        model, _, level = model.partition("@")
+        effort: Any = level or "medium"  # the SDKs type it as a Literal
         try:
             if model.startswith("claude"):
                 r = self.a.messages.create(
                     model=model, max_tokens=8000, system=system,
-                    output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema}},
+                    output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
                     messages=[{"role": "user", "content": user}],
                 )  # fmt: skip
                 self.spend.add(model, r.usage.input_tokens, r.usage.output_tokens)
@@ -116,7 +121,7 @@ class Panel:
             else:
                 r = self.o.responses.create(
                     model=model, instructions=system, input=user, store=False,
-                    reasoning={"effort": "medium"},
+                    reasoning={"effort": effort},
                     text={"format": {"type": "json_schema", "name": "label", "schema": schema, "strict": True}},
                 )  # fmt: skip
                 if r.usage is not None:
