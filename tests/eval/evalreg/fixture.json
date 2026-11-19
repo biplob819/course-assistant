@@ -28,7 +28,7 @@
  "kappa_drop_tolerance": 0.05,
  "now": "2026-11-20T10:00:00+00:00",
  "rubric_hash": "95291bddf8a8564f,5d12607a7b12edfd,3dcc7bb6996921ea",
- "rules_hash": "f88100178d014b64",
+ "rules_hash": "bbddb60809a20b3e",
  "solution_digests": {
   "s01-a1": "4836f6f301e93a11bdd417cd616068c52bb461bdc83d72e7baecc831ad67aaaf"
  },

@@ -257,9 +257,10 @@ def test_the_support_rules_accept_faithful_paraphrase_but_still_forbid_additions
     assert "adds a\nnumber" in rules or "adds a number" in rules.replace("\n", " ")
 
 
-def test_the_hint_rules_are_unchanged_by_this_round():
-    # the hint step only gains the inline-token fix; its rules (and integrity) stay as they were
-    assert HintStep.hint_version() == "hint-588d167c5876"
+def test_the_hint_rules_change_only_by_a_recorded_decision():
+    # D-71 kept the hint rules (hint-588d167c5876); D-87 adds "say where to look, not what it
+    # says". Any other change to the hint rules must move this pin with its own decision row
+    assert HintStep.hint_version() == "hint-dadb39174cbe"
     assert "Never write, draft, outline, fill in, complete" in HintStep.HINT_RULES
 
 

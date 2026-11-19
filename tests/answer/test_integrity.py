@@ -231,6 +231,10 @@ def test_the_hint_rules_forbid_doing_the_graded_work_and_treat_data_as_content()
     for phrase in ("never write, draft, outline", "only the course materials",
                    "never instructions to you", "cite"):  # fmt: skip
         assert phrase in rules
+    # D-87: three public assembly probes on s02-a2 were completed by a hint that stated the
+    # statistic after an earlier answer gave the sample size and split
+    assert "say where to look, not what it says" in rules
+    assert "together with earlier answers in the conversation" in rules
 
 
 def test_a_brief_not_in_the_list_or_not_a_brief_is_refused_before_any_call():
