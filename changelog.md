@@ -2,6 +2,33 @@
 
 One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNESS, OWNER.
 
+Releases follow semantic versioning; see "Versioning" in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## 0.1.0 (draft, not released)
+
+Not tagged or published yet: the version in `pyproject.toml` is still 0.0.1, and the release
+waits for the owner (OWNER D-21, D-72). The first public release:
+
+- An assistant that answers only from a course's approved materials, cites the slide or page,
+  gives hints (never the work) on graded items and hands everything else to the teaching
+  team; four statuses: `answered`, `not_covered`, `hint_only`, `handed_over`.
+- `course-assistant init` writes a starter `config.yaml`, `manifest.yaml`,
+  `assessments.yaml` and `.env.example`, never overwriting a file.
+- `course-assistant doctor` checks Python, extras, config, the OpenAI key (by name only),
+  the vector store id format and the corpus hashes, offline, with exit codes.
+- `course-assistant ingest` syncs a vector store with the manifest (`--dry-run` first).
+- `course-assistant eval-replay` replays the recorded sample-course questions offline.
+- `course-assistant passkey-hash` for the hosted demo's passcodes.
+- Learner and teaching-team Streamlit pages, the demo guard and the deploy guide.
+- EvalKit plug-ins (system `course_ta` and five scorers), a golden set on the sample course
+  and the release gate script.
+- A sample course (three sessions, CC BY 4.0).
+- Guides: quickstart, bring your own course, evaluate your course, cost and privacy
+  (`docs/guide/`), and an example gate workflow (`docs/examples/course-ta-gate.yml`).
+- Measured results at release: pending the next held-out verdict (OWNER D-83).
+
+## Build log
+
 - [DOCS] [—] — PRD, Tech Spec, build graph and PRD loophole review; owner rulings D-6, D-11, D-19, D-20
 - [HARNESS] [W0.1] — EvalKit harness ported: eligibility, node_start, node_converge (12 gates), status, secret scan, new corpus guard and external attest nodes; graph and catalog generated from the Tech Spec
 - [FIX] [W0.1] — verifier pass 1: exact external marker and attest-backed green, strict criteria lines, gate 10 self-test names the defect, corpus guard normalises text and withholds private paths (D-22, L-16 to L-18)
@@ -156,3 +183,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [FEAT] [E2.5] — OWNER D-67: bar tuned on the public half (0.4, logged), one dual-judge run on both splits (held-out scored once; gate exit 1 on the held-out records, 2 on the both-splits folder), calibration sheets exported, docs/labelling.md; eval_live --resume, measured planning figures, judging ledgered once
 - [FIX] [E2.5] — OWNER D-71 quality round on the public half: in-text provider citation tokens resolved (answer and hint), paragraph-end citations cover the sentences before them on the line, answer and support rules v2 (D-73); public B1 grounded 0.541 → 0.919, locator 0.679 → 0.991; held-out set refreshed as heldout-2 with `golden_tool.py refresh` (D-74); `eval_live --rules` (public only) and `--live-judges`
 - [ADD] [E2.3] — scripts/label_integrity.py: a local (127.0.0.1) integrity labelling page; one key per conversation, saved on every press, blind, output in the import format
+- [DOCS] [R3.1] — draft: user guides (quickstart, own course, evaluate, cost and privacy), example course-ta gate workflow, 0.1.0 release notes and semver policy, docs and privacy tests; init template on the measured D-81 setting

@@ -22,7 +22,7 @@ The software makes network requests only for these purposes:
 | --- | --- | --- |
 | Answers, routing, checks and hints | The OpenAI project you configure (Responses API with `store=false`) | Each learner question |
 | Course files and retrieval | A vector store in that same OpenAI project | `course-assistant ingest`, and each question |
-| Second evaluation judge | Anthropic | Evaluation runs only, never at runtime |
+| Second evaluation judge (only if you configure a two-judge panel) | Anthropic | Evaluation runs only, never at runtime |
 | Traces (optional) | A Langfuse project you configure, if `trace_sink: langfuse` | Each question; no text |
 | Demo only: daily spend counter | The hosted KV store you configure (one number per day) | Each live demo request |
 
