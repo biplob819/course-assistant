@@ -265,12 +265,102 @@ def course_gate(run_dir: Path, *, seed: int = 7) -> CourseVerdict:
     return v
 
 
-def render(v: CourseVerdict) -> str:
-    lines = [f"course gate: {v.run} ({v.split or 'unknown split'}) exit {v.exit_code}"]
+FIXTURE_NOTE = ("regression fixture: not shipped in the package; this project's CI checks it "
+                "for every released version")  # fmt: skip
+
+
+@dataclass(frozen=True)
+class CourseFiles:
+    """Where a course keeps what the release gate reads, beside its config by default."""
+
+    cases: Path  # the held-out cases the run was built from
+    public: Path | None  # the tuning split, for the coverage rule
+    tuning_log: Path
+    decisions: Path
+    config_dir: Path
+
+    @classmethod
+    def beside(
+        cls,
+        config: Path,
+        cases: Path,
+        *,
+        public: Path | None = None,
+        tuning_log: Path | None = None,
+        decisions: Path | None = None,
+    ) -> CourseFiles:
+        base = config.parent
+        return cls(cases=cases, public=public,
+                   tuning_log=tuning_log or base / "tuning-log.jsonl",
+                   decisions=decisions or base / "decisions.md", config_dir=base)  # fmt: skip
+
+
+def heldout_problem(files: CourseFiles, bar: float) -> str | None:
+    """Why a held-out run must not start, as `scripts/eval_live.py` refuses: a bar or support
+    rules change after the held-out split was scored needs a fresh held-out set (§5.4), and the
+    bar and ground version in use must be the logged ones."""
+    from course_assistant.answer.ground import GroundStep
+    from course_assistant.eval import tuning
+
+    log = tuning.read_log(files.tuning_log)
+    if tuning.fresh_heldout_required(log):
+        return ("the bar or the support rules changed after the held-out split was scored: "
+                "write a fresh held-out set (and log heldout_refreshed) first")  # fmt: skip
+    if tuning.unlogged(log, bar, GroundStep.version()):
+        return (f"a held-out run needs the grounding bar and support rules logged in "
+                f"{files.tuning_log.name}")  # fmt: skip
+    return None
+
+
+def course_check(run_dir: Path, *, config: Any, store: Any, assessments: Any,
+                 files: CourseFiles, calibration_run: Path | None, baseline_path: Path | None,
+                 env: Any) -> Any:  # fmt: skip
+    """The release gate (`gate.check_run`, the same code `scripts/release_gate.py` runs) with a
+    course's own inputs: its held-out file (every case `heldout`; the run must hold exactly
+    these ids), its tuning split, its tuning log and decisions, and its git repository (for
+    the append-only and exposure checks; both are skipped outside git, as for this
+    repository's own runs without git)."""
+    from course_assistant.eval import calibrate, gate
+
+    held, split = load_cases(files.cases)
+    if split != "heldout":
+        raise CourseEvalError(f"{files.cases.name} is not a held-out file: only a held-out run "
+                              "can pass the release gate")  # fmt: skip
+    public: list[GoldenCase] = []
+    if files.public is not None:
+        public, public_split = load_cases(files.public)
+        if public_split != "public":
+            raise CourseEvalError(f"{files.public.name} is not a tuning-split file")
+    decisions = (files.decisions.read_text(encoding="utf-8")
+                 if files.decisions.is_file() else "")  # fmt: skip
+    log_root = gate.git_root(files.tuning_log.parent.resolve())
+    course_root = gate.git_root(files.config_dir.resolve())
+    result = gate.check_run(
+        run_dir, config=config, store=store, assessments=assessments,
+        held=lambda: held, heldout_ids=lambda: frozenset(c.id for c in held),
+        public=lambda: public,
+        calibration=lambda: calibrate.certified_calibration(calibration_run or run_dir,
+                                                            log=files.tuning_log),
+        fixture=lambda: [],
+        log=lambda bar: gate.log_problems(bar, env, files.tuning_log,
+                                          decisions_text=decisions, root=log_root),
+        exposure=lambda h: gate.exposure(h, course_root),
+        baseline_path=baseline_path,
+    )  # fmt: skip
+    result.notes.append(FIXTURE_NOTE)
+    return result
+
+
+def render(v: Any) -> str:
+    """A `CourseVerdict` (thresholds only) or a release `Verdict`, as fixed lines."""
+    what = "course gate" if isinstance(v, CourseVerdict) else "release gate"
+    split = v.split if isinstance(v, CourseVerdict) else "heldout"
+    lines = [f"{what}: {v.run} ({split or 'unknown split'}) exit {v.exit_code}"]
     for g in v.gates:
         mark = "pass" if g.passed else "FAIL"
         value = f"{g.value:.0f} ms" if g.name == "latency_p95_ms" else f"{g.value:.3f}"
         lines.append(f"  {mark:<4} {g.name}: {value} over {g.n} (target {g.target})")
+    lines += [f"  failure: {f}" for f in v.failures]
     lines += [f"  error: {e}" for e in v.errors]
     lines += [f"  note: {n}" for n in v.notes]
     return "\n".join(lines)

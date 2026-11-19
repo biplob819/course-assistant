@@ -25,7 +25,6 @@ import contextlib
 import datetime as dt
 import json
 import os
-import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -78,40 +77,19 @@ def fixture_problems(fixture: Path | None = None) -> list[str]:
 
 def log_problems(bar: float | None, env: Mapping[str, str], log_path: Path | None = None,
                  ) -> list[str]:  # fmt: skip
-    """The tuning log: chain, continuity, the bar and ground version in use, fresh held-out,
-    append-only against git (where the log is this repository's)."""
-    from course_assistant.answer.ground import GroundStep
-    from course_assistant.eval import tuning
+    """The tuning log checks (`gate.log_problems`) on this repository's log and decisions."""
+    from course_assistant.eval import gate
 
-    path = log_path or TUNING_LOG
-    if not path.is_file():
-        return ["no tuning log"]
-    log = tuning.read_log(path)
-    out = tuning.chain_problems(path)
-    out += tuning.continuity_problems(log, DECISIONS.read_text(encoding="utf-8"))
-    out += tuning.unlogged(log, bar, GroundStep.version())
-    if tuning.fresh_heldout_required(log):
-        out.append("the bar or support rules changed after the held-out split was scored: "
-                   "write a fresh held-out set first (§5.4)")  # fmt: skip
-    if path.resolve().is_relative_to(ROOT):
-        out += tuning.append_only_problems(path.resolve(), ROOT, env) or []
-    return out
+    return gate.log_problems(bar, env, log_path or TUNING_LOG,
+                             decisions_text=DECISIONS.read_text(encoding="utf-8"),
+                             root=ROOT)  # fmt: skip
 
 
 def tracked_texts(root: Path | None = None) -> list[str]:
     """Every tracked file that is text by content (no NUL byte), whatever its suffix (D-54)."""
-    from course_assistant.eval.release import text_of
+    from course_assistant.eval import gate
 
-    root = root or ROOT
-    done = subprocess.run(["git", "ls-files", "-z"], cwd=root, capture_output=True, check=False)
-    texts = []
-    for f in done.stdout.decode("utf-8", errors="replace").split("\0"):
-        path = root / f
-        if f and path.is_file():
-            text = text_of(path.read_bytes())
-            if text is not None:
-                texts.append(text)
-    return texts
+    return gate.tracked_texts(root or ROOT)
 
 
 def private_heldout() -> list[Any] | None:
@@ -142,7 +120,9 @@ def evalkit_dir(folder: Path) -> Path:
 
 def live_folder(run: Path) -> Path:
     """The eval_live folder around an EvalKit run folder (RUN/evalkit/<run>)."""
-    return run.parent.parent if run.parent.name == "evalkit" else run
+    from course_assistant.eval import gate
+
+    return gate.live_folder(run)
 
 
 def load_course(config_path: Path, store_path: Path | None) -> tuple[Any, Any, Any]:
@@ -156,109 +136,30 @@ def load_course(config_path: Path, store_path: Path | None) -> tuple[Any, Any, A
 
 def load_baseline(baseline_path: Path | None, store: Any,
                   ) -> tuple[Any, list[str], str | None]:  # fmt: skip
-    """(values, snapshots, error). A first release (no baseline) is allowed only with no
-    --baseline and no LIVE.json; a baseline given or expected but missing, unreadable or not
-    `{"values": {...}, "snapshots": [...]}` is an error (exit 2 before the stops)."""
-    from course_assistant.eval import release
+    """`gate.load_baseline`: (values, snapshots, error) of the live or a given baseline."""
+    from course_assistant.eval import gate
 
-    state: Any = {}
-    if baseline_path is not None:
-        path, what = baseline_path, "the --baseline file"
-    else:
-        live = store.dir / release.LIVE_FILE
-        # lexists: a dangling or looping symlink is a file that cannot be read, not an absence
-        if not os.path.lexists(live):
-            if os.path.lexists(store.dir / release.BASELINE_FILE):
-                return None, [], "live-baseline.json exists without LIVE.json: the store is " \
-                    "inconsistent"  # fmt: skip
-            return None, [], None  # nothing has gone live: a first release
-        try:
-            state = json.loads(live.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None, [], "LIVE.json is unreadable: the live baseline cannot be found"
-        if not isinstance(state, dict) or not state.get("corpus_version"):
-            return None, [], "LIVE.json is malformed: the live baseline cannot be found"
-        path, what = store.dir / release.BASELINE_FILE, "the live baseline (live-baseline.json)"
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None, [], f"{what} is missing"
-    except (OSError, ValueError):
-        return None, [], f"{what} is unreadable or not JSON"
-    if not isinstance(data, dict) or set(data) - {"run", "values", "snapshots"} \
-            or "values" not in data or data["values"] is None:  # fmt: skip
-        return None, [], f"{what} is malformed (needs values and snapshots)"
-    snaps = data.get("snapshots", [])
-    if not isinstance(snaps, list) or not all(isinstance(x, str) for x in snaps):
-        return None, [], f"{what} is malformed (snapshots must be a list of names)"
-    if baseline_path is None and data.get("run") != state.get("run"):
-        return None, [], (f"{what} belongs to run {data.get('run')!r}, not the live run "
-                          f"{state.get('run')!r}")  # fmt: skip
-    return data["values"], list(snaps), None
+    return gate.load_baseline(baseline_path, store)
 
 
 def check_run(run: Path, *, config_path: Path, store_path: Path | None,
               calibration: Path | None, baseline_path: Path | None,
               env: Mapping[str, str]) -> Any:  # fmt: skip
-    """Gather every input of the verdict for one held-out run folder and apply the gate."""
-    from evalkit import run as R
-
-    from course_assistant.eval import release
-    from course_assistant.eval.dataset import corpus_context, load_public, to_case
-    from course_assistant.eval.release import ReleaseError
-    from course_assistant.eval.tuning import recorded_bar
+    """The one gate (`gate.check_run`) with this repository's inputs: the private held-out
+    folder and its MANIFEST, the public split, the committed tuning log and decisions, the
+    regression fixture and the tracked files."""
+    from course_assistant.eval import gate
+    from course_assistant.eval.dataset import load_public
 
     config, store, assessments = load_course(config_path, store_path)
-    corpus = store.current()
-    if corpus is None:
-        raise FileNotFoundError("no ingested corpus: run course-assistant ingest first")
-    cases = R.read_cases(run)
-    golden_versions = {str(c.meta.get("golden_corpus_version")) for c in cases.values()}
-    drift_file = live_folder(run) / "drift.json"
-    recorded = json.loads(drift_file.read_text(encoding="utf-8")) if drift_file.is_file() else {}
-    retired = frozenset(str(x) for x in recorded.get("retired", ()))
-    held = private_heldout()  # load_heldout: every line and the file match the MANIFEST
-    notes = []
-    expected: dict[str, Any] | None = None
-    converted: frozenset[str] = frozenset()
-    if held is not None and len(golden_versions) == 1:  # recompute where the cases exist
-        version = next(iter(golden_versions))
-        found = release.drift(held, corpus, version)
-        if set(found.retired) != {i for i in retired if i in {c.id for c in held}}:
-            raise ReleaseError("drift.json does not match the drift of the held-out cases on "
-                               "this corpus: re-run the gate")  # fmt: skip
-        retired = frozenset(found.retired)
-        converted = frozenset(found.converted)
-        context = corpus_context(corpus)
-        expected = {c.id: to_case(c, corpus, version, context=context) for c in found.cases}
-    public = load_public(PUBLIC)
-    if len(golden_versions) == 1:
-        public = list(release.drift(public, corpus, next(iter(golden_versions))).cases)
-    items = release.coverage_of_golden(public) + release.coverage_of_run(cases.values())
-    try:
-        bar: float | None = recorded_bar(R.read_records(run))
-    except Exception:
-        bar = config.grounding_bar
-        notes.append("bar read from the config (the run recorded none)")
-    base, snapshots, baseline_error = load_baseline(baseline_path, store)
-    inputs = release.GateInputs(
-        heldout_ids=heldout_ids(),
-        calibration=calibration_status(calibration or run),
-        fixture_problems=fixture_problems(),
-        log_problems=log_problems(bar, env),
-        coverage_problems=release.coverage_problems(items, corpus, assessments),
-        exposure=exposure(held),
-        expected_cases=expected,
-        retired=retired,
-        baseline=base,
-        baseline_snapshots=snapshots,
-        baseline_error=baseline_error,
-        baseline_from_live=baseline_path is None,
-        converted=converted,
-    )
-    result = release.verdict(run, inputs)
-    result.notes += notes
-    return result
+    return gate.check_run(
+        run, config=config, store=store, assessments=assessments,
+        held=private_heldout, heldout_ids=heldout_ids,
+        public=lambda: load_public(PUBLIC),
+        calibration=lambda: calibration_status(calibration or run),
+        fixture=fixture_problems, log=lambda bar: log_problems(bar, env),
+        exposure=exposure, baseline_path=baseline_path,
+    )  # fmt: skip
 
 
 def _report(result: Any, as_json: bool, out: Path | None) -> int:
@@ -288,21 +189,10 @@ def cmd_check(args: argparse.Namespace) -> int:
 
 
 def gated_settings(config: Any) -> dict[str, Any]:
-    """The settings §6.5 gates besides the corpus: the rules hash, the bar and the models (with
-    their effort). Recorded in LIVE.json at a flip; the removal-only shortcut needs them all
-    unchanged."""
-    import hashlib
+    """`gate.gated_settings` with the sample course's assessments file."""
+    from course_assistant.eval import gate
 
-    from course_assistant.answer.ask import Assistant
-
-    # the whole config and the assessments file too, so retrieval breadth, the window, the
-    # vector store or an assessment change all send a removal through the full gate (pass 10)
-    whole = json.dumps(config.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
-    return {"rules_hash": Assistant.rules_hash(), "grounding_bar": config.grounding_bar,
-            "answer_model": config.answer_model, "check_model": config.check_model,
-            "reasoning_effort": dict(config.reasoning_effort),
-            "config_sha256": hashlib.sha256(whole.encode("utf-8")).hexdigest(),
-            "assessments_sha256": hashlib.sha256(ASSESSMENTS.read_bytes()).hexdigest()}  # fmt: skip
+    return gate.gated_settings(config, ASSESSMENTS.read_bytes())
 
 
 RANK = {2: 4, 3: 3, 4: 2, 1: 1, 0: 0}  # exit-code precedence: 2 > 3 > 4 > 1 > 0
@@ -322,8 +212,7 @@ def _stop_gate(path: Path, code: int, message: str) -> int:
 def cmd_eval(args: argparse.Namespace) -> int:
     """Every exit path writes gate.json: at the run folder once one exists, else in the gate
     folder, else under --out."""
-    from course_assistant.answer.ask import Assistant
-    from course_assistant.eval.release import apply_removals, flip_live
+    from course_assistant.eval.release import apply_removals
 
     args.gate_json = args.out / "gate.json"
     if args.split != "heldout":
@@ -367,9 +256,11 @@ def cmd_eval(args: argparse.Namespace) -> int:
         result.notes.append(f"eval_live exited {live_code}")
     code = _report(result, args.json, args.gate_json)
     if result.exit_code == 0 and live_code == 0 and not args.no_flip:
-        state = flip_live(store, result, rules_hash=Assistant.rules_hash(),
-                          grounding_bar=config.grounding_bar, now=now,
-                          settings=gated_settings(config))  # fmt: skip
+        from course_assistant.eval import gate
+
+        state = gate.approve(
+            store, result, config=config, assessments_bytes=ASSESSMENTS.read_bytes(), now=now
+        )
         print(f"live corpus version is now {state['corpus_version'][:12]}", file=sys.stderr)
     return code
 

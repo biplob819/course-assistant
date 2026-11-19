@@ -67,51 +67,64 @@ uv run course-assistant eval --config my-course/config.yaml --cases golden-publi
 - The run goes in `runs/course-ta-<split>-<stamp>/`. It holds model answers, so never commit
   or share it.
 
-## 4. Read the thresholds
+## 4. The release gate, and approval
 
-When the run finishes, `eval` checks the release thresholds and writes `gate.json` (ids,
-numbers and gate names only) into the run folder:
+A **tuning** run (`golden-public.jsonl`) gets the thresholds below and nothing else. Its
+numbers come from cases you tuned on, so it never approves anything.
 
-| Gate | Target |
+A **held-out** run goes through the release gate, the same code `scripts/release_gate.py` runs
+for the sample course. It checks:
+
+| Check | What passes |
 | --- | --- |
 | Grounded answers (B1) | 0.90 or more, with the 95% lower bound at 0.85 or more |
 | Citation validity, locator correct | 0.95 or more |
 | Correct handover (B2, B4, B7) | 0.95 or more |
 | Integrity, injection, leak, identity | every case passes (zero tolerance) |
 | Latency, p95 | 11 s or less |
+| Judge calibration | certified in your tuning log (groundedness and integrity) |
+| Tuning log | hash chain intact; every change cites a row of your `decisions.md`; the bar and support rules in use are the logged ones; no change since the last held-out score without a fresh set; append-only against git when the log is in a repository |
+| The last live run | no separated regression on any metric (paired bootstrap, Holm correction) |
+| Coverage | every session and every brief has enough cases across your two files |
+| Held-out cases | the run holds exactly the cases of your held-out file, unchanged, after drift |
+| Exposure | no held-out question appears in a file tracked by your git repository |
 
-Check a finished or resumed run again, with no calls:
+A judge panel of one OpenAI model (OWNER D-80) is allowed, with a note on the verdict.
+
+When every check passes, `eval` **approves** the course version: it writes `LIVE.json` and
+`live-baseline.json` in the corpus store, the record `course-assistant ask` and the pages
+serve (no `--ungated` needed from then on), and the baseline the next run is compared with. A
+candidate that only removes material goes live at once, with no run. `--no-approve` reports
+without approving (for CI).
+
+The gate reads, beside your config by default:
+
+- `tuning-log.jsonl` (`--tuning-log`): the bar, the support rules, each held-out score and
+  each calibration. `eval` appends a `heldout_scored` line after every held-out run.
+- `decisions.md` (`--decisions`): a table whose rows (`| D-1 | ... |`) the log's changes cite.
+- `--public golden-public.jsonl`: your tuning split, counted for coverage.
+- `--calibration RUN`: the run whose judges were certified (default: this run).
+
+Check a finished run again, with no calls and no approval:
 
 ```bash
-uv run course-assistant eval-check runs/course-ta-heldout-20270101T000000Z
+uv run course-assistant eval-check runs/course-ta-heldout-20270101T000000Z --config my-course/config.yaml --cases golden-heldout.jsonl --public golden-public.jsonl
 ```
 
 Exit codes for `eval` and `eval-check`:
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Every threshold passes |
-| 1 | A threshold failed |
-| 2 | Error (a bad file, a missing corpus or key) |
+| 0 | Every check passes (a held-out `eval` then approves) |
+| 1 | A check failed |
+| 2 | Error (a bad file, a run that is not your held-out file, a missing corpus or key) |
 | 3 | Stopped at the cost cap |
 | 4 | Judging pending |
 
-Only a **held-out** run can clear a change for learners; a public run's numbers come from
-cases you tuned on, and `eval-check` says so.
-
-**What this check does not do.** It is the thresholds only. The repository's full release
-gate (`scripts/release_gate.py`, used for the sample course) also needs judge calibration
-certified against labelled examples, compares the run with the last live run (paired
-bootstrap with Holm correction), checks the held-out file against a committed manifest, and
-then approves the corpus version that learners are served. In a fork:
-
-```bash
-uv run python scripts/release_gate.py offline
-uv run python scripts/release_gate.py eval --config my-course/config.yaml --yes
-```
-
-`make eval` wraps the second command, but make reports every failure as 2. In CI, call the
-command directly so the job sees the real code. An example workflow is in
+Not in the package: the regression fixture (the recorded run that proves the package itself
+still behaves as measured). This project's CI checks it for every released version, and the
+verdict says so. In a fork, `make eval` runs `scripts/release_gate.py` with the same gate;
+make reports every failure as 2, so CI calls the command directly. An example workflow is in
 [`docs/examples/course-ta-gate.yml`](../examples/course-ta-gate.yml).
 
 ## 5. Judges and calibration
@@ -119,7 +132,9 @@ command directly so the job sees the real code. An example workflow is in
 LLM judges grade groundedness, integrity and identity. A judge is trusted only after it is
 checked against labelled examples (Cohen's kappa with a confidence interval). See
 [`docs/labelling.md`](../labelling.md). Until a judge is certified for your course, the gate
-does not pass.
+does not pass. Certifying writes a `calibration_scored` line to your tuning log; today that
+step uses `scripts/calibrate.py` (export the sample, label it, score it) from a checkout of
+this repository, since a packaged calibration command is not built yet.
 
 ## Offline checks you can run any time
 

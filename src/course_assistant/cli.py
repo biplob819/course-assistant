@@ -116,9 +116,13 @@ def build_parser() -> argparse.ArgumentParser:
         "eval",
         help="evaluate your course on your own golden cases (spends money; eval extra)",
         description="Run your golden cases (one split per file: tuning or held-out) through "
-        "the assistant with EvalKit and the probe judges, then check the release thresholds. "
-        "--dry-run writes the run folder and prints the estimate with no key and no call. "
-        "Exit 0 every threshold passes, 1 one fails, 2 error, 3 cost cap, 4 judging pending.",
+        "the assistant with EvalKit and the probe judges. A held-out run goes through the "
+        "release gate (thresholds, certified calibration in your tuning log, the tuning log "
+        "itself, coverage, exposure, drift and the last live run) and, on a pass, approves the "
+        "course version that `ask` and the pages serve. A tuning run checks the thresholds "
+        "only and never approves. --dry-run writes the run folder and prints the estimate with "
+        "no key and no call. Exit 0 pass, 1 a gate fails, 2 error, 3 cost cap, 4 judging "
+        "pending.",
     )
     ev.add_argument("--config", required=True, type=Path, help="config.yaml (ingested)")
     ev.add_argument("--cases", required=True, type=Path, help="your golden cases (JSONL)")
@@ -138,14 +142,33 @@ def build_parser() -> argparse.ArgumentParser:
                     help="judge at full price now instead of provider batches")  # fmt: skip
     ev.add_argument("--dry-run", action="store_true", help="write the folder, call nothing")
     ev.add_argument("--yes", action="store_true", help="confirm that this run spends money")
+    ev.add_argument("--no-approve", action="store_true",
+                    help="report only: never approve the course version (CI)")  # fmt: skip
     chk = sub.add_parser(
         "eval-check",
-        help="check the release thresholds on a finished `eval` run folder (no calls)",
-        description="The thresholds on a finished run (the folder `eval` wrote, or its EvalKit "
-        "run folder). Exit 0 pass, 1 a threshold fails, 2 error, 3 cost cap, 4 judging pending.",
+        help="the release gate on a finished `eval` run folder (no calls, never approves)",
+        description="A held-out run (with --config and --cases) gets the full release gate; a "
+        "tuning run gets the thresholds only. Never approves. Exit 0 pass, 1 a gate fails, 2 "
+        "error, 3 cost cap, 4 judging pending.",
     )
     chk.add_argument("run", type=Path, help="the run folder")
+    chk.add_argument("--config", type=Path, help="config.yaml (needed for a held-out run)")
+    chk.add_argument("--cases", type=Path, help="the held-out cases file the run was built from")
+    chk.add_argument("--store", type=Path, help="corpus store folder (default: corpus_store/)")
+    chk.add_argument("--assessments", type=Path,
+                     help="default: assessments.yaml next to the config")  # fmt: skip
+    chk.add_argument("--baseline", type=Path, help="per-case baseline (default: the live one)")
     chk.add_argument("--json", action="store_true", help="machine-readable output")
+    for p in (ev, chk):
+        p.add_argument("--public", type=Path,
+                       help="your tuning-split cases (counted for the coverage rule)")  # fmt: skip
+        p.add_argument("--tuning-log", type=Path,
+                       help="default: tuning-log.jsonl next to the config")  # fmt: skip
+        p.add_argument("--decisions", type=Path,
+                       help="the decisions the tuning log cites (default: decisions.md next to "
+                       "the config)")  # fmt: skip
+        p.add_argument("--calibration", type=Path,
+                       help="the run that certified the judges (default: this run)")  # fmt: skip
     pur = sub.add_parser(
         "purge",
         help="apply retention to the app store and retry open trace deletions (deletes)",
@@ -468,19 +491,70 @@ def _eval_runtime(config: object, corpus: object, assessments: object, folder: P
     return runtime, panel, recorder
 
 
-def _gate_report(folder: Path, as_json: bool = False) -> int:
+def _verdict(folder: Path, args: argparse.Namespace, env: Mapping[str, str],
+             course_data: tuple[Any, Any, Any] | None = None) -> Any:  # fmt: skip
+    """The verdict on a finished run: the full release gate for a held-out run, the
+    thresholds alone (never an approval) for a tuning run. `course_data` is (config, store,
+    assessments), loaded from the arguments when not given."""
     from course_assistant.eval import course
 
+    run_dir = course.evalkit_run_dir(folder)
+    thresholds = course.course_gate(run_dir)
+    if thresholds.split != "heldout":
+        thresholds.notes.append("a tuning run never approves a course version")
+        return thresholds
+    if args.config is None or args.cases is None:
+        raise course.CourseEvalError("a held-out run needs --config and --cases (the held-out "
+                                     "file) for the release gate")  # fmt: skip
+    if course_data is None:
+        from course_assistant.ingest import CorpusStore
+        from course_assistant.schemas import load_app_config
+        from course_assistant.schemas.config import load_assessments
+
+        config = load_app_config(args.config)
+        store = CorpusStore(args.store or args.config.parent / "corpus_store", config.cohort)
+        assessments = load_assessments(args.assessments or args.config.parent / "assessments.yaml")
+        course_data = (config, store, assessments)
+    config, store, assessments = course_data
+    files = course.CourseFiles.beside(
+        args.config,
+        args.cases,
+        public=args.public,
+        tuning_log=args.tuning_log,
+        decisions=args.decisions,
+    )
+    calibration = course.evalkit_run_dir(args.calibration) if args.calibration else None
+    return course.course_check(run_dir, config=config, store=store, assessments=assessments,
+                               files=files, calibration_run=calibration,
+                               baseline_path=getattr(args, "baseline", None), env=env)  # fmt: skip
+
+
+def _gate_report(folder: Path, args: argparse.Namespace, env: Mapping[str, str] | None = None,
+                 course_data: tuple[Any, Any, Any] | None = None) -> tuple[int, Any]:  # fmt: skip
+    """(exit code, verdict or None). Writes gate.json next to the run; prints fixed lines."""
+    from course_assistant.eval import course, gate
+    from course_assistant.eval.dataset import DatasetError
+    from course_assistant.eval.release import ReleaseError
+    from course_assistant.schemas import ConfigError
+
+    env = os.environ if env is None else env
     try:
-        verdict = course.course_gate(course.evalkit_run_dir(folder))
-    except course.CourseEvalError as exc:
-        print(f"eval-check: {exc}", file=sys.stderr)
-        return EXIT_CONFIG
-    out = folder / "gate.json" if not (folder / "run.json").is_file() else None
-    if out is not None:
-        out.write_text(verdict.to_json(), encoding="utf-8")
+        verdict = _verdict(folder, args, env, course_data)
+    except (course.CourseEvalError, ReleaseError, DatasetError, ConfigError,
+            FileNotFoundError) as exc:  # fmt: skip
+        print(f"{args.command}: {exc}", file=sys.stderr)  # our errors name ids, never text
+        return EXIT_CONFIG, None
+    except Exception as exc:  # anything else may quote input: its class only
+        print(f"{args.command}: the gate could not run ({type(exc).__name__})", file=sys.stderr)
+        return EXIT_CONFIG, None
+    out = gate.live_folder(course.evalkit_run_dir(folder)) / "gate.json"
+    out.write_text(verdict.to_json(), encoding="utf-8")
+    as_json = getattr(args, "json", False)
     print(verdict.to_json(), end="") if as_json else print(course.render(verdict))
-    return verdict.exit_code
+    return int(verdict.exit_code), verdict
+
+
+RANK = {2: 4, 3: 3, 4: 2, 1: 1, 0: 0}  # exit-code precedence, as the release gate: 2 > 3 > 4 > 1
 
 
 def _eval(args: argparse.Namespace, env: Mapping[str, str] | None = None) -> int:
@@ -500,12 +574,14 @@ def _eval(args: argparse.Namespace, env: Mapping[str, str] | None = None) -> int
 
     env = os.environ if env is None else env
     base = args.config.parent
+    assessments_path = args.assessments or base / "assessments.yaml"
     try:
         config = load_app_config(args.config)
-        assessments = load_assessments(args.assessments or base / "assessments.yaml")
+        assessments = load_assessments(assessments_path)
         manifest = load_manifest(args.manifest or base / "manifest.yaml")
         cases, split = course.load_cases(args.cases)
-        corpus = CorpusStore(args.store or base / "corpus_store", config.cohort).current()
+        store = CorpusStore(args.store or base / "corpus_store", config.cohort)
+        corpus = store.current()
         if corpus is None:
             raise ConfigError(f"no corpus; run course-assistant ingest --config {args.config} "
                               "first")  # fmt: skip
@@ -514,6 +590,15 @@ def _eval(args: argparse.Namespace, env: Mapping[str, str] | None = None) -> int
     except (ConfigError, IngestError, course.CourseEvalError) as exc:
         print(f"eval: {exc}", file=sys.stderr)
         return EXIT_CONFIG
+    if split == "heldout" and not args.dry_run and not args.no_approve:
+        # as the repo's gate: a candidate that only removes units goes live at once (§2.3)
+        from course_assistant.eval import gate
+        from course_assistant.eval.release import apply_removals
+
+        settings = gate.gated_settings(config, assessments_path.read_bytes())
+        if apply_removals(store, now=dt.datetime.now(dt.UTC), settings=settings):
+            print("eval: the candidate only removes units: live at once, no gate (§2.3)")
+            return EXIT_OK
     graded = any(c.rule == "B3" for c in cases)
     if graded and args.solutions is not None and not args.solutions.is_dir():
         print(f"eval: --solutions {args.solutions.name} is not a folder", file=sys.stderr)
@@ -541,6 +626,19 @@ def _eval(args: argparse.Namespace, env: Mapping[str, str] | None = None) -> int
         print("eval: graded-work (B3) cases need --solutions DIR (the model solutions the "
               "integrity judge reads; keep that folder private)", file=sys.stderr)  # fmt: skip
         return EXIT_CONFIG
+    files = course.CourseFiles.beside(
+        args.config,
+        args.cases,
+        public=args.public,
+        tuning_log=args.tuning_log,
+        decisions=args.decisions,
+    )
+    heldout = split == "heldout"
+    if heldout:
+        problem = course.heldout_problem(files, config.grounding_bar)
+        if problem is not None:
+            print(f"eval: {problem}", file=sys.stderr)
+            return EXIT_CONFIG
     try:
         budget = course.plan_budget(cases, args.max_cost)
     except ValueError as exc:
@@ -557,10 +655,27 @@ def _eval(args: argparse.Namespace, env: Mapping[str, str] | None = None) -> int
         rows = [r.model_dump_json() for r in getattr(recorder, "recordings", [])]
         (folder / "recordings.jsonl").write_text("".join(x + "\n" for x in rows),
                                                  encoding="utf-8")  # fmt: skip
+        if heldout:  # every run that scores the held-out split is logged (as eval_live)
+            from course_assistant.answer.ground import GroundStep
+            from course_assistant.eval.tuning import log_heldout_scored
+
+            log_heldout_scored(files.tuning_log, run=folder.name, bar=config.grounding_bar,
+                               ground_version=GroundStep.version())  # fmt: skip
     print(f"evalkit exit {code}")
     if not list((folder / "evalkit").glob("*/run.json")):
-        return code if code else EXIT_CONFIG
-    return _gate_report(folder)
+        return code if code in (EXIT_CONFIG, EXIT_COST_CAP) else EXIT_CONFIG
+    result, verdict = _gate_report(folder, args, env, course_data=(config, store, assessments))
+    if code and RANK.get(code, 4) > RANK.get(result, 4):
+        print(f"eval: EvalKit exited {code}, which outranks the verdict", file=sys.stderr)
+        return code if code in RANK else EXIT_CONFIG
+    if heldout and result == EXIT_OK and code == EXIT_OK and not args.no_approve:
+        from course_assistant.eval import gate
+
+        state = gate.approve(store, verdict, config=config,
+                             assessments_bytes=assessments_path.read_bytes(),
+                             now=dt.datetime.now(dt.UTC))  # fmt: skip
+        print(f"approved: the live course version is now {state['corpus_version'][:12]}")
+    return result
 
 
 def _date(text: str) -> object:
@@ -720,7 +835,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "eval":
         return _eval(args)
     if args.command == "eval-check":
-        return _gate_report(args.run, args.json)
+        return _gate_report(args.run, args)[0]
     if args.command == "purge":
         return _purge(args)
     return EXIT_OK

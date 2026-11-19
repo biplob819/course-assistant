@@ -149,10 +149,11 @@ def test_missing_corpus_or_cases_exit_2(tmp_path, capsys):
 
 @pytest.fixture(scope="module")
 def course_run(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """A whole `course-assistant eval` run, offline: scripted system, fake judges."""
+    """A whole `course-assistant eval` run of a tuning file, offline: scripted system, fake
+    judges. A tuning run gets the thresholds only and never approves."""
     tmp = tmp_path_factory.mktemp("course-eval")
     cases = _cases()
-    config, cases_file = _course(tmp, cases, split="heldout")
+    config, cases_file = _course(tmp, cases)
     out = tmp / "runs"
     solutions = tmp / "solutions"
     solutions.mkdir()
@@ -178,13 +179,16 @@ def course_run(tmp_path_factory: pytest.TempPathFactory) -> Path:
     finally:
         cli._eval_runtime = saved  # type: ignore[assignment]
     assert code == cli.EXIT_OK
-    [folder] = list(out.glob("course-ta-heldout-*"))
+    [folder] = list(out.glob("course-ta-public-*"))
+    store = CorpusStore(config.parent / "corpus_store", E.CONFIG.cohort)
+    assert not (store.dir / "LIVE.json").exists(), "a tuning run never approves"
     return folder
 
 
 def test_a_full_offline_run_passes_every_threshold_and_writes_gate_json(course_run):
     gate = json.loads((course_run / "gate.json").read_text(encoding="utf-8"))
-    assert gate["exit_code"] == 0 and gate["split"] == "heldout"
+    assert gate["exit_code"] == 0 and gate["split"] == "public"
+    assert "a tuning run never approves a course version" in gate["notes"]
     names = {g["name"] for g in gate["gates"]}
     assert {
         "grounded",

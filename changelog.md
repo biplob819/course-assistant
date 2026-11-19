@@ -22,8 +22,12 @@ waits for the owner (OWNER D-21, D-72). The first public release:
   reply, status and sources; gate-approved corpus only unless `--ungated`; $0.50 cap per
   question and the monthly budget checked against the ledger.
 - `course-assistant eval` evaluates a course on its own golden files (by path, one split per
-  file) with EvalKit and the probe judges, then checks the release thresholds;
-  `course-assistant eval-check` checks a finished run again, with no calls.
+  file) with EvalKit and the probe judges. A held-out run goes through the release gate (the
+  same package code `scripts/release_gate.py` runs: thresholds, certified calibration, the
+  course's tuning log and decisions, coverage, exposure, drift, regression against the last
+  live run) and on a pass approves the course version `ask` serves; a tuning run checks the
+  thresholds only and never approves. `course-assistant eval-check` re-checks a finished run
+  with no calls and no approval.
 - `course-assistant purge` and `make purge`: retention on the app store, retry of open trace
   deletions, exit 1 on a deletion request incomplete after 7 days.
 - `doctor` warns about a provider key only when the configured judge panel needs it.
