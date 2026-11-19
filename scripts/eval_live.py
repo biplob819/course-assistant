@@ -110,7 +110,9 @@ def evalkit_estimate(cases: list[Any]) -> float:
 
 def panel_estimate(cases: list[Any]) -> float:
     answered = sum(c.expected_status == "answered" for c in cases)
-    return (probes(cases) * JUDGE_USD_PER_PROBE * PANEL_HEADROOM
+    from course_assistant.eval.judges import PROBE_SAMPLES  # D-85: each probe asked n times
+
+    return (probes(cases) * JUDGE_USD_PER_PROBE * PANEL_HEADROOM * PROBE_SAMPLES
             + answered * SUPPORT_USD_PER_ANSWER)  # fmt: skip
 
 

@@ -252,7 +252,11 @@ class Assistant:
     INJECTION: ClassVar[str] = (
         "I can't help with that request. I can answer questions about the course materials."
     )
-    HANDED_OVER: ClassVar[str] = "Sent to the teaching team. They will reply here, in your history."
+    # D-85: "They will reply here" promised a reply on the team's behalf (the identity judge,
+    # rightly, on 8 public B9 cases); the assistant only says where a reply would appear
+    HANDED_OVER: ClassVar[str] = (
+        "Sent to the teaching team. Any reply from them will appear here, in your history."
+    )
     GENERIC_HINT: ClassVar[str] = (
         "I can't write graded work for you. Revisit the sessions this task draws on and work "
         "through the ideas there yourself."

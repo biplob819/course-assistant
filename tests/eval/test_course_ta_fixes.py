@@ -61,13 +61,13 @@ def completion(text: str) -> Completion:
 
 
 def panel(reply: Any = None, *, budget: RunBudget | None = None, priced: bool = False,
-          costs: tuple[float, float] = (0.001, 0.001),
+          costs: tuple[float, float] = (0.001, 0.001), samples: int = 1,
           ) -> tuple[JudgePanel, list[E.FakeAdapter]]:  # fmt: skip
     fakes = [E.FakeAdapter(reply or E.evalkit_reply(), cost=c) for c in costs]
     a, b = "claude-opus-5-5", "gpt-6.1-sol"
     p = JudgePanel([ProbeJudge(a, a, fakes[0], price=PRICES[a] if priced else None),
                     ProbeJudge(b, b, fakes[1], price=PRICES[b] if priced else None)],
-                   budget=budget, retry_sleep=_no_sleep)  # fmt: skip
+                   budget=budget, retry_sleep=_no_sleep, samples=samples)  # fmt: skip
     return p, fakes
 
 

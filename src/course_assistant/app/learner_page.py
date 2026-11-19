@@ -155,7 +155,10 @@ def _card(chat: LearnerChat, state: ChatState, shown: Shown, n: int) -> None:
             st.caption(card.check_note)
         if card.can_escalate and card.question_id:
             if shown.escalated:
-                st.success("Sent to the teaching team. They will reply here, in your history.")
+                st.success(
+                    "Sent to the teaching team. Any reply from them will appear here, "
+                    "in your history."
+                )
             elif st.button("Ask the teaching team", key=f"escalate-{n}") and _safely(
                 lambda: chat.escalate(state, card.question_id)
             ):
