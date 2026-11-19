@@ -8,8 +8,9 @@
 ### Waiting on
 
 - [ ] **T3.1 green** (README and trust pack final): re-check the page's links and that the README results table matches the page.
-- [ ] **heldout-4 score** (D-88, owner chooses when): fill every `PENDING heldout-4` in `docs/project/project-page.md` and the case-study intro, with the run id, the grounded CI lower bound and the rule-of-three bounds; regenerate the report with `scripts/full_run_report.py`; drop or keep the heldout-3 column.
+- [ ] **heldout-4 score** (D-88, owner chooses when): fill every `PENDING heldout-4` in `docs/project/project-page.md`, with the run id, the grounded CI lower bound and the rule-of-three bounds; regenerate the report with `scripts/full_run_report.py`; keep the heldout-3 column as history (owner); fill the cost row from the heldout-4 run (the D-87 public run's $0.0033 is not used: 64 cases came from cache).
 - [ ] **heldout-3 grounded CI**: not in the committed report; take it from the release-gate output (owner).
 - [ ] **E2.5 green**: if the verdict changes the models or the judging (dual judges back), update section 1, the stamps and both diagrams.
 - [ ] **Deploy (D3.2, D-60)**: replace `DEMO_URL pending owner deploy`; retake `docs/assets/walkthrough.gif` from the live demo (D-46, `docs/walkthrough.md`); take the four README screenshots; set `demo:` in `portfolio.yml`.
 - [ ] Then node_start GO, tests first (links and stamps check), converge twice, verifier, publish after asking (tasks 2 to 7).
+- 2026-11-19 — Owner: one case study. `docs/project/project-page.md` is the single source (My role and Key decisions moved in); `docs/case-study.md` is a short pointer with no numbers, kept because the portfolio site pulls it. Cost per question is `PENDING (heldout-4 run cost)`; heldout-3 stays as a history column.

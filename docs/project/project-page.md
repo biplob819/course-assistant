@@ -1,7 +1,8 @@
 # course-assistant: a teaching assistant that knows when not to answer
 
 > **Draft (OWNER D-72, PAG-01).** Laid out under the nine architecture areas (PRD). Not
-> published. Placeholders: `PENDING heldout-4` (the next held-out score, not yet run, D-88) and
+> published. This is the single source for the case study; `docs/case-study.md` only
+> points here. Placeholders: `PENDING heldout-4` (the next held-out score, not yet run, D-88) and
 > `DEMO_URL pending owner deploy`. Every number below names its run, its judging and its
 > calibration.
 
@@ -35,13 +36,13 @@ show the rule-of-three bound on the failure rate.
 | Leak | zero tolerance | `PENDING heldout-4` | 49/49, pass |
 | Identity | zero tolerance | `PENDING heldout-4` | 3/5, fail |
 | Latency p95 | ≤ 11 s | `PENDING heldout-4` | 9.2 s, pass |
-| Cost per question | within the $150 monthly cap | `PENDING heldout-4` | $0.0058 |
+| Cost per question | within the $150 monthly cap | `PENDING (heldout-4 run cost)` | $0.0058 |
 | Stamp | | single judge · model-panel calibration · run id `PENDING heldout-4` | single judge · certified (model panel) · course-ta-heldout-20261119T053928Z |
 
 heldout-3 is spent: it was scored once at the D-81 setting and the gate exited 1 (OWNER D-83,
 [report](../measurements/e2.5-heldout3-report.md)). Its CI lower bound on grounding is not in
 the committed report (`TODO`: owner to state it from the release-gate output). heldout-4 is
-written and will be scored once at the D-87 setting (D-88).
+written and will be scored once at the D-87 setting (D-88). Once it is scored, the heldout-3 column stays as history.
 
 ### Public half, tuned on (not a release number)
 
@@ -60,7 +61,7 @@ course-ta-public-20261119T132507Z, single judge GPT Sol (OWNER D-80), frozen set
 | Leak | 41/41 | failure rate ≤ 0.073 | pass |
 | Identity | 31/31 | failure rate ≤ 0.097 | pass |
 | Latency p95 | 13.6 s (p50 8.7 s) | | **fail** (≤ 11 s) |
-| Cost per question | $0.0033 (run $2.01, ledger) | | |
+| Cost per question | `PENDING (heldout-4 run cost)` | | not used: 64 cases were served from cache |
 
 The latency miss is in GPT Luna's route and integrity calls, whose prompts did not change; the
 answer step held at about 6 s (D-87). Identity on the public half is monitored, not certified:
@@ -150,6 +151,40 @@ A Streamlit demo on the sample course. It opens on recorded answers with no live
 questions sit behind passcodes, per-request and daily caps, and a separate provider project
 with a hard limit (Tech Spec §8; `docs/deploy.md`). Status: `DEMO_URL pending owner deploy`
 (D-60).
+
+## My role
+
+I wrote the product requirements and owned every ruling that shaped the system: multi-turn
+conversations, a passcode on every page, the monthly spend cap, the order in which held-out data
+may be used, and the restated latency target. I approved each paid evaluation run, ruled that a model panel labels the
+calibration sets (OWNER D-76, D-79), and own the live deploy, which is still pending.
+
+Claude Code built the code, tests, evaluation runs and documents under EvalKit's node harness.
+Every node needed tests first, two clean convergence runs and a fresh skeptical verifier that
+tried to disprove each criterion. Nodes went green only when nothing was left to disprove. The
+release gate took 10 verifier passes and the weekly digest's privacy check took 15. Every scope
+limit is written down as a decision ([decisions](../decisions.md)).
+
+## Key decisions
+
+**Score the held-out set once, and only after tuning (D-62, D-67, D-71).** The bar is tuned on
+the public half, and each held-out set is scored exactly once. When improvements were needed, a
+fresh held-out set was written instead of re-scoring the old one.
+*Trade-off:* every improvement round costs a new held-out set and another paid run. In exchange,
+the published held-out number is one nobody tuned against.
+
+**A passcode on every page, even for visitors who bring their own API key (D-45, D-48).** The
+demo and staff pages each have a numeric passcode, stored only as a salted hash, rate-limited
+and revocable. Learner and staff codes can never match.
+*Trade-off:* friction for casual visitors to the open-source demo. In exchange, nobody can drain
+the spend cap or reach the staff queue anonymously.
+
+**Keep the stronger answer model and restate the latency target to 11 s (D-61, D-65).** No
+setting met the original 8 s p95. The faster model answered 30 of 74 course questions where the
+stronger one answered 51.
+*Trade-off:* answers take about two seconds longer at p95. In exchange, the answers are more
+often grounded and less often "not covered". Later, OWNER D-80 moved answers to GPT Terra, so that the
+single judge, GPT Sol, never grades its own work.
 
 ## Demo and links
 
