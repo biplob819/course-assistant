@@ -261,11 +261,15 @@ RETIRED_SETS = {
     "heldout-1": "242c81236fa81b9af5dad1a76a056c3b0d3ff38304f1a352ec52b4482c941457",
     # scored once at the D-73 setting (E2.5); retired for heldout-3 (OWNER D-77, D-81)
     "heldout-2": "1c05ae90a41ebe08dcb71251a66f7bfa4bcb9837af6bb1f8fc340e7b28bdea4b",
+    # scored once at the D-81 setting (D-83); retired for heldout-4 (OWNER D-83, D-88)
+    "heldout-3": "c8eafb8d5ae764e0a04907e8ac6756804d559c762b36ef679b41117e9a4ae9d8",
 }
-RETIRING = "heldout-2"  # the set `refresh` retires: the live file until the swap
-HELDOUT_SOURCE = "cases_heldout3"  # the live held-out set "heldout-3" (private module in SRC)
+RETIRING = "heldout-3"  # the set `refresh` retires: the live file until the swap
+HELDOUT_SOURCE = "cases_heldout4"  # the live held-out set "heldout-4" (private module in SRC)
 RETIRED_DIR = ROOT / "golden" / "heldout" / "retired"
-FRESH_START = 600  # fresh ids are ta-<rule>-601 and up (heldout-2 used 501 and up)
+# fresh ids are ta-<rule>-801 and up: heldout-2 used 501 and up, heldout-3 601 and up, and the
+# public supplement (D-84) 701 and up
+FRESH_START = 800
 NEAR = 0.8  # word-set overlap at which two texts of 4+ words count as the same question
 
 

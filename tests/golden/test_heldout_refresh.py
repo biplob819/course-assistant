@@ -62,10 +62,10 @@ def source(**over):
     return SimpleNamespace(**base)
 
 
-def test_fresh_cases_get_new_ids_from_601_and_the_held_out_split():
+def test_fresh_cases_get_new_ids_from_801_and_the_held_out_split():
     cases = gt.build_fresh(source())
     ids = [c["id"] for c in cases]
-    assert ids[:2] == ["ta-b1-601", "ta-b1-602"] and "ta-b3-601" in ids and "ta-b10-604" in ids
+    assert ids[:2] == ["ta-b1-801", "ta-b1-802"] and "ta-b3-801" in ids and "ta-b10-804" in ids
     assert all(c["split"] == "heldout" for c in cases)
     assert len(ids) == len(set(ids))
     for c in cases:
@@ -112,7 +112,7 @@ def test_distinct_flags_copies_and_near_copies_by_id_only():
         "Something else entirely about owls and moons",
     ]
     found = gt.distinct(fresh, other)
-    assert "ta-b1-601" in found and "ta-b9-601" in found
+    assert "ta-b1-801" in found and "ta-b9-801" in found
     assert all(f.startswith("ta-") for f in found)
     assert gt.distinct(fresh, ["Something else entirely about owls and moons"]) == []
 
@@ -125,7 +125,8 @@ def test_the_composition_must_match_the_set_it_replaces():
 
 
 def test_the_retired_set_is_named_with_the_hash_of_its_file():
-    assert set(gt.RETIRED_SETS) >= {"heldout-1", "heldout-2"} and gt.RETIRING == "heldout-2"
+    assert set(gt.RETIRED_SETS) >= {"heldout-1", "heldout-2", "heldout-3"}
+    assert gt.RETIRING == "heldout-3"
     assert all(len(h) == 64 for h in gt.RETIRED_SETS.values())
     manifest = json.loads(gt.MANIFEST.read_text(encoding="utf-8"))
     assert manifest["file_sha256"] not in gt.RETIRED_SETS.values()  # the live set is not retired
