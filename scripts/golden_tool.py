@@ -258,10 +258,13 @@ RETIRED = frozenset({"ta-b1-065"})
 # reuse an earlier id, and text distinct from the public split and from every retired set.
 RETIRED_SETS = {
     "heldout-1": "242c81236fa81b9af5dad1a76a056c3b0d3ff38304f1a352ec52b4482c941457",
+    # scored once at the D-73 setting (E2.5); retired for heldout-3 (OWNER D-77, D-81)
+    "heldout-2": "1c05ae90a41ebe08dcb71251a66f7bfa4bcb9837af6bb1f8fc340e7b28bdea4b",
 }
-HELDOUT_SOURCE = "cases_heldout2"  # the live held-out set "heldout-2" (private module in SRC)
+RETIRING = "heldout-2"  # the set `refresh` retires: the live file until the swap
+HELDOUT_SOURCE = "cases_heldout3"  # the live held-out set "heldout-3" (private module in SRC)
 RETIRED_DIR = ROOT / "golden" / "heldout" / "retired"
-FRESH_START = 500  # fresh ids are ta-<rule>-501 and up
+FRESH_START = 600  # fresh ids are ta-<rule>-601 and up (heldout-2 used 501 and up)
 NEAR = 0.8  # word-set overlap at which two texts of 4+ words count as the same question
 
 
@@ -345,19 +348,41 @@ def _texts(cases: list[GoldenCase]) -> list[str]:
     return [t for c in cases for t in (c.question, *(q for q, _ in c.prior_turns))]
 
 
+def _sha(lines: list[str]) -> str:
+    return hashlib.sha256(("\n".join(lines) + "\n").encode()).hexdigest()
+
+
+def _lines(path: Path) -> list[str]:
+    return [x for x in path.read_text(encoding="utf-8").splitlines() if x]
+
+
 def refresh(cases: list[dict]) -> list[str]:
-    """Retire the first held-out set (written from the original source, checked against its
-    hash) and write the fresh set from HELDOUT_SOURCE. Returns problems (ids and counts only);
-    nothing is written when there is one."""
-    first = [to_line(c) for c in cases if c["split"] == "heldout" and c["id"] not in RETIRED]
-    digest = hashlib.sha256(("\n".join(first) + "\n").encode()).hexdigest()
-    if digest != RETIRED_SETS["heldout-1"]:
-        return ["the original source no longer builds the retired set heldout-1"]
-    public = read(PUBLIC)
-    retired = [GoldenCase.model_validate_json(x) for x in first]
+    """Retire the live held-out set RETIRING (checked against its hash) and write the fresh set
+    from HELDOUT_SOURCE, distinct from the public split and every retired set. A live set that
+    is already the fresh one is left as it is. `cases` is the built source, whose public split
+    the caller has checked. Returns problems (ids and counts only); nothing is written when
+    there is one."""
+    del cases
     fresh_dicts = build_fresh(_load(HELDOUT_SOURCE))
-    want = Counter(c.rule for c in retired)
-    fresh = [GoldenCase.model_validate_json(to_line(c)) for c in fresh_dicts]
+    held = [to_line(c) for c in fresh_dicts]
+    live = _lines(HELDOUT)
+    if live == held:
+        return []  # already refreshed
+    if _sha(live) != RETIRED_SETS[RETIRING]:
+        return [f"the live held-out file is not the set {RETIRING} named in RETIRED_SETS"]
+    earlier: list[str] = []
+    for name, digest in RETIRED_SETS.items():
+        if name == RETIRING:
+            continue
+        path = RETIRED_DIR / name / "cases.jsonl"
+        if not path.is_file() or _sha(_lines(path)) != digest:
+            return [f"the retired set {name} is missing or does not match its hash"]
+        earlier += _lines(path)
+    public = read(PUBLIC)
+    retired = [GoldenCase.model_validate_json(x) for x in [*earlier, *live]]
+    replaced = [GoldenCase.model_validate_json(x) for x in live]
+    want = Counter(c.rule for c in replaced)
+    fresh = [GoldenCase.model_validate_json(x) for x in held]
     found = composition_problems(fresh_dicts, dict(want)) + problems(public + fresh)
     found += leaks(public, fresh) + coverage(public + fresh)
     found += [f"not distinct: {i}" for i in distinct(fresh, _texts(public) + _texts(retired))]
@@ -365,12 +390,11 @@ def refresh(cases: list[dict]) -> list[str]:
     found += [f"id reused: {c.id}" for c in fresh if c.id in old_ids]
     if found:
         return found
-    out = RETIRED_DIR / "heldout-1"
+    out = RETIRED_DIR / RETIRING
     out.mkdir(parents=True, exist_ok=True)
-    (out / "cases.jsonl").write_text("\n".join(first) + "\n", encoding="utf-8")
-    (out / "MANIFEST.json").write_text(json.dumps(manifest_for(first), indent=2, sort_keys=True)
+    (out / "cases.jsonl").write_text("\n".join(live) + "\n", encoding="utf-8")
+    (out / "MANIFEST.json").write_text(json.dumps(manifest_for(live), indent=2, sort_keys=True)
                                        + "\n", encoding="utf-8")  # fmt: skip
-    held = [to_line(c) for c in fresh_dicts]
     HELDOUT.write_text("\n".join(held) + "\n", encoding="utf-8")
     MANIFEST.write_text(json.dumps(manifest_for(held), indent=2, sort_keys=True) + "\n",
                         encoding="utf-8")  # fmt: skip

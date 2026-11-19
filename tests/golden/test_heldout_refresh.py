@@ -62,10 +62,10 @@ def source(**over):
     return SimpleNamespace(**base)
 
 
-def test_fresh_cases_get_new_ids_from_501_and_the_held_out_split():
+def test_fresh_cases_get_new_ids_from_601_and_the_held_out_split():
     cases = gt.build_fresh(source())
     ids = [c["id"] for c in cases]
-    assert ids[:2] == ["ta-b1-501", "ta-b1-502"] and "ta-b3-501" in ids and "ta-b10-504" in ids
+    assert ids[:2] == ["ta-b1-601", "ta-b1-602"] and "ta-b3-601" in ids and "ta-b10-604" in ids
     assert all(c["split"] == "heldout" for c in cases)
     assert len(ids) == len(set(ids))
     for c in cases:
@@ -112,7 +112,7 @@ def test_distinct_flags_copies_and_near_copies_by_id_only():
         "Something else entirely about owls and moons",
     ]
     found = gt.distinct(fresh, other)
-    assert "ta-b1-501" in found and "ta-b9-501" in found
+    assert "ta-b1-601" in found and "ta-b9-601" in found
     assert all(f.startswith("ta-") for f in found)
     assert gt.distinct(fresh, ["Something else entirely about owls and moons"]) == []
 
@@ -125,7 +125,7 @@ def test_the_composition_must_match_the_set_it_replaces():
 
 
 def test_the_retired_set_is_named_with_the_hash_of_its_file():
-    assert set(gt.RETIRED_SETS) >= {"heldout-1"}
+    assert set(gt.RETIRED_SETS) >= {"heldout-1", "heldout-2"} and gt.RETIRING == "heldout-2"
     assert all(len(h) == 64 for h in gt.RETIRED_SETS.values())
     manifest = json.loads(gt.MANIFEST.read_text(encoding="utf-8"))
     assert manifest["file_sha256"] not in gt.RETIRED_SETS.values()  # the live set is not retired
@@ -137,3 +137,44 @@ def test_no_fresh_id_reuses_an_id_of_the_public_split():
     assert not public & {c["id"] for c in gt.build_fresh(source())}
     manifest = json.loads(gt.MANIFEST.read_text(encoding="utf-8"))
     assert not public & set(manifest["cases"])
+
+
+def _live(tmp_path, monkeypatch, lines, retired_sets):
+    held = tmp_path / "cases.jsonl"
+    held.write_text("".join(x + "\n" for x in lines), encoding="utf-8")
+    monkeypatch.setattr(gt, "HELDOUT", held)
+    monkeypatch.setattr(gt, "MANIFEST", tmp_path / "MANIFEST.json")
+    monkeypatch.setattr(gt, "RETIRED_DIR", tmp_path / "retired")
+    monkeypatch.setattr(gt, "RETIRED_SETS", retired_sets)
+    monkeypatch.setattr(gt, "RETIRING", "set-b")
+    monkeypatch.setattr(gt, "_load", lambda _name: source())
+    return held
+
+
+def test_refresh_retires_only_the_live_set_named_by_its_hash(tmp_path, monkeypatch):
+    # synthetic files only (never golden/heldout): a live file that is not the named set
+    held = _live(tmp_path, monkeypatch, ['{"id": "x"}'], {"set-b": "0" * 64})
+    assert gt.refresh([]) == ["the live held-out file is not the set set-b named in RETIRED_SETS"]
+    assert held.read_text(encoding="utf-8") == '{"id": "x"}\n'
+    assert not (tmp_path / "retired").exists() and not (tmp_path / "MANIFEST.json").exists()
+
+
+def test_refresh_needs_every_earlier_retired_set_on_disk_and_matching(tmp_path, monkeypatch):
+    live = ['{"id": "x"}']
+    sets = {"set-a": "1" * 64, "set-b": gt._sha(live)}
+    held = _live(tmp_path, monkeypatch, live, sets)
+    assert gt.refresh([]) == ["the retired set set-a is missing or does not match its hash"]
+    (tmp_path / "retired" / "set-a").mkdir(parents=True)
+    (tmp_path / "retired" / "set-a" / "cases.jsonl").write_text("other\n", encoding="utf-8")
+    assert gt.refresh([]) == ["the retired set set-a is missing or does not match its hash"]
+    assert held.read_text(encoding="utf-8") == '{"id": "x"}\n'
+    assert not (tmp_path / "retired" / "set-b").exists()
+
+
+def test_refresh_leaves_a_live_set_that_is_already_the_fresh_one(tmp_path, monkeypatch):
+    fresh = [gt.to_line(c) for c in gt.build_fresh(source())]
+    held = _live(tmp_path, monkeypatch, fresh, {"set-b": "2" * 64})
+    before = held.read_text(encoding="utf-8")
+    assert gt.refresh([]) == []  # build reruns refresh: a no-op once the swap is done
+    assert held.read_text(encoding="utf-8") == before
+    assert not (tmp_path / "retired").exists()
