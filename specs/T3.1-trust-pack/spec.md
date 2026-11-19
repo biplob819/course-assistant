@@ -6,7 +6,7 @@
 Publish the trust documents (NFR2, NFR7): behavioral spec linked to cases and results, data card
 and privacy notice, DPDP mapping with a UK GDPR column, incident runbook with the 72-hour
 report, off-switch test evidence. Drafted early under OWNER D-72; nothing turns green until
-E2.5 and D3.2 are green and the D-71 run exists.
+E2.5 and D3.2 are green and the heldout-4 run exists (D-88).
 
 ## Outputs
 - `docs/trust/model-card.md` — models, chosen setting, intended and out-of-scope use, results with status, limits.
@@ -19,4 +19,5 @@ E2.5 and D3.2 are green and the D-71 run exists.
 
 ## Rules
 Every factual claim points to a file, test or decision (L-8/L-16). Numbers from the final run
-read `PENDING (D-71)` until it exists. No course material, learner data or held-out text.
+read `PENDING (heldout-4)` until it exists. No PENDING marker of any kind
+remains in `docs/trust/` at green. No course material, learner data or held-out text.

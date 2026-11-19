@@ -10,4 +10,5 @@
   - TRU-04: runbook names its four steps (detect, pause, notify the data fiduciary, 72-hour report); detect signals name their tests; live off-switch evidence `PENDING (D3.2 owner attest)`.
   - Model card, methodology, threat model and known limits moved off the dual-judge and Sol facts.
   - New offline tests: `tests/trust/test_trust_pack.py`. Link checker over `docs/trust/` (tests, paths and decisions resolve), spec ids equal the public file, data-card counts, DPDP columns and duties, runbook steps, and no fixed text claims a person or promises for the team (B9, D-85).
+  - Owner (19 Nov, via the coordinator): criteria and spec now say no PENDING marker of any kind remains in `docs/trust/` at green. `test_no_pending_marker_remains_in_the_pack_at_green` skips until every T3.1 row is green; the verifier can call `pending_markers()` any time. `make purge` comes from the R3.1 lane; the docs keep "not built yet" until merge. B9/B10 status mismatches wait for heldout-4.
   - Open: on the D-87 public run, status-as-expected is 0.935 for B9 and 0.722 for B10. These are not gates and have not been read case by case.

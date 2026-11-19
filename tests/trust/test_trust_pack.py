@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from harness_lib import ROOT
+from harness_lib import CATALOG_TSV, ROOT, parse_catalog
 
 TRUST = ROOT / "docs" / "trust"
 DOCS = sorted(TRUST.glob("*.md"))
@@ -241,3 +241,44 @@ def test_no_fixed_text_claims_a_person_or_promises_for_the_teaching_team():
     assert "handed_over" in texts
     bad = {k: v for k, v in texts.items() if IDENTITY_CLAIM.search(v)}
     assert not bad, bad
+
+
+# Owner, 19 Nov: no PENDING marker of any kind remains in docs/trust/ at green. Drafts carry
+# `PENDING (heldout-4)` and `PENDING (D3.2 owner attest)`, so the check bites only once T3.1 is
+# green; the verifier can call `pending_markers()` at any time.
+PENDING = re.compile(r"\bPENDING\b")
+
+
+def pending_markers(docs: list[Path] = DOCS) -> list[str]:
+    """`file:line` of every PENDING marker in the trust pack."""
+    return [
+        f"{p.name}:{n}"
+        for p in docs
+        for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+        if PENDING.search(line)
+    ]
+
+
+def node_is_green(node: str, catalog: str) -> bool:
+    caps = [c for c in parse_catalog(catalog) if c.node == node]
+    return bool(caps) and all(c.status == "green" for c in caps)
+
+
+def test_pending_helpers_find_markers_and_read_node_status(tmp_path):
+    doc = tmp_path / "x.md"
+    doc.write_text(
+        "ok\nvalue `PENDING (heldout-4)`\npending in lower case is prose\n", encoding="utf-8"
+    )
+    assert pending_markers([doc]) == ["x.md:2"]
+    hdr = "cap_id\tnode\tstatus\tproof\tnote\n"
+    assert node_is_green("T3.1", hdr + "TRU-01\tT3.1\tgreen\tp\tn\n")
+    assert not node_is_green(
+        "T3.1", hdr + "TRU-01\tT3.1\tgreen\tp\tn\nTRU-02\tT3.1\tbuilding\t\tn\n"
+    )
+    assert not node_is_green("T3.1", hdr)
+
+
+def test_no_pending_marker_remains_in_the_pack_at_green():
+    if not node_is_green("T3.1", CATALOG_TSV.read_text(encoding="utf-8")):
+        pytest.skip("T3.1 is not green; drafts may carry PENDING markers (OWNER D-72)")
+    assert not pending_markers(), pending_markers()
