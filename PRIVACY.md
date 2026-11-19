@@ -39,9 +39,18 @@ says so.
 | Escalations and teaching-team replies | App store | As above | As above |
 | Consent records | App store | Pilot length + 1 year (proof of consent) | `make purge` |
 | Access log | App store | 1 year, no question text | `make purge` |
-| Traces | JSONL file or Langfuse | 30 days, **no question or answer text** | `make purge`, trace delete by pseudonymous id |
+| Traces | JSONL file or Langfuse | **No question or answer text.** Target 30 days; removal by age is not automated yet | A learner's delete removes their lines at once; `make purge` retries any that failed (JSONL file only). Older lines: delete or rotate `trace.jsonl`, or set retention in Langfuse |
 | Weekly digest rows | App store | Pilot length; counts only | — |
-| Course files and vector store | OpenAI | Until teardown | `make teardown` at the end of a pilot |
+| Course files and vector store | OpenAI | Until teardown | Delete the vector store and its files in your OpenAI project at the end of a pilot (a scripted `make teardown` is planned, P4.3) |
+
+**Running the purge.** `make purge PILOT_END=YYYY-MM-DD YES=--yes` (or
+`course-assistant purge --app-dir DIR --pilot-end YYYY-MM-DD --yes`) applies the periods
+above to the app store in `APP_DIR` (default `runs/app`, the pages' `CA_APP_DIR`). It first
+retries trace deletion for every open deletion request on that folder's `trace.jsonl`. Then
+it deletes conversation text after pilot end + 30 days, consent records after pilot end +
+1 year and access-log rows after 1 year. It refuses without `--yes`, never creates a store,
+and exits 1 when a deletion request is still incomplete after 7 days. Run it daily during a
+pilot.
 
 ## Rules the code enforces
 

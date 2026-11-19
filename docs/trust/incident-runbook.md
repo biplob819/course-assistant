@@ -12,7 +12,7 @@
 | Any `_settle` exception | Audit and alert, no text | `specs/D3.1-demo-guard/RUN-STATE.md` |
 | Leak scan or injection flag | Answer flags, traces (no text) | Tech Spec §5.7; `tests/answer/test_ask.py` |
 | Weekly release gate fails with no change on our side | CI | Tech Spec §6.5 |
-| Purge job: a deletion request older than 7 days | `make purge` fails | Tech Spec §7 |
+| Purge job: a deletion request older than 7 days | `make purge` exits 1 and gives the overdue count | Tech Spec §7; `tests/release/test_purge_cli.py` |
 | Learner or teaching-team report | Escalation queue | `specs/B2.1-escalation/` |
 
 ## 1. Pause (kill switch)

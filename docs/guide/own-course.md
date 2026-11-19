@@ -86,6 +86,13 @@ store against the manifest when it finishes.
 If your manifest paths are relative to another folder, pass `--root`; if the manifest is not
 next to the config, pass `--manifest`.
 
+Try a question on what you ingested. `--ungated` is needed until a held-out run has passed
+the release gate for this version of the course:
+
+```bash
+uv run course-assistant ask "What does session 1 say about choosing a model?" --config my-course/config.yaml --ungated
+```
+
 ## 5. Evaluate before learners use it
 
 A new course is not ready because ingest worked. Write a small golden set for it and run the

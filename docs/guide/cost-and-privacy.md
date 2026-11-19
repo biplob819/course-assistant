@@ -38,6 +38,9 @@ data is kept, is [`PRIVACY.md`](../../PRIVACY.md).
   listed.
 - Evaluation run folders (`runs/`) hold model answers. They are git-ignored; keep them that
   way.
+- Run `make purge PILOT_END=YYYY-MM-DD YES=--yes` daily during a pilot. It applies the
+  retention periods to the app store and fails if a learner's deletion request is still
+  incomplete after 7 days.
 
 Before a real cohort uses it, the institution that runs it decides the legal basis, the
 notice to learners and the agreements. `PRIVACY.md` and

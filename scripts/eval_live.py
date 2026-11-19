@@ -51,26 +51,31 @@ HELDOUT = ROOT / "golden" / "heldout"
 SOLUTIONS = HELDOUT / "solutions"
 MANIFEST = ROOT / "sample_course" / "manifest.yaml"
 ASSESSMENTS = ROOT / "sample_course" / "assessments.yaml"
-JUDGES = ("gpt-6.1-sol",)  # OWNER D-80: single judge (dual, D-12, was claude-opus-5-5 + this)
-EXTRACTOR = "gpt-6-luna"  # OWNER D-80 (was claude-haiku-5-5)
-SYSTEM_ALIAS = "course-ta"
-# measured on the E2.5 public tuning run (course-ta-public-20261117T060529Z: 214 cases, 110
-# probes, 98 answered; ledger): the figures below keep at least 1.5 times these
-MEASURED_E25 = {"evalkit_usd_per_case": 0.0135, "judge_usd_per_probe": 0.0065,
-                "support_usd_per_answer": 0.0101}  # fmt: skip
-JUDGE_USD_PER_PROBE = 0.02  # two judges, one probe (was 0.04 planning; 3x measured)
-EVALKIT_USD_PER_CASE = 0.025  # extractor plus two groundedness judges per answer (~1.9x measured)
-SUPPORT_USD_PER_ANSWER = 0.02  # two judges on an answer's few L2 sentences (2x measured)
-PANEL_HEADROOM = 2.0  # the judges' share covers a re-ask of every probe
-# the two figures above that say "two judges" were measured on a dual panel; a panel of
-# another size scales them (OWNER D-80 runs one judge, so its judging is half)
-JUDGE_SHARE = len(JUDGES) / 2
+# the panel, the cost figures and the run pieces are the packaged ones (`course-assistant
+# eval`, R3.1), so this script and a course team's own evaluation price and run the same way
+from course_assistant.eval.course import (  # noqa: E402
+    EVALKIT_USD_PER_CASE,
+    JUDGE_SHARE,
+    JUDGE_USD_PER_PROBE,
+    MEASURED_E25,
+    PANEL_HEADROOM,
+    SUPPORT_USD_PER_ANSWER,
+    SYSTEM_ALIAS,
+    estimate,
+    evalkit_args,
+    evalkit_config,
+    evalkit_estimate,
+    panel_estimate,
+    plan_budget,
+    probes,
+)
+from course_assistant.eval.panel import EXTRACTOR, JUDGES  # noqa: E402  OWNER D-80
+
 TUNING_LOG = ROOT / "docs" / "measurements" / "tuning-log.jsonl"
-
-
-def evalkit_config(seed: int = 7) -> str:
-    return (f"models: [{SYSTEM_ALIAS}]\nsystems: {{{SYSTEM_ALIAS}: course_ta}}\n"
-            f"judges: [{', '.join(JUDGES)}]\nextractor: {EXTRACTOR}\nseed: {seed}\n")  # fmt: skip
+__all__ = ["EVALKIT_USD_PER_CASE", "EXTRACTOR", "JUDGES", "JUDGE_SHARE", "JUDGE_USD_PER_PROBE",
+           "MEASURED_E25", "PANEL_HEADROOM", "SUPPORT_USD_PER_ANSWER", "SYSTEM_ALIAS",
+           "estimate", "evalkit_args", "evalkit_config", "evalkit_estimate", "panel_estimate",
+           "plan_budget", "probes"]  # fmt: skip
 
 
 def select(split: str, heldout_dir: Path = HELDOUT) -> list[Any]:
@@ -98,31 +103,6 @@ def subset(cases: list[Any], split: str, rules: str | None) -> list[Any]:
     if unknown or not wanted:
         raise ValueError(f"unknown rule(s) {unknown}; use {', '.join(RULE_NAMES)}")
     return [c for c in cases if c.rule in wanted]
-
-
-def probes(cases: list[Any]) -> int:
-    """Cases a probe judge reads: B3 (integrity), B9 (identity), B8 and B10 (leak)."""
-    return sum(c.rule in ("B3", "B8", "B9", "B10") for c in cases)
-
-
-def evalkit_estimate(cases: list[Any], *, replay: bool = False) -> float:
-    """EvalKit's share: generating each case (nothing on a replay) plus extracting and
-    judging its claims."""
-    from course_assistant.eval.system import PER_CASE_USD
-
-    return len(cases) * ((0.0 if replay else PER_CASE_USD) + EVALKIT_USD_PER_CASE)
-
-
-def panel_estimate(cases: list[Any]) -> float:
-    answered = sum(c.expected_status == "answered" for c in cases)
-    from course_assistant.eval.judges import PROBE_SAMPLES  # D-85: each probe asked n times
-
-    return JUDGE_SHARE * (probes(cases) * JUDGE_USD_PER_PROBE * PANEL_HEADROOM * PROBE_SAMPLES
-                          + answered * SUPPORT_USD_PER_ANSWER)  # fmt: skip
-
-
-def estimate(cases: list[Any], *, replay: bool = False) -> float:
-    return evalkit_estimate(cases, replay=replay) + panel_estimate(cases)
 
 
 def heldout_gate(split: str, log_path: Path = TUNING_LOG) -> str | None:
@@ -177,35 +157,13 @@ def merge_probe_summary(previous: dict[str, Any], calls: int, usd: float) -> dic
             "probe_judge_usd": float(previous.get("probe_judge_usd", 0.0)) + usd}  # fmt: skip
 
 
-def plan_budget(cases: list[Any], max_cost: float, *, replay: bool = False) -> Any:
-    """One cap for the run: the judges' share sized from the probes, EvalKit the rest. Refused
-    when either share would be below its estimate."""
-    from course_assistant.eval.judges import RunBudget
-
-    panel = panel_estimate(cases)
-    if panel + evalkit_estimate(cases, replay=replay) > max_cost:
-        raise ValueError(f"the estimate ${estimate(cases, replay=replay):.2f} is over the cap "
-                         f"${max_cost:.2f}")  # fmt: skip
-    return RunBudget(max_cost, panel)
-
-
 def prepare(out_dir: Path, cases: list[Any], corpus: Any) -> Path:
-    """Write the task folder and evalkit.yaml; return the task YAML path. The golden version
-    is accepted only for the corpus that was ingested (E2.3). Drift is applied first (E2.4
-    GAT-04): cases whose gold units are gone are retired or converted, and `drift.json` (ids
-    only) records which."""
-    from course_assistant.eval.dataset import build_rows, golden_version_for, write_task_dir
-    from course_assistant.eval.release import drift
+    """The packaged `course.prepare` with the sample course's manifest, from the repo root:
+    drift first, then the task folder, drift.json and evalkit.yaml (E2.3, E2.4 GAT-04)."""
+    from course_assistant.eval import course
     from course_assistant.schemas.config import load_manifest
 
-    version = golden_version_for(corpus, load_manifest(MANIFEST), ROOT)
-    found = drift(cases, corpus, version)
-    rows = build_rows(list(found.cases), corpus, version)
-    task = write_task_dir(out_dir, rows)
-    (out_dir / "drift.json").write_text(json.dumps(found.record(corpus.corpus_version), indent=1)
-                                        + "\n", encoding="utf-8")  # fmt: skip
-    (out_dir / "evalkit.yaml").write_text(evalkit_config(), encoding="utf-8")
-    return task
+    return course.prepare(out_dir, cases, corpus, load_manifest(MANIFEST), ROOT)
 
 
 class _Resumed(Exception):
@@ -274,9 +232,9 @@ def main(argv: list[str] | None = None) -> int:
             print("eval_live: this run makes paid API calls; pass --yes to confirm",
                   file=sys.stderr)  # fmt: skip
             return 2
-        from course_assistant.eval.judges import family
+        from course_assistant.eval.panel import needed_keys
 
-        need = {"OPENAI_API_KEY"} | {f"{family(m).upper()}_API_KEY" for m in (*JUDGES, EXTRACTOR)}
+        need = needed_keys(JUDGES, EXTRACTOR)
         missing = sorted(k for k in need if not os.environ.get(k))
         if missing:
             print(f"eval_live: {', '.join(missing)} not set (uv run --env-file .env ...)",
@@ -353,15 +311,6 @@ def write_recordings(path: Path, new: Any, *, resume: bool) -> None:
     if resume and path.is_file():
         rows = [x for x in path.read_text(encoding="utf-8").splitlines() if x.strip()] + rows
     path.write_text("".join(x + "\n" for x in rows), encoding="utf-8")
-
-
-def evalkit_args(out_dir: Path, task: Path, n: int, usd: float, *,
-                 live_judges: bool) -> list[str]:  # fmt: skip
-    """`evalkit run` arguments. `--live-judges` judges at full price now instead of waiting for
-    provider batches (used to keep tuning rounds short; a pending batch is never paid twice)."""
-    out = ["run", str(out_dir / "evalkit.yaml"), "--task", str(task), "--n", str(n),
-           "--out", str(out_dir / "evalkit"), "--max-cost", f"{usd:.4f}"]  # fmt: skip
-    return [*out, "--live-judges"] if live_judges else out
 
 
 def _run(args: argparse.Namespace, config: Any, corpus: Any, out_dir: Path, task: Path,

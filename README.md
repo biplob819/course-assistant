@@ -127,6 +127,8 @@ owner's go-ahead, OWNER D-21).
 
 For your own course, `course-assistant init` writes a starter config, manifest and
 assessments file, and `course-assistant doctor` checks the setup offline with exit codes.
+`course-assistant ask` answers one question, `course-assistant eval` measures the course on
+your own golden files, and `make purge` applies the retention periods.
 Guides (drafts for the release, R3.1): [quickstart](https://github.com/biplob819/course-assistant/blob/main/docs/guide/quickstart.md) ·
 [bring your own course](https://github.com/biplob819/course-assistant/blob/main/docs/guide/own-course.md) · [evaluate your course](https://github.com/biplob819/course-assistant/blob/main/docs/guide/evaluate.md) ·
 [cost and privacy](https://github.com/biplob819/course-assistant/blob/main/docs/guide/cost-and-privacy.md).

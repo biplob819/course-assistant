@@ -72,19 +72,31 @@ uv run course-assistant ingest --config my-sample/config.yaml --manifest sample_
 The second command uploads the split course text to your vector store. It ends with
 `reconciled: vector store vs_... holds N units`.
 
-**6. Ask questions.** This runs 30 questions from the public golden set through the full
-answer path and prints latency, cost and each status:
+**6. Ask a question.** This sends one question through the full answer path (routing, the
+answer, the grounding and integrity checks) and prints the reply, its status and its
+sources:
 
 ```bash
-uv run python scripts/smoke_live.py --config my-sample/config.yaml --latency-only --yes
+uv run course-assistant ask "Which three questions should I ask about a user problem before choosing a model?" --config my-sample/config.yaml --assessments sample_course/assessments.yaml --ungated
 ```
 
-It prints its cost estimate first and stops if the estimate is over `--max-cost` (default
-$5). Results go to `runs/smoke-<stamp>.json`, which is git-ignored.
+You should see `status: answered`, a short answer and a source such as
+`[1] Session 1 slides, slide 3`. Try a question the course does not cover, or ask it to write
+an assignment for you, to see `not_covered` and `hint_only`.
 
-> **Pending (R3.1).** A one-question command (`course-assistant ask`) and a local run of the
-> learner page without the demo's secrets are not built yet. The learner page today needs
-> the demo setup in [`docs/deploy.md`](../deploy.md).
+- `--ungated` answers from the course you just ingested. Normally `ask` serves only a course
+  version that has passed the release gate (see [evaluate your course](evaluate.md)). A fresh
+  ingest has not, so without `--ungated` it refuses.
+- Each question is capped at $0.50 and refused if this month's ledger
+  (`runs/ledger.jsonl`) cannot cover it within `monthly_budget_usd`. A sample-course
+  question costs about $0.006.
+- `ask` keeps no history and never prints your key. Add `--json` for one JSON object.
+
+To see latency and cost over 30 questions from the public golden set, run
+`uv run python scripts/smoke_live.py --config my-sample/config.yaml --latency-only --yes`.
+
+> **Pending (R3.1).** A local run of the learner page without the demo's secrets is not
+> built yet. The learner page today needs the demo setup in [`docs/deploy.md`](../deploy.md).
 
 ## When you are done
 

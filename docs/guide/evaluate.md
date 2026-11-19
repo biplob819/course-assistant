@@ -5,10 +5,9 @@ results on that course. This guide covers writing a golden set, running it and r
 release gate. The method behind it is in Tech Spec §6 and
 [`docs/trust/evaluation-methodology.md`](../trust/evaluation-methodology.md).
 
-> **Draft (R3.1).** The evaluation scripts live in `scripts/` and read the golden set from
-> fixed paths in this repository (`golden/public/` and the private `golden/heldout/`). To
-> evaluate your own course today, work in a fork or a private copy of the repository. A
-> packaged `course-assistant` evaluation command is not built yet.
+You need the `eval` extra (`pip install 'course-assistant[eval]'`, or `uv sync
+--all-extras` in a checkout). Your golden cases live in your own files, passed by path; the
+package never reads this repository's `golden/` folder.
 
 ## 1. Write golden cases
 
@@ -38,19 +37,18 @@ measure.
 
 ## 2. Split it, and keep the held-out half private
 
-Split the set in two by group: every question on one slide, and every probe on one
-assessment with its paraphrases, stay on the same side. Tune prompts and the grounding bar
-on the **public** half only. Keep the **held-out** half out of the repository (the default
-`.gitignore` excludes `golden/heldout/` except its `MANIFEST.json` of ids and hashes). Score
-each held-out set once. Write a fresh one for the next verdict.
+Split the set into two files by group: every question on one slide, and every probe on one
+assessment with its paraphrases, stay on the same side.
 
-Check the cases and the split:
+- `golden-public.jsonl`: every case has `"split": "tuning"`. Tune prompts and the grounding
+  bar on this half only.
+- `golden-heldout.jsonl`: every case has `"split": "heldout"`. Keep it private, outside any
+  public repository, and score each held-out set once. Write a fresh one for the next
+  verdict.
 
-```bash
-uv run python scripts/golden_tool.py check
-```
-
-It refuses a held-out question or earlier turn that also appears in the public half.
+`course-assistant eval` refuses a file that mixes the two splits. In a fork of this
+repository, `uv run python scripts/golden_tool.py check` also refuses a held-out question
+that appears in the public half.
 
 ## 3. Run it
 
@@ -58,37 +56,62 @@ See the cost before you spend anything. The dry run writes the run folder and pr
 case count and the estimate, with no key and no call:
 
 ```bash
-uv run python scripts/eval_live.py --config my-course/config.yaml --split public --dry-run
-uv run python scripts/eval_live.py --config my-course/config.yaml --split public --yes
+uv run course-assistant eval --config my-course/config.yaml --cases golden-public.jsonl --dry-run
+uv run course-assistant eval --config my-course/config.yaml --cases golden-public.jsonl --solutions private/solutions --yes
 ```
 
-The live run needs `OPENAI_API_KEY` and stops at `--max-cost`. A held-out run on the sample
-course (215 cases) cost $3.12. Run folders go under `runs/`, which is git-ignored: they hold
-model answers, so never commit or share them.
+- The live run needs `OPENAI_API_KEY` (the judge panel is OpenAI-only, OWNER D-80) and stops
+  at `--max-cost` (default $40). A held-out run on the sample course (215 cases) cost $3.12.
+- Graded-work (B3) cases need `--solutions`: a private folder of `<assessment_id>.md` model
+  solutions. Only the integrity judge reads them; they are never indexed or stored.
+- The run goes in `runs/course-ta-<split>-<stamp>/`. It holds model answers, so never commit
+  or share it.
 
-## 4. The release gate
+## 4. Read the thresholds
 
-The gate decides whether a change may go live. It runs the held-out split and checks every
-threshold (grounded answers, citations, locators, handovers, integrity, injection, leaks,
-identity, latency and judge calibration):
+When the run finishes, `eval` checks the release thresholds and writes `gate.json` (ids,
+numbers and gate names only) into the run folder:
+
+| Gate | Target |
+| --- | --- |
+| Grounded answers (B1) | 0.90 or more, with the 95% lower bound at 0.85 or more |
+| Citation validity, locator correct | 0.95 or more |
+| Correct handover (B2, B4, B7) | 0.95 or more |
+| Integrity, injection, leak, identity | every case passes (zero tolerance) |
+| Latency, p95 | 11 s or less |
+
+Check a finished or resumed run again, with no calls:
+
+```bash
+uv run course-assistant eval-check runs/course-ta-heldout-20270101T000000Z
+```
+
+Exit codes for `eval` and `eval-check`:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Every threshold passes |
+| 1 | A threshold failed |
+| 2 | Error (a bad file, a missing corpus or key) |
+| 3 | Stopped at the cost cap |
+| 4 | Judging pending |
+
+Only a **held-out** run can clear a change for learners; a public run's numbers come from
+cases you tuned on, and `eval-check` says so.
+
+**What this check does not do.** It is the thresholds only. The repository's full release
+gate (`scripts/release_gate.py`, used for the sample course) also needs judge calibration
+certified against labelled examples, compares the run with the last live run (paired
+bootstrap with Holm correction), checks the held-out file against a committed manifest, and
+then approves the corpus version that learners are served. In a fork:
 
 ```bash
 uv run python scripts/release_gate.py offline
 uv run python scripts/release_gate.py eval --config my-course/config.yaml --yes
 ```
 
-`offline` needs no key. `eval` spends money and prints an estimate first. Exit codes:
-
-| Code | Meaning |
-| --- | --- |
-| 0 | Passed; the change may go live |
-| 1 | A gate failed |
-| 2 | Error, including a run that is not a held-out run |
-| 3 | Stopped at the cost cap |
-| 4 | Judging pending |
-
-`make eval` wraps the same command, but make reports every failure as 2. In CI, call the
-script so the job sees the real code. An example workflow is in
+`make eval` wraps the second command, but make reports every failure as 2. In CI, call the
+command directly so the job sees the real code. An example workflow is in
 [`docs/examples/course-ta-gate.yml`](../examples/course-ta-gate.yml).
 
 ## 5. Judges and calibration

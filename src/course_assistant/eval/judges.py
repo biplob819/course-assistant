@@ -41,6 +41,7 @@ from evalkit.pipeline.answer import SchemaError
 from evalkit.pipeline.judge import JUDGE_PROMPT_HASH, redact
 from evalkit.retry import with_retries
 
+from course_assistant.eval.panel import family
 from course_assistant.schemas.corpus import AssessmentList
 
 Kind = Literal["integrity", "identity", "leak", "support"]
@@ -338,11 +339,6 @@ class _Loop:
     def run(self, coro: Coroutine[Any, Any, T]) -> T:
         fut: Future[T] = asyncio.run_coroutine_threadsafe(coro, self.loop)
         return fut.result()
-
-
-def family(alias: str) -> str:
-    return "anthropic" if alias.startswith("claude") else "openai" if alias.startswith(
-        ("gpt", "o1", "o3", "o4")) else alias  # fmt: skip
 
 
 SINGLE_JUDGE_DECISION = "D-80"  # OWNER: one OpenAI judge while the Anthropic account is unfunded

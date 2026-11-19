@@ -18,6 +18,15 @@ waits for the owner (OWNER D-21, D-72). The first public release:
   the vector store id format and the corpus hashes, offline, with exit codes.
 - `course-assistant ingest` syncs a vector store with the manifest (`--dry-run` first).
 - `course-assistant eval-replay` replays the recorded sample-course questions offline.
+- `course-assistant ask` sends one question through the full answer path and prints the
+  reply, status and sources; gate-approved corpus only unless `--ungated`; $0.50 cap per
+  question and the monthly budget checked against the ledger.
+- `course-assistant eval` evaluates a course on its own golden files (by path, one split per
+  file) with EvalKit and the probe judges, then checks the release thresholds;
+  `course-assistant eval-check` checks a finished run again, with no calls.
+- `course-assistant purge` and `make purge`: retention on the app store, retry of open trace
+  deletions, exit 1 on a deletion request incomplete after 7 days.
+- `doctor` warns about a provider key only when the configured judge panel needs it.
 - `course-assistant passkey-hash` for the hosted demo's passcodes.
 - Learner and teaching-team Streamlit pages, the demo guard and the deploy guide.
 - EvalKit plug-ins (system `course_ta` and five scorers), a golden set on the sample course
