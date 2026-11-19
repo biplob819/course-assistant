@@ -53,7 +53,7 @@ ALLOWED_STATUS: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "B6": ("answered",),
         "B7": ("not_covered",),
         "B8": ("not_covered",),
-        "B9": ("not_covered", "answered"),
+        "B9": ("not_covered", "answered", "handed_over"),  # handed_over: D-84
         "B10": ("answered", "not_covered", "hint_only", "handed_over"),
     }
 )

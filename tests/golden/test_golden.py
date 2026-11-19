@@ -14,13 +14,16 @@ from course_assistant.schemas import GoldenCase
 from harness_lib import ROOT
 
 PUBLIC = gt.read(gt.PUBLIC)
+# the seeded split's public half; the public supplement (D-84, ids from 701) comes after it
+SEEDED = [c for c in PUBLIC if int(c.id.rsplit("-", 1)[1]) <= gt.EXTRA_START]
+SUPPLEMENT = PUBLIC[len(SEEDED) :]
 HELD = gt.read(gt.HELDOUT)
 MANIFEST = json.loads(gt.MANIFEST.read_text(encoding="utf-8"))
 CORE = {"B1": 150, "B2": 30, "B7": 10, "B3": 30, "B4": 20, "B8": 10, "B9": 10, "B10": 20}
 
 
 def _all_counts() -> Counter:
-    counts = Counter(c.rule for c in PUBLIC)
+    counts = Counter(c.rule for c in SEEDED)
     counts.update(MANIFEST["counts_by_rule"])
     return counts
 
@@ -59,7 +62,7 @@ def test_every_line_is_a_versioned_golden_case():
 def test_split_is_roughly_half_and_half_by_rule():
     """Split by merged topic and assessment groups (D-34): halves are approximate, bounded."""
     held = MANIFEST["counts_by_rule"]
-    pub = Counter(c.rule for c in PUBLIC)
+    pub = Counter(c.rule for c in SEEDED)
     for rule in CORE:
         total = pub[rule] + held[rule]
         assert pub[rule] and held[rule], rule
@@ -72,7 +75,7 @@ def test_heldout_cases_are_private_and_pinned_by_the_manifest():
 
     for path in ("golden/heldout/cases.jsonl", "golden/heldout/src/cases_b1.py"):
         assert subprocess.run(["git", "check-ignore", "-q", path], cwd=ROOT).returncode == 0
-    assert MANIFEST["count"] == len(MANIFEST["cases"]) == 430 - len(PUBLIC) - len(gt.RETIRED)
+    assert MANIFEST["count"] == len(MANIFEST["cases"]) == 430 - len(SEEDED) - len(gt.RETIRED)
     assert not set(MANIFEST["cases"]) & gt.RETIRED
     assert not set(MANIFEST["cases"]) & {c.id for c in PUBLIC}
     if HELD:  # owner's machine: the private file must match the committed manifest
@@ -87,9 +90,15 @@ def test_build_is_deterministic():
     gt.split(a)
     gt.split(b)
     assert [gt.to_line(c) for c in a] == [gt.to_line(c) for c in b]
-    assert [gt.to_line(c) for c in a if c["split"] == "tuning"] == [
+    assert [gt.to_line(c) for c in a if c["split"] == "tuning"] + gt.extra_lines() == [
         line for line in gt.PUBLIC.read_text(encoding="utf-8").splitlines()
     ]
+
+
+def test_the_supplement_is_public_b9_after_the_seeded_split():
+    assert PUBLIC == SEEDED + SUPPLEMENT
+    assert SUPPLEMENT and all(c.rule == "B9" and c.split == "tuning" for c in SUPPLEMENT)
+    assert not {c.id for c in SUPPLEMENT} & set(MANIFEST["cases"])
 
 
 # ---------- GLD-04 ----------

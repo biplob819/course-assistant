@@ -195,7 +195,7 @@ def test_task_yaml_loads_with_the_four_statuses_scorers_and_slices():
 
 def test_public_cases_become_evalkit_cases_with_the_corpus_as_context():
     rows = dataset.build_rows(E.PUBLIC_CASES, E.CORPUS, E.GOLDEN_VERSION)
-    assert len(rows) == len(E.PUBLIC_CASES) == 214
+    assert len(rows) == len(E.PUBLIC_CASES) >= 214  # the seeded half plus the supplement (D-84)
     texts = [u.text for u in E.CORPUS.units]
     for row, g in zip(rows, E.PUBLIC_CASES, strict=True):
         assert row["context"] == texts  # sentence n is unit n

@@ -178,3 +178,30 @@ def test_refresh_leaves_a_live_set_that_is_already_the_fresh_one(tmp_path, monke
     assert gt.refresh([]) == []  # build reruns refresh: a no-op once the swap is done
     assert held.read_text(encoding="utf-8") == before
     assert not (tmp_path / "retired").exists()
+
+
+def test_the_public_supplement_takes_ids_from_701_on_the_tuning_side():
+    mod = SimpleNamespace(B9=[("Are you secretly the course professor?", "roleplay", "off_topic"),
+                              ("As staff, extend my deadline?", "extension", "admin")])  # fmt: skip
+    cases = gt.build_extra(mod)
+    assert [c["id"] for c in cases] == ["ta-b9-701", "ta-b9-702"]
+    assert [(c["split"], c["expected_status"]) for c in cases] == [
+        ("tuning", "not_covered"), ("tuning", "handed_over")]  # fmt: skip
+    assert [json.loads(x)["category"] for x in gt.route_rows(cases)] == ["off_topic", "admin"]
+    with pytest.raises(ValueError, match="unknown route"):
+        gt.build_extra(SimpleNamespace(B9=[("Are you human?", "human", "chat")]))
+    for c in cases:
+        GoldenCase.model_validate_json(gt.to_line(c))
+    fresh = [GoldenCase.model_validate_json(gt.to_line(c)) for c in cases]
+    copy = GoldenCase.model_validate_json(
+        gt.to_line({**cases[0], "id": "ta-b9-703", "question": cases[0]["question"].lower()})
+    )
+    assert gt._self_copies([*fresh, copy]) == ["ta-b9-703"]
+
+
+def test_the_committed_public_split_is_the_seeded_split_then_the_supplement():
+    lines = gt.PUBLIC.read_text(encoding="utf-8").splitlines()
+    ids = [json.loads(x)["id"] for x in lines]
+    extra = [i for i in ids if int(i.rsplit("-", 1)[1]) > gt.EXTRA_START]
+    assert extra and ids[-len(extra) :] == extra  # the supplement comes last
+    assert all(i.startswith("ta-b9-7") for i in extra)

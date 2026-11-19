@@ -5,6 +5,7 @@
     python scripts/golden_tool.py check     # validate the case files and the coverage rule
     python scripts/golden_tool.py verify    # the private held-out file matches its manifest
     python scripts/golden_tool.py refresh   # retire the used held-out set, write the fresh one
+    python scripts/golden_tool.py extend    # add the public supplement (ids from 701, D-84)
 
 The tuning split is public (golden/public/cases.jsonl). The held-out split
 (golden/heldout/cases.jsonl) and its authoring source are git-ignored; MANIFEST.json, which
@@ -242,7 +243,7 @@ def split(cases: list[dict]) -> None:
 
 
 def to_line(c: dict) -> str:
-    clean = {k: v for k, v in c.items() if k not in ("group", "_session", "_ext")}
+    clean = {k: v for k, v in c.items() if k not in ("group", "_session", "_ext", "_route")}
     GoldenCase.model_validate_json(json.dumps(clean))  # refuses an invalid case
     return json.dumps(clean, sort_keys=True, ensure_ascii=False)
 
@@ -315,6 +316,83 @@ def build_fresh(mod) -> list[dict]:
         for text in texts:
             add("B10", text, status, group, canary=canary, prior_turns=_turns(prior), **extra)
     return cases
+
+
+# OWNER D-83/D-84: a public supplement for tuning, from its own source module. Its cases sit
+# after the seeded split's public cases, always on the tuning side, with ids from 701, so the
+# split, every held-out set and every retired set are untouched. Text must be distinct from
+# every public, live held-out and retired question.
+PUBLIC_EXTRA_SOURCE = "cases_public_extra"
+EXTRA_START = 700  # supplement ids are ta-<rule>-701 and up
+
+
+# the status each route leads to for a supplement case (the Finalize table, §2.2)
+EXTRA_STATUS = {"off_topic": "not_covered", "admin": "handed_over", "personal": "handed_over",
+                "course": "answered"}  # fmt: skip
+ROUTE_FIXTURES = ROOT / "tests" / "answer" / "fixtures" / "routes.jsonl"
+
+
+def build_extra(mod) -> list[dict]:
+    """The supplement's cases as dicts (B9 for now: `(question, theme, route)` triples, the
+    route being the category the assistant should take)."""
+    cv = corpus_version()
+    out = []
+    for i, (q, theme, route) in enumerate(mod.B9):
+        if route not in EXTRA_STATUS:
+            raise ValueError(f"supplement B9 case {i + 1}: unknown route {route!r}")
+        out.append({"schema_version": "1.0", "id": f"ta-b9-{EXTRA_START + i + 1:03d}",
+                    "rule": "B9", "question": q, "expected_status": EXTRA_STATUS[route],
+                    "corpus_version": cv, "group": f"b9:extra-{theme}", "split": "tuning",
+                    "_route": route})  # fmt: skip
+    return out
+
+
+def route_rows(extra: list[dict]) -> list[str]:
+    """The supplement's golden-public rows for the route fixtures (A2.1)."""
+    return [json.dumps({"assessment_id": None, "category": c["_route"], "id": c["id"],
+                        "prior_turns": [], "question": c["question"],
+                        "source": "golden-public"}, ensure_ascii=False)
+            for c in extra]  # fmt: skip
+
+
+def extra_lines() -> list[str]:
+    if not (SRC / f"{PUBLIC_EXTRA_SOURCE}.py").is_file():
+        return []
+    return [to_line(c) for c in build_extra(_load(PUBLIC_EXTRA_SOURCE))]
+
+
+def extend(base: list[str]) -> list[str]:
+    """Write the public split as `base` (the seeded split's public cases) plus the supplement.
+    Returns problems (ids only); nothing is written when there is one."""
+    extra = extra_lines()
+    if not extra:
+        return [f"no supplement source {PUBLIC_EXTRA_SOURCE}.py in {SRC}"]
+    public = [GoldenCase.model_validate_json(x) for x in base]
+    fresh = [GoldenCase.model_validate_json(x) for x in extra]
+    others = _texts(public) + _texts(read(HELDOUT))
+    for name in RETIRED_SETS:
+        others += _texts(read(RETIRED_DIR / name / "cases.jsonl"))
+    found = problems(public + fresh)
+    found += [f"not distinct: {i}" for i in distinct(fresh, others)]
+    old = {c.id for c in public} | {c.id for c in read(HELDOUT)} | set(RETIRED)
+    for name in RETIRED_SETS:
+        old |= {c.id for c in read(RETIRED_DIR / name / "cases.jsonl")}
+    found += [f"id reused: {c.id}" for c in fresh if c.id in old]
+    found += [f"not distinct within the supplement: {i}" for i in _self_copies(fresh)]
+    if found:
+        return found
+    PUBLIC.write_text("\n".join([*base, *extra]) + "\n", encoding="utf-8")
+    ids = {c.id for c in fresh}
+    kept = [x for x in ROUTE_FIXTURES.read_text(encoding="utf-8").splitlines()
+            if x and json.loads(x)["id"] not in ids]  # fmt: skip
+    rows = route_rows(build_extra(_load(PUBLIC_EXTRA_SOURCE)))
+    ROUTE_FIXTURES.write_text("\n".join([*kept, *rows]) + "\n", encoding="utf-8")
+    return []
+
+
+def _self_copies(cases: list[GoldenCase]) -> list[str]:
+    return [c.id for i, c in enumerate(cases)
+            if distinct([c], [x.question for x in cases[:i]])]  # fmt: skip
 
 
 def composition_problems(cases: list[dict], want: dict[str, int]) -> list[str]:
@@ -498,12 +576,28 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("command", choices=["build", "check", "verify", "refresh"])
+    ap.add_argument("command", choices=["build", "check", "verify", "refresh", "extend"])
     args = ap.parse_args(argv)
+    if args.command == "extend":
+        cases = build_cases()
+        split(cases)
+        base = [to_line(c) for c in cases if c["split"] == "tuning"]
+        committed = PUBLIC.read_text(encoding="utf-8").splitlines()
+        if committed[: len(base)] != base:
+            print("the source no longer builds the committed public split; nothing written")
+            return 1
+        found = extend(base)
+        for f in found:
+            print(f)
+        if found:
+            print(f"{len(found)} problems; nothing written")
+            return 1
+        print(f"public split: {len(base)} seeded cases plus {len(extra_lines())} supplement")
+        return 0
     if args.command in ("build", "refresh"):
         cases = build_cases()
         split(cases)
-        pub = [to_line(c) for c in cases if c["split"] == "tuning"]
+        pub = [to_line(c) for c in cases if c["split"] == "tuning"] + extra_lines()
         if args.command == "build" and not (SRC / f"{HELDOUT_SOURCE}.py").is_file():
             write(cases)  # no fresh source yet: the original split, as before D-71
         elif pub != PUBLIC.read_text(encoding="utf-8").splitlines():
