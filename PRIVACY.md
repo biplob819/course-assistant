@@ -7,6 +7,10 @@ basis, the notice and the agreements.
 
 Design source: Tech Spec §7 and NFR2 to NFR4, NFR7.
 
+The trust pack maps each rule below to its DPDP Act and UK GDPR duty and to the test that
+proves it ([`docs/trust/dpdp-mapping.md`](docs/trust/dpdp-mapping.md)), and gives the incident
+steps ([`docs/trust/incident-runbook.md`](docs/trust/incident-runbook.md)).
+
 ## Roles
 
 When a programme runs the assistant for its learners, the programme provider is the data
@@ -22,7 +26,7 @@ The software makes network requests only for these purposes:
 | --- | --- | --- |
 | Answers, routing, checks and hints | The OpenAI project you configure (Responses API with `store=false`) | Each learner question |
 | Course files and retrieval | A vector store in that same OpenAI project | `course-assistant ingest`, and each question |
-| Second evaluation judge | Anthropic | Evaluation runs only, never at runtime |
+| Evaluation judge | The same OpenAI account (gpt-6.1-sol); Anthropic as a second judge only when dual judging is on, which it is not since OWNER D-80 | Evaluation runs only, never at runtime; golden cases, never learner data |
 | Traces (optional) | A Langfuse project you configure, if `trace_sink: langfuse` | Each question; no text |
 | Demo only: daily spend counter | The hosted KV store you configure (one number per day) | Each live demo request |
 
@@ -35,13 +39,16 @@ says so.
 
 | Data | Where | Kept for | Deleted by |
 | --- | --- | --- | --- |
-| Conversations (question and answer text) | App store (SQLite) | Pilot length + 30 days, or until the learner deletes it | Learner's delete (one conversation or all), `make purge` |
+| Conversations (question and answer text) | App store (SQLite) | Pilot length + 30 days, or until the learner deletes it | Learner's delete (one conversation or all), the purge job |
 | Escalations and teaching-team replies | App store | As above | As above |
-| Consent records | App store | Pilot length + 1 year (proof of consent) | `make purge` |
-| Access log | App store | 1 year, no question text | `make purge` |
-| Traces | JSONL file or Langfuse | 30 days, **no question or answer text** | `make purge`, trace delete by pseudonymous id |
+| Consent records | App store | Pilot length + 1 year (proof of consent) | The purge job |
+| Access log | App store | 1 year, no question text | The purge job |
+| Traces | JSONL file or Langfuse | 30 days, **no question or answer text** | The purge job, trace delete by pseudonymous id |
 | Weekly digest rows | App store | Pilot length; counts only | — |
-| Course files and vector store | OpenAI | Until teardown | `make teardown` at the end of a pilot |
+| Course files and vector store | OpenAI | Until teardown | Teardown at the end of a pilot (`make teardown`, planned in P4.3, not built yet) |
+
+The purge job is `Store.purge` in the code (tested in `tests/store/test_store.py`). Running it
+on a schedule is a pilot operations step (P4.2); there is no `make purge` target yet.
 
 ## Rules the code enforces
 

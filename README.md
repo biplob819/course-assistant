@@ -287,6 +287,8 @@ What the failures mean:
 ## Privacy and safety
 
 Full detail: [`PRIVACY.md`](https://github.com/biplob819/course-assistant/blob/main/PRIVACY.md) and Tech Spec §7.
+The trust pack (draft) maps every rule to its cases and tests, and every privacy duty to its
+control: [`docs/trust/`](https://github.com/biplob819/course-assistant/tree/main/docs/trust).
 
 - **No telemetry.** The project never phones home. Streamlit usage statistics are off.
 - **Data minimisation.** Learners are pseudonymous ids. No names or email addresses are sent

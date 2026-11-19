@@ -1,18 +1,21 @@
 # Incident and kill-switch runbook
 
-> **Draft (OWNER D-72).** Live drills on the hosted demo are an owner step (D3.2 DEM-04,
-> `docs/deploy.md` §8 and §9). Steps 1 to 3 are backed by code and tests. Step 4 (notify the
-> fiduciary, 72-hour report) is **owner process, no code** (`docs/trust/known-limits.md`).
+> **Draft (OWNER D-72).** Four steps: detect, pause, notify the data fiduciary, and a detailed
+> report within 72 hours. Steps 1 to 3 below (pause, passkey, spend) are backed by code and
+> tests. Step 4 (notify the fiduciary, the 72-hour report) is **owner process, no code**
+> (`docs/trust/known-limits.md`). Live drills on the hosted demo are an owner step (D3.2
+> DEM-04, `docs/deploy.md` §8 and §9). The DPDP and UK GDPR duties behind step 4 are in
+> `docs/trust/dpdp-mapping.md` (breach intimation row).
 
 ## Detect
 
 | Signal | Where | Source |
 | --- | --- | --- |
-| Spend alarm at $135 of the $150 cap | Ledger | `src/course_assistant/llm/ledger.py` (`WARN_AT`); OWNER D-64 |
-| Any `_settle` exception | Audit and alert, no text | `specs/D3.1-demo-guard/RUN-STATE.md` |
-| Leak scan or injection flag | Answer flags, traces (no text) | Tech Spec §5.7; `tests/answer/test_ask.py` |
-| Weekly release gate fails with no change on our side | CI | Tech Spec §6.5 |
-| Purge job: a deletion request older than 7 days | `make purge` fails | Tech Spec §7 |
+| Spend alarm at $135 of the $150 cap | Ledger | `tests/llm/test_llm.py::test_the_spend_alarm_fires_at_135_of_the_150_cap`; OWNER D-64 |
+| Any `_settle` exception | Audit and alert, no text | `tests/demo/test_demo.py::test_any_settle_exception_is_audited_and_alerted_without_text` |
+| Leak scan or injection flag | Answer flags, traces (no text) | `tests/answer/test_ask.py::test_a_leaking_answer_becomes_not_covered_and_is_flagged`, `::test_off_topic_and_injection_get_fixed_text_and_injection_is_flagged`; Tech Spec §5.7 |
+| Weekly release gate fails with no change on our side (provider drift) | CI | Tech Spec §6.5 |
+| Purge job: a deletion request older than 7 days | The purge flags it (`Store.purge`; scheduled run is a pilot step, P4.2) | `tests/store/test_store.py::test_purge_flags_deletion_requests_pending_over_7_days` |
 | Learner or teaching-team report | Escalation queue | `specs/B2.1-escalation/` |
 
 ## 1. Pause (kill switch)
@@ -37,13 +40,23 @@
 2. Lower the daily cap, or remove the owner's key so only visitor keys work (RPL-02).
 3. Last resort: the demo OpenAI project's hard monthly limit (RPL-03, `specs/D3.1-demo-guard/spec.md`).
 
-## 4. Contain and notify (pilot; owner process, no code)
+## 4. Notify the data fiduciary and report (pilot; owner process, no code)
 
-1. Pause; preserve the audit log (no question text, NFR7).
-2. Notify the data fiduciary (the programme provider; Tech Spec §7) without delay.
-3. Detailed report within 72 hours: what, when, which pids (counts only), controls that failed,
-   the fix and the test that now proves it.
+The operator is the processor; the programme provider is the data fiduciary and decides what
+goes to the Data Protection Board and to learners (Tech Spec §7; `PRIVACY.md`, Roles).
+
+1. Pause (step 1); preserve the audit log, which holds no question text (NFR7).
+2. Notify the data fiduciary without delay: what was seen, when, and that the assistant is
+   paused. Record the time; the 72 hours run from when the breach became known.
+3. Detailed report to the fiduciary within 72 hours: what happened, when, how many learners
+   (pid counts only, never text), which controls failed, the fix, and the test that now
+   proves it. The fiduciary uses it for its own report to the Board and to affected learners
+   (DPDP s.8(6); UK GDPR Art. 33 and 34).
 4. Turn each finding into a golden case and a lesson (D-69; `docs/lessons.md`).
 5. Unpause only after the release gate passes on the fix (Tech Spec §6.5).
 
-Off-switch test evidence on the live app: `PENDING` (owner attest, D-60).
+## Off-switch evidence
+
+- In code: the pause switch, the paused message and fail-closed reads are tested (step 1).
+- On the live app: `PENDING (D3.2 owner attest)`. The hosted demo is not deployed yet; the
+  owner attests the drill under D3.2 DEM-04 (D-60).

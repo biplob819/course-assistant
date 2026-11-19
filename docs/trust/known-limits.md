@@ -13,8 +13,13 @@
 | Release gate: app, answer filter and vector store attributes follow `CURRENT` until P4.1 wires them to the serving corpus | D-57 (4) |
 | Streaming the answer is not built: both checks read the whole draft before anything is shown | D-61 (2) |
 | Hint cache off until integrity labels clear it | D-70 |
-| One small English sample course, builder-written questions, small zero-tolerance sets (B8, B9: 10 each) | `DATA_CARD.md`, Known gaps |
-| Judging uncalibrated until the model-panel labels are scored; then kappa measures agreement with a model panel, not with a person, and same-vendor model families may share blind spots; a person's labels can replace the panel's later | OWNER D-76 |
+| One small English sample course, builder-written questions, small held-out zero-tolerance sets (B8, B9: 5 each a set) | `DATA_CARD.md`, Known gaps |
+| Judging is calibrated against an OpenAI-only model panel, not a person: kappa measures agreement with the panel, and panel and judge share a vendor, so their errors may lean the same way; a person's labels can replace the panel's later | OWNER D-76, OWNER D-79 |
+| A single judge, gpt-6.1-sol: no cross-family check, no self-preference measure, no EvalKit headline; the labellers are also the answer and check models | OWNER D-80 |
+| Identity (B9) is monitored on the public half, not certified: 5 held-out cases a set are too few for a kappa, and the planted violations are blatant | OWNER D-86 |
+| Zero-tolerance probes take the worst of three samples, so the integrity judge is stricter than the one calibrated on one sample | D-85 |
+| Latency p95 13.6 s on the public half against 11 s, from provider latency on unchanged calls | D-87 |
+| No `make purge` target yet: `Store.purge` is tested, its schedule is a pilot step; teardown is not built | P4.2, P4.3 (`docs/graph/graph.md`) |
 | Runtime support check agrees weakly with the judges (kappa 0.15) | Tech Spec §6.4 |
 | Provider retention up to 30 days for abuse monitoring unless zero data retention applies | Tech Spec §7 |
 | Out-of-app notification of teaching-team replies decided at sign-off; the app holds no email | Tech Spec §7 |
@@ -48,4 +53,4 @@ These are duties the code does not implement. They are not presented as controls
 ## Open owner steps
 
 Live demo deploy and attest (D-60, DEM-04); demo replay cache build (`specs/D3.1-demo-guard/tasks.md`);
-optional: a person's calibration labels to replace the model panel's (OWNER D-76); fresh held-out run `PENDING (D-71)`.
+optional: a person's calibration labels to replace the model panel's (OWNER D-76); the heldout-4 run, scored once at the D-87 setting, `PENDING (heldout-4)` (D-88).
