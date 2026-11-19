@@ -40,3 +40,4 @@ corpus_store/
 
 # EvalKit local store and cache: live run outputs, may hold held-out answers (never commit)
 .evalkit/
+.streamlit/passcodes.txt
