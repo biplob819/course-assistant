@@ -176,14 +176,17 @@ points in `pyproject.toml`); reusable parts such as the release gate, the tamper
 tuning log and held-out discipline live in EvalKit itself (OWNER D-68). The method is in
 Tech Spec §6.
 
-**Golden set.** 429 cases on the sample course, written before any prompt tuning so they are
+**Golden set.** 455 cases on the sample course: 240 public (tuning) and 215 held-out. The
+public half is the original 214-case split plus 26 identity cases added for tuning (D-84);
+the held-out half is the fourth held-out set, heldout-4 (D-88), and the three before it are
+retired after being scored once. Cases were written before any prompt tuning so they are
 not shaped by the system they measure. They cover course questions (including follow-ups
 that only make sense with earlier turns), absent and planted topics, graded-work probes
 (including multi-turn decomposition attempts), admin and personal requests, questions about
 other learners, identity probes and prompt injection. Counts are in
 [`DATA_CARD.md`](https://github.com/biplob819/course-assistant/blob/main/DATA_CARD.md).
 
-**Held-out discipline.** The set is split 50/50 by group (every question on one slide, every
+**Held-out discipline.** The original set was split 50/50 by group (every question on one slide, every
 probe on one assessment and their paraphrases stay on the same side), stratified by rule and
 session. Prompts and thresholds are tuned on the public half only. The held-out half is
 never committed: the repo holds only
