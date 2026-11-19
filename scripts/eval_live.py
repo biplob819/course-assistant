@@ -102,10 +102,12 @@ def probes(cases: list[Any]) -> int:
     return sum(c.rule in ("B3", "B8", "B9", "B10") for c in cases)
 
 
-def evalkit_estimate(cases: list[Any]) -> float:
+def evalkit_estimate(cases: list[Any], *, replay: bool = False) -> float:
+    """EvalKit's share: generating each case (nothing on a replay) plus extracting and
+    judging its claims."""
     from course_assistant.eval.system import PER_CASE_USD
 
-    return len(cases) * (PER_CASE_USD + EVALKIT_USD_PER_CASE)
+    return len(cases) * ((0.0 if replay else PER_CASE_USD) + EVALKIT_USD_PER_CASE)
 
 
 def panel_estimate(cases: list[Any]) -> float:
@@ -116,8 +118,8 @@ def panel_estimate(cases: list[Any]) -> float:
             + answered * SUPPORT_USD_PER_ANSWER)  # fmt: skip
 
 
-def estimate(cases: list[Any]) -> float:
-    return evalkit_estimate(cases) + panel_estimate(cases)
+def estimate(cases: list[Any], *, replay: bool = False) -> float:
+    return evalkit_estimate(cases, replay=replay) + panel_estimate(cases)
 
 
 def heldout_gate(split: str, log_path: Path = TUNING_LOG) -> str | None:
@@ -172,14 +174,15 @@ def merge_probe_summary(previous: dict[str, Any], calls: int, usd: float) -> dic
             "probe_judge_usd": float(previous.get("probe_judge_usd", 0.0)) + usd}  # fmt: skip
 
 
-def plan_budget(cases: list[Any], max_cost: float) -> Any:
+def plan_budget(cases: list[Any], max_cost: float, *, replay: bool = False) -> Any:
     """One cap for the run: the judges' share sized from the probes, EvalKit the rest. Refused
     when either share would be below its estimate."""
     from course_assistant.eval.judges import RunBudget
 
     panel = panel_estimate(cases)
-    if panel + evalkit_estimate(cases) > max_cost:
-        raise ValueError(f"the estimate ${estimate(cases):.2f} is over the cap ${max_cost:.2f}")
+    if panel + evalkit_estimate(cases, replay=replay) > max_cost:
+        raise ValueError(f"the estimate ${estimate(cases, replay=replay):.2f} is over the cap "
+                         f"${max_cost:.2f}")  # fmt: skip
     return RunBudget(max_cost, panel)
 
 
@@ -309,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
         out_dir = args.out / f"course-ta-{args.split}-{stamp}"
         task = prepare(out_dir, cases, corpus)
         n_live = -1
-    cost = estimate(cases)
+    cost = estimate(cases, replay=bool(args.replay))
     print(f"course-ta: {len(cases)} cases ({probes(cases)} probes) -> {out_dir}")
     print(f"estimate: ${cost:.2f} (cap ${args.max_cost:.2f})")
     if args.dry_run:
@@ -323,7 +326,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"eval_live: {refusal}", file=sys.stderr)
         return 2
     try:
-        budget = plan_budget(cases, args.max_cost)
+        budget = plan_budget(cases, args.max_cost, replay=bool(args.replay))
     except ValueError as exc:
         print(f"eval_live: {exc}", file=sys.stderr)
         return 3
@@ -393,7 +396,7 @@ def _run(args: argparse.Namespace, config: Any, corpus: Any, out_dir: Path, task
         source = recorder
     tap = SupportTap(source)
     system.configure(system.Runtime(config=config, corpus=corpus, assessments=assessments,
-                                    source=tap))  # fmt: skip
+                                    source=tap, replay=bool(args.replay)))  # fmt: skip
     prices = evalkit_prices()
     panel = build_panel(JUDGES, prices,
                        cache=out_dir / "probe-verdicts.jsonl", budget=budget)  # fmt: skip

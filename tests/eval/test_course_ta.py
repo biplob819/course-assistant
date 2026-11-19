@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import dataclasses
 import datetime as dt
 import io
 import json
@@ -934,3 +935,21 @@ def test_a_resume_adds_to_the_recordings_instead_of_replacing_them(tmp_path):
     assert ids == ["r-1", "r-2"]
     eval_live.write_recordings(path, [rec], resume=False)
     assert len(path.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_a_replay_estimates_no_generation_cost():
+    # D-85: a re-score from recordings pays only for judging, so its estimate counts no answers
+    import eval_live
+
+    cases = [E.first("B1", status="answered"), E.first("B9")]
+    live, replay = eval_live.estimate(cases), eval_live.estimate(cases, replay=True)
+    assert live - replay == pytest.approx(len(cases) * system.PER_CASE_USD)
+    adapter = system.CourseTA()
+    try:
+        rt = runtime(source=None)
+        system.configure(dataclasses.replace(rt, replay=True))
+        assert adapter.estimate_cost(ek_case(E.first("B9")), REQUEST) == 0.0
+        system.configure(rt)
+        assert adapter.estimate_cost(ek_case(E.first("B9")), REQUEST) == system.PER_CASE_USD
+    finally:
+        system.configure(None)

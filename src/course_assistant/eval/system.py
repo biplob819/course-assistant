@@ -57,6 +57,8 @@ class Runtime:
     # one hint cache for the whole run (OWNER D-63): each case has its own Assistant, so the
     # cache lives here; it is used only when the config turns hint_cache on
     hint_cache: HintCache = field(default_factory=HintCache)
+    # the source replays recorded calls: generating costs nothing (D-85 re-scores)
+    replay: bool = False
 
 
 _RUNTIME: list[Runtime | None] = [None]
@@ -197,4 +199,5 @@ class CourseTA(SystemAdapter):
         return completion_for(rt, answer, rid, request)
 
     def estimate_cost(self, case: Case, request: CompletionRequest) -> float:
-        return PER_CASE_USD
+        rt = current()
+        return 0.0 if rt is not None and rt.replay else PER_CASE_USD
