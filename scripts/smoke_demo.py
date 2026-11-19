@@ -51,14 +51,31 @@ def stream_url(url: str) -> str:
     return urlunsplit((scheme, parts.netloc, base + "/_stcore/stream", "", ""))
 
 
+def page_cookies(page_url: str, timeout: float, opener: Any = None) -> str:
+    """The cookies the app's host sets on a plain page load, as one Cookie header. Community
+    Cloud answers a cookieless request with a redirect through share.streamlit.io that sets a
+    cookie and comes back; a websocket opened without it gets an HTTP status, not a stream."""
+    import http.cookiejar
+    import urllib.request
+
+    jar = http.cookiejar.CookieJar()
+    fetch = opener or urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    with fetch.open(page_url, timeout=timeout) as resp:
+        resp.read(1)
+    return "; ".join(f"{c.name}={c.value}" for c in jar)
+
+
 class _WebSocket:
     """The real transport (websockets, which Streamlit itself depends on)."""
 
-    def __init__(self, url: str, timeout: float) -> None:
+    def __init__(self, url: str, timeout: float, cookie: str = "", origin: str = "") -> None:
         from websockets.sync.client import connect
 
+        # Community Cloud refuses the stream (401) without the page's cookies and its Origin
+        headers = {k: v for k, v in (("Cookie", cookie), ("Origin", origin)) if v} or None
         self._cm = connect(url, subprotocols=["streamlit"],  # type: ignore[list-item]
-                           open_timeout=timeout, max_size=None)  # fmt: skip
+                           open_timeout=timeout, max_size=None,
+                           additional_headers=headers)  # fmt: skip
         self._ws = self._cm.__enter__()
 
     def send(self, data: bytes) -> None:
@@ -149,7 +166,9 @@ def main(argv: list[str] | None = None,
     except ValueError as exc:
         print(f"smoke: {exc}")
         return EXIT_CONNECT
-    opener = connect or (lambda u, t: _WebSocket(u, t))
+    page = urlsplit(args.url.strip())
+    origin = f"{page.scheme}://{page.netloc}"
+    opener = connect or (lambda u, t: _WebSocket(u, t, page_cookies(args.url, t), origin))
     try:
         stream = opener(ws_url, args.timeout)
     except Exception as exc:

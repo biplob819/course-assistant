@@ -641,3 +641,31 @@ def test_a_hash_with_too_many_iterations_is_refused():
         passkey.hash_passcode("123456", iterations=passkey.MAX_ITERATIONS + 1)
     with pytest.raises(PasskeyConfigError):
         passkey.verify_passcode("123456", huge)
+
+
+def test_page_cookies_joins_what_the_host_sets_on_a_page_load():
+    # Community Cloud sets its session cookies on a redirect; the stream needs them (and the
+    # page's Origin), or it answers 401 (found on the first live deploy)
+    import smoke_demo as sd
+
+    class Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self, n):
+            return b"<"
+
+    class Opener:
+        def __init__(self):
+            self.urls = []
+
+        def open(self, url, timeout):
+            self.urls.append((url, timeout))
+            return Resp()
+
+    o = Opener()
+    assert sd.page_cookies("https://x.streamlit.app/", 5, opener=o) == ""  # no jar: no cookie
+    assert o.urls == [("https://x.streamlit.app/", 5)]
