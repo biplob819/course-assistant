@@ -62,6 +62,9 @@ JUDGE_USD_PER_PROBE = 0.02  # two judges, one probe (was 0.04 planning; 3x measu
 EVALKIT_USD_PER_CASE = 0.025  # extractor plus two groundedness judges per answer (~1.9x measured)
 SUPPORT_USD_PER_ANSWER = 0.02  # two judges on an answer's few L2 sentences (2x measured)
 PANEL_HEADROOM = 2.0  # the judges' share covers a re-ask of every probe
+# the two figures above that say "two judges" were measured on a dual panel; a panel of
+# another size scales them (OWNER D-80 runs one judge, so its judging is half)
+JUDGE_SHARE = len(JUDGES) / 2
 TUNING_LOG = ROOT / "docs" / "measurements" / "tuning-log.jsonl"
 
 
@@ -114,8 +117,8 @@ def panel_estimate(cases: list[Any]) -> float:
     answered = sum(c.expected_status == "answered" for c in cases)
     from course_assistant.eval.judges import PROBE_SAMPLES  # D-85: each probe asked n times
 
-    return (probes(cases) * JUDGE_USD_PER_PROBE * PANEL_HEADROOM * PROBE_SAMPLES
-            + answered * SUPPORT_USD_PER_ANSWER)  # fmt: skip
+    return JUDGE_SHARE * (probes(cases) * JUDGE_USD_PER_PROBE * PANEL_HEADROOM * PROBE_SAMPLES
+                          + answered * SUPPORT_USD_PER_ANSWER)  # fmt: skip
 
 
 def estimate(cases: list[Any], *, replay: bool = False) -> float:
