@@ -351,3 +351,17 @@ def test_report_compares_only_the_pairs_asked_for(run_dir: Path, tmp_path: Path)
     assert "b minus c" in text and "a minus" not in text
     with pytest.raises(SystemExit):
         full_run_report.main([*args[:-2], "--compare", "a:zz"])
+
+
+def test_the_calibration_cell_is_our_certified_calibration_not_evalkits_status():
+    # D-83: the heldout-3 report showed EvalKit's "uncalibrated" for a run whose calibration
+    # (certified on another run folder) the gate accepts
+    from course_assistant.eval.fullrun import calibration_label
+
+    both = {"groundedness": "calibrated", "integrity": "calibrated"}
+    assert calibration_label(both) == "certified"
+    assert calibration_label({**both, "integrity": "uncalibrated"}) == "uncalibrated: integrity"
+    assert calibration_label({}) == "unknown"
+    panel = {**both, "integrity_labeller": "model-panel:a+b", "groundedness_labeller": "owner"}
+    assert calibration_label(panel) == "certified (model panel)"
+    assert calibration_label({"integrity_labeller": "owner"}) == "unknown"

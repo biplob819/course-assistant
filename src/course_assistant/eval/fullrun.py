@@ -38,6 +38,21 @@ class FullRunError(ValueError):
     """A run folder or an amount cannot be summarised as given (never defaulted, L-12)."""
 
 
+def calibration_label(certified: Mapping[str, str]) -> str:
+    """Our certified calibration (`calibrate.certified_calibration` of the calibration run) as
+    one cell: "certified" when every calibration is, else the ones that are not; "(model panel)"
+    when any labeller is a model panel (OWNER D-76)."""
+    kinds = {k: v for k, v in certified.items() if not k.endswith("_labeller")}
+    if not kinds:
+        return "unknown"
+    missing = sorted(k for k, v in kinds.items() if v != "calibrated")
+    if missing:
+        return "uncalibrated: " + ", ".join(missing)
+    panel = any(k.endswith("_labeller") and str(v).startswith("model-panel")
+                for k, v in certified.items())  # fmt: skip
+    return "certified (model panel)" if panel else "certified"
+
+
 def _amount(value: Any, what: str) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value) \
             or value < 0:  # fmt: skip
@@ -141,7 +156,7 @@ def run_summary(run_dir: Path, ledger_rows: Sequence[Mapping[str, Any]], label: 
     judging = share * math.fsum(v for k, v in by_purpose.items() if k in JUDGING_PURPOSES)
     summary_path = ek / "summary.json"
     calibration = "unknown"
-    if summary_path.is_file():
+    if summary_path.is_file():  # EvalKit's own status; `calibration_label` replaces it (D-83)
         calibration = str(json.loads(summary_path.read_text("utf-8")).get("calibration_status"))
     return RunSummary(
         run=run_dir.name, label=label, n=len(records), n_errors=len(records) - len(ok),
