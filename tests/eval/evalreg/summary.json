@@ -3,7 +3,7 @@
   "comparisons": [],
   "config_hash": "ad67fd747931f24d",
   "extraction_error_rate": null,
-  "finished_at": "2026-11-17T08:51:52.443758Z",
+  "finished_at": "2026-11-19T05:25:18.586742Z",
   "judge_mode": "dual",
   "judges": [],
   "judging_status": "complete",
@@ -797,6 +797,6 @@
       "value": "tuning"
     }
   ],
-  "started_at": "2026-11-17T08:51:52.087383Z",
+  "started_at": "2026-11-19T05:25:18.492437Z",
   "task": "course-ta"
 }

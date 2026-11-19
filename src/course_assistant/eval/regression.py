@@ -49,10 +49,10 @@ from course_assistant.answer.replay import Recording, Replay
 from course_assistant.eval import scorers, system
 from course_assistant.eval.calibrate import SupportTap, agreement_from_rows
 from course_assistant.eval.judges import (
-    RUBRIC_HASH,
     JudgePanel,
     ProbeJudge,
     SolutionBook,
+    rubric_hash,
     solution_digest,
 )
 from course_assistant.ingest.corpus import Corpus
@@ -104,8 +104,12 @@ def _ek_case(row: Mapping[str, Any]) -> Case:
                 meta=row["meta"])  # fmt: skip
 
 
+PROBE_KINDS = ("integrity", "identity", "leak")  # each rubric hashed on its own (D-81)
+
+
 def fixture_meta() -> dict[str, str]:
-    return {"judge_prompt_hash": JUDGE_PROMPT_HASH, "rubric_hash": RUBRIC_HASH,
+    return {"judge_prompt_hash": JUDGE_PROMPT_HASH,
+            "rubric_hash": ",".join(map(rubric_hash, PROBE_KINDS)),
             "rules_hash": Assistant.rules_hash(),
             "ground_version": GroundStep.version()}  # fmt: skip
 

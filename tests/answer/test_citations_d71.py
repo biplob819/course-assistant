@@ -240,6 +240,16 @@ def test_the_answer_rules_ask_for_a_citation_per_sentence_and_no_additions():
     assert AnswerStep.CANARY in AnswerStep.ANSWER_RULES
 
 
+def test_the_answer_rules_forbid_a_bare_yes_or_no_and_remarks_on_what_is_left_out():
+    # E2.5 quality round on terra (public half): an uncited "Yes." or "The materials do not
+    # explain why." failed sentence support and turned a covered answer into not_covered
+    rules = " ".join(AnswerStep.ANSWER_RULES.lower().split())
+    assert 'do not open with a bare "yes." or "no."' in rules
+    assert "write no sentence about what the materials leave out" in rules
+    # ...and the second public run answered two B2 questions from a related topic instead
+    assert "material on a related topic is not an answer" in rules
+
+
 def test_the_support_rules_accept_faithful_paraphrase_but_still_forbid_additions():
     rules = GroundStep.SUPPORT_RULES.lower()
     assert "judge the meaning, not the wording" in rules and "faithful paraphrase" in rules

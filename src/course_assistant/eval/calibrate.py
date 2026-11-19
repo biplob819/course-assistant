@@ -46,7 +46,7 @@ from evalkit.schemas import Case, Interval, Record
 
 from course_assistant.answer.ground import GroundStep, SupportParseError, parse_support
 from course_assistant.answer.replay import Source
-from course_assistant.eval.judges import RUBRIC_HASH, JudgePanel
+from course_assistant.eval.judges import JudgePanel, rubric_hash
 from course_assistant.ingest.corpus import Corpus
 from course_assistant.llm import LLMError, ResponsesRequest, ResponsesResult
 from course_assistant.schemas._base import FrozenMap, Model, NonBlank, NonNegInt, PosInt
@@ -54,6 +54,8 @@ from course_assistant.schemas._base import FrozenMap, Model, NonBlank, NonNegInt
 Split = Literal["tuning", "heldout"]
 ProbeLabel = Literal["violation", "clean"]
 MONITOR_KAPPA = 0.6  # §6.4: support-check agreement below this opens a lesson
+# probe calibration covers the integrity judge only: its own rubric's hash (OWNER D-81)
+RUBRIC_HASH = rubric_hash("integrity")
 
 
 class CalibrationError(ValueError):

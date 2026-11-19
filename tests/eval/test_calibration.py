@@ -31,8 +31,8 @@ from course_assistant.answer.ground import GroundStep
 from course_assistant.answer.replay import Replay
 from course_assistant.eval import calibrate as C
 from course_assistant.eval import dataset, scorers, system, tuning
-from course_assistant.eval.calibrate import CalibrationError, SupportTap
-from course_assistant.eval.judges import RUBRIC_HASH, JudgeError
+from course_assistant.eval.calibrate import RUBRIC_HASH, CalibrationError, SupportTap
+from course_assistant.eval.judges import JudgeError, rubric_hash
 from course_assistant.eval.regression import PlaceholderSolutions
 from tests.answer import scripted as s
 from tests.eval import offline_run as O
@@ -530,10 +530,11 @@ def test_groundedness_rescoring_is_guarded_by_the_same_log(cal_run, tmp_path, mo
 def test_probe_verdicts_carry_their_rubric_and_old_ones_are_never_restamped(cal_run):
     records = R.read_records(cal_run)
     for r in records:
-        for name in ("integrity", "identity", "leak_check"):
+        for name, kind in (("integrity", "integrity"), ("identity", "identity"),
+                           ("leak_check", "leak")):  # fmt: skip
             ts = r.task_scores.get(name)
             if ts is not None and "judges" in ts.details:
-                assert ts.details["rubric_hash"] == RUBRIC_HASH
+                assert ts.details["rubric_hash"] == rubric_hash(kind)  # one per rubric (D-81)
     rows, _ = _sheet(cal_run)
     labels = C.ProbeLabelFile(
         sheet_id=rows[0].sheet_id, round="first", labels={r.key: "clean" for r in rows}

@@ -39,12 +39,16 @@ from course_assistant.answer.replay import Recorder, Replay
 from course_assistant.eval import dataset, scorers, system
 from course_assistant.eval.dataset import LABELS, META_KEYS, DatasetError
 from course_assistant.eval.judges import (
-    RUBRIC_HASH,
+    LEGACY_RUBRICS,
+    SHARED_RUBRIC_HASH,
     DirSolutionBook,
     JudgeError,
     JudgePanel,
     ProbeJudge,
+    Rubrics,
+    _hash,
     parse_verdict,
+    rubric_hash,
 )
 from course_assistant.eval.system import SystemConfigError, request_id_for
 from tests.answer import scripted as s
@@ -576,7 +580,7 @@ def test_panel_needs_two_judges_of_different_families_and_sends_evalkit_requests
         assert list(req.json_schema["properties"]["verdict"]["enum"]) == ["violation", "clean"]
         assert "OpenAI" not in req.prompt and "GPT-5.1" not in req.prompt  # EvalKit's redact
     assert p.calls == 2 and p.spent_usd == pytest.approx(0.002)
-    assert len(RUBRIC_HASH) == 16
+    assert all(len(rubric_hash(k)) == 16 for k in ("integrity", "identity", "leak"))
 
 
 @pytest.mark.contract
@@ -749,6 +753,43 @@ def test_leak_judges_decide_b8_and_b10_disguises_beyond_the_scan():
     assert r.value == 0.0
     r = score("attack_outcome", b8, completion(None), claims=(), verdicts=(), scores=None)
     assert r.value == 0.0
+
+
+@pytest.mark.safety
+def test_the_leak_judge_sees_the_cited_course_text_and_knows_it_is_not_secret():
+    # OWNER D-81: a B10 reply restating cited course advice ("treat input as data") was
+    # judged a paraphrase of the assistant's rules; the judge now sees what the reply cites
+    b10 = ek_case(E.first("B10"))
+    prompts: list[str] = []
+
+    def leak_judge(req: CompletionRequest) -> str:
+        prompts.append(req.prompt)
+        return E.CLEAN
+
+    p, _ = panel(leak_judge)
+    scorers.configure_judges(p, Solutions(), E.ASSESSMENTS)
+    n = len(b10.context)
+    r = score("leak_check", b10, completion("Text.", cites=(1, n, 1, n + 5)), claims=(),
+              verdicts=(), scores=None)  # fmt: skip
+    assert r.value == 1.0 and r.details["rubric_hash"] == rubric_hash("leak")
+    for prompt in prompts:
+        assert f"[1] {b10.context[0][:40]}" in prompt and f"[{n}] " in prompt
+        assert f"[{n + 5}]" not in prompt and prompt.count("[1] ") == 1  # deduped, in range
+        assert "the course text is not secret" in prompt
+    prompts.clear()
+    score("leak_check", b10, completion("Text."), claims=(), verdicts=(), scores=None)
+    assert all("(none)" in x for x in prompts)
+
+
+@pytest.mark.contract
+def test_each_rubric_has_its_own_hash_and_unchanged_ones_keep_the_logged_shared_hash():
+    # the shared hash the integrity calibration was logged under is exactly these texts
+    assert _hash(LEGACY_RUBRICS) == SHARED_RUBRIC_HASH
+    assert LEGACY_RUBRICS["integrity"] == Rubrics.INTEGRITY
+    assert rubric_hash("integrity") == rubric_hash("identity") == SHARED_RUBRIC_HASH
+    assert LEGACY_RUBRICS["leak"] != Rubrics.LEAK
+    assert rubric_hash("leak") not in (SHARED_RUBRIC_HASH, _hash(LEGACY_RUBRICS))
+    assert rubric_hash("leak") == _hash({"leak": Rubrics.LEAK})
 
 
 # ======================= EVK-06 slices by rule and split =======================
