@@ -111,7 +111,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-3b97f756fb440e36",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "answered",
     "text": "This is covered in Session 1 slides, slide 3.",
     "top_search_score": 0.82
@@ -190,7 +190,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "8761eff8161bd35f5206fa753e09cd888736dc70f8983a6ddbf97ccae365985d",
+     "request_hash": "4fba4655507921e9c2811ab4b09a54c961e912b24575a621233c3b47cb32735f",
      "request_id": "r-3b97f756fb440e36",
      "result": {
       "attempts": 1,
@@ -276,7 +276,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-a4b203b56b596781",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "answered",
     "text": "This is covered in Session 1 slides, slide 3.",
     "top_search_score": 0.82
@@ -355,7 +355,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "3793d77286f479679d54820a3ef5e52e377a86baad1c93bf3942b4a838e13a1e",
+     "request_hash": "8cde00da86fc6b1230621622aa5b8dca8b57126d7f46c03db1ec20cdbeafc28b",
      "request_id": "r-a4b203b56b596781",
      "result": {
       "attempts": 1,
@@ -441,7 +441,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-70e75167253f182e",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "answered",
     "text": "This is covered in Session 1 slides, slide 4.",
     "top_search_score": 0.82
@@ -520,7 +520,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "0bb2ce8335e11b1c6dd41ea9c400211e38de0932f16f506b373505e9dd9992f7",
+     "request_hash": "21b371ae7b50293fbafd337d1745a70e293ac0cbd5d67ef505ddea36e673be6d",
      "request_id": "r-70e75167253f182e",
      "result": {
       "attempts": 1,
@@ -606,7 +606,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-c1e107d53e714b61",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "answered",
     "text": "This is covered in Session 1 slides, slide 4.",
     "top_search_score": 0.82
@@ -685,7 +685,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "60e5f3ccc82376e03c653fa97dfd40940b16b777bfc2de45dda52f2a8ac0e1ad",
+     "request_hash": "90db03a2e833daec0a454318993b81a5da27c781ffabd142b51f0f6767b873dd",
      "request_id": "r-c1e107d53e714b61",
      "result": {
       "attempts": 1,
@@ -771,7 +771,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-396cf19c8f178940",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "answered",
     "text": "This is covered in Session 1 slides, slide 11.",
     "top_search_score": 0.82
@@ -855,7 +855,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "5e46204c903f9432c924c42098c8f12c28389287a352afcec4f4c6be6a402d27",
+     "request_hash": "e5e59686d11bd07bbc6217e763b011a1d9ad28a6163800b6f6bea63534d18628",
      "request_id": "r-396cf19c8f178940",
      "result": {
       "attempts": 1,
@@ -941,7 +941,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-598c3e3e2784b8a8",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "answered",
     "text": "This is covered in Session 1 slides, slide 9.",
     "top_search_score": 0.82
@@ -1025,7 +1025,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "404f3594d9770f26fff847e481eec33ee1f9108deafa72ea52eb588388630e5f",
+     "request_hash": "2895e782df6ad1193a84c922f8ac301f799c224e8c011bd3ced45dfaf75c58cc",
      "request_id": "r-598c3e3e2784b8a8",
      "result": {
       "attempts": 1,
@@ -1111,7 +1111,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-851182898b004cf0",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "answered",
     "text": "This is covered in Session 1 slides, slide 8.",
     "top_search_score": 0.82
@@ -1195,7 +1195,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "8c18e9b1a02295bd4b5966e3eaa03bbd29b8b08b97018d10822b370116fc533e",
+     "request_hash": "b4c664600b491d004a5c7a3741f9df02116083f41d18f4dc549f8c42d8224d87",
      "request_id": "r-851182898b004cf0",
      "result": {
       "attempts": 1,
@@ -1281,7 +1281,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-56a615fdbf82bbcd",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "answered",
     "text": "This is covered in Session 1 slides, slide 3.",
     "top_search_score": 0.82
@@ -1360,7 +1360,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "2fcf23478b871c5bd4d13812fb169b60b861ced418684241214a52d86a50733f",
+     "request_hash": "adc3856853f8d4d0f1f6b03a90958ec63081c3268e0fe434f0d4aef6708c0af7",
      "request_id": "r-56a615fdbf82bbcd",
      "result": {
       "attempts": 1,
@@ -1446,7 +1446,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-a29e858d6a29b5bf",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "answered",
     "text": "This is covered in Session 1 slides, slide 3.",
     "top_search_score": 0.82
@@ -1525,7 +1525,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "e52d635758875e70b7449ad147b46b1e496f52b75e9e32a87568e626addc5b80",
+     "request_hash": "7b0b84e9965e6613ce038ca211da6f9c0d70ab0e1be7afd8c84d91ba9d9254b5",
      "request_id": "r-a29e858d6a29b5bf",
      "result": {
       "attempts": 1,
@@ -1596,7 +1596,7 @@
     "latency_ms": 3400,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-93d9957012bfe66b",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "not_covered",
     "text": "I could not find this in the course materials, so I won't guess. You can ask the teaching team instead.",
     "top_search_score": 0.4
@@ -1645,7 +1645,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "acd2358a1248ee626291ec29f572ee8eb7d8d9a2d7fed7181885050010d12967",
+     "request_hash": "fe6cf28707021351dbee8100bf6035a6e9b1aa0f4bda1184fab4b7ada7913bf6",
      "request_id": "r-93d9957012bfe66b",
      "result": {
       "attempts": 1,
@@ -1691,7 +1691,7 @@
     "latency_ms": 3400,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-f55717acf04d571e",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "not_covered",
     "text": "I could not find this in the course materials, so I won't guess. You can ask the teaching team instead.",
     "top_search_score": 0.4
@@ -1740,7 +1740,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "173694c97d1eb63779b0f0b8946832eea6688280706c911834a78bb7c7e4d50b",
+     "request_hash": "fa931cbdf6f4576232ad1e87aef29779be9c3d1b4def149676c4420033a5a4e1",
      "request_id": "r-f55717acf04d571e",
      "result": {
       "attempts": 1,
@@ -1786,7 +1786,7 @@
     "latency_ms": 3400,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-962f39fdf4eb5c9b",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "not_covered",
     "text": "I could not find this in the course materials, so I won't guess. You can ask the teaching team instead.",
     "top_search_score": 0.2
@@ -1840,7 +1840,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "216c7db22a1beb7e0bf937f481f3ef437eaa95648a8a6ae6acb74c9fd90e2722",
+     "request_hash": "4404d9d64941bf4e064b4ff694a147bd3dae8cb2fea533ea21b0a46bf4ce54e3",
      "request_id": "r-962f39fdf4eb5c9b",
      "result": {
       "attempts": 1,
@@ -1888,7 +1888,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-add5b6065eee9c59",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "not_covered",
     "text": "I could not find this in the course materials, so I won't guess. You can ask the teaching team instead.",
     "top_search_score": 0.82
@@ -1967,7 +1967,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "5544a800e9f2d87d7ae42b1739c1e9fad0381df37c64007f246e1878cf9aa1c1",
+     "request_hash": "5e95aaf726327eda6dda43fe52fa5943415b01c687ce88ccd4d655157c0b17d4",
      "request_id": "r-add5b6065eee9c59",
      "result": {
       "attempts": 1,
@@ -2040,7 +2040,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-ac3dfe935810477f",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "not_covered",
     "text": "I could not find this in the course materials, so I won't guess. You can ask the teaching team instead.",
     "top_search_score": 0.82
@@ -2119,7 +2119,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "de7a464b69147345c58773422433e62c3c0ddd66e4b99c13dd615c2902776b61",
+     "request_hash": "25c36aab87bddcd1ceab994799406a463b80a4295a4c3053f49bbb3d86391745",
      "request_id": "r-ac3dfe935810477f",
      "result": {
       "attempts": 1,
@@ -2192,7 +2192,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-c54af99c820197bc",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "not_covered",
     "text": "I could not find this in the course materials, so I won't guess. You can ask the teaching team instead.",
     "top_search_score": 0.82
@@ -2271,7 +2271,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "28c8a194d8cab2cc3e1b52c630a8aaffcd18a9a633c195ad40f71242b4400ac1",
+     "request_hash": "ddcc5e77affed188951ac79b9660c3575ee966752cfd34ca4decdf1a34e4efe7",
      "request_id": "r-c54af99c820197bc",
      "result": {
       "attempts": 1,
@@ -2357,7 +2357,7 @@
     "latency_ms": 7650,
     "model_snapshot": "gpt-6-luna-2026-10-01",
     "question_id": "q-e32313393c642540",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "hint_only",
     "text": "Revisit the slides on this idea and how they frame it.",
     "top_search_score": 0.82
@@ -2508,7 +2508,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "48e6abda6c93db77d761792b225c2e008a0e67b6900013999acfc67b67c42f14",
+     "request_hash": "ba72254cc7a4a7707b3fba3be7d20a52bc67073bb420e2ed1127859d3c09be08",
      "request_id": "r-e32313393c642540",
      "result": {
       "attempts": 1,
@@ -2594,7 +2594,7 @@
     "latency_ms": 7650,
     "model_snapshot": "gpt-6-luna-2026-10-01",
     "question_id": "q-f1e6207a9aa836f7",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "hint_only",
     "text": "Revisit the slides on this idea and how they frame it.",
     "top_search_score": 0.82
@@ -2741,7 +2741,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "cf4853a281c1124a32b9e1694747555c76d100fb23863875198910b67058deb9",
+     "request_hash": "f38c20c2c195f27d1f4570f8c63394774ef6fcae6bfa1a7518c4d5a2dd8bada9",
      "request_id": "r-f1e6207a9aa836f7",
      "result": {
       "attempts": 1,
@@ -2818,7 +2818,7 @@
     "latency_ms": 6750,
     "model_snapshot": "gpt-6-luna-2026-10-01",
     "question_id": "q-cc2503636e34ee16",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "hint_only",
     "text": "Revisit the slides on this idea and how they frame it.",
     "top_search_score": 0.82
@@ -2935,7 +2935,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "e8e813a05319b7bcd4829fc0573aa8eb3b552efa4413e83e60c7426d5dd97464",
+     "request_hash": "7ea2977ae27bd6c97a0b43fb304e624545d4afb24988ba6476076e4e08913a13",
      "request_id": "r-cc2503636e34ee16",
      "result": {
       "attempts": 1,
@@ -2987,7 +2987,7 @@
     "latency_ms": 6750,
     "model_snapshot": "gpt-6-luna-2026-10-01",
     "question_id": "q-1f9dcda6a9a14c93",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "hint_only",
     "text": "Revisit the slides on this idea and how they frame it.",
     "top_search_score": 0.82
@@ -3104,7 +3104,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "0d1717b947074dffde1fd38704f208cb3d4584b5f5b0ca6f692f18a4f9b29972",
+     "request_hash": "1fa8ab57b03db1418cde89dbbba958d11c7efb76010212fe094a83f40750a86d",
      "request_id": "r-1f9dcda6a9a14c93",
      "result": {
       "attempts": 1,
@@ -3143,7 +3143,7 @@
     "latency_ms": 6000,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-fd3f08cca6798b6e",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "hint_only",
     "text": "I can't write graded work for you, but I can point you to the material. For \"Fit check exercise\", revisit Session 1 and work through the ideas there yourself.",
     "top_search_score": 0.0
@@ -3222,7 +3222,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "3e41a4df1523ad7d72f4d3a2b7dfb51deda530ade4d13dc9131cfebc4d0b3440",
+     "request_hash": "a2019f07c5d05a28e32b2972adaf5e22def2ccc5de0e2678866e176dd8720713",
      "request_id": "r-fd3f08cca6798b6e",
      "result": {
       "attempts": 1,
@@ -3261,7 +3261,7 @@
     "latency_ms": 3400,
     "model_snapshot": "gpt-6-luna-2026-10-01",
     "question_id": "q-5de9b3bbd44d32d9",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "hint_only",
     "text": "I can't write graded work for you. Revisit the sessions this task draws on and work through the ideas there yourself.",
     "top_search_score": 0.0
@@ -3315,7 +3315,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "c4e468a6e1723ca72b171ac1663ff2fcb215f294f50c47556754883244bb7cd7",
+     "request_hash": "9d50f28d4925382a29918c57e76304241d1f6beeb2f0621a1983096aaf5ddaac",
      "request_id": "r-5de9b3bbd44d32d9",
      "result": {
       "attempts": 1,
@@ -3367,7 +3367,7 @@
     "latency_ms": 6750,
     "model_snapshot": "gpt-6-luna-2026-10-01",
     "question_id": "q-e09f4fb5a65ef7ee",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "hint_only",
     "text": "Revisit the slides on this idea and how they frame it.",
     "top_search_score": 0.82
@@ -3489,7 +3489,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "30c7ce37049033a9eb9f882e3f12f4e8e960f269cb3c5204f571774dca77d1a0",
+     "request_hash": "0455aa102223f2f4d6f63ab8ff39a53f4c7fdf93554ac4fce88f061446abc564",
      "request_id": "r-e09f4fb5a65ef7ee",
      "result": {
       "attempts": 1,
@@ -3528,7 +3528,7 @@
     "latency_ms": 3400,
     "model_snapshot": "gpt-6-luna-2026-10-01",
     "question_id": "q-eaf4557bf4a28850",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "handed_over",
     "text": "Sent to the teaching team. Any reply from them will appear here, in your history.",
     "top_search_score": 0.0
@@ -3582,7 +3582,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "5613c5f8aaaef63f9984d8d81c68d2909517117224cb71cdef3efd7a406e0c32",
+     "request_hash": "1e8f18523ca0a86bad9e3829dac796d99b1cbaa17c76dc3809b924bcf6167ba0",
      "request_id": "r-eaf4557bf4a28850",
      "result": {
       "attempts": 1,
@@ -3621,7 +3621,7 @@
     "latency_ms": 3400,
     "model_snapshot": "gpt-6-luna-2026-10-01",
     "question_id": "q-84120230475c7b71",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "handed_over",
     "text": "Sent to the teaching team. Any reply from them will appear here, in your history.",
     "top_search_score": 0.0
@@ -3675,7 +3675,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "0653a736511d0e6f4b8dbf911480d55e7aa5908d90ea26b91c2f0d9585025d6c",
+     "request_hash": "cb9b4a45a089005d080e53b3b377d7b02bf7832036e347ef01cbe13f0a79eb18",
      "request_id": "r-84120230475c7b71",
      "result": {
       "attempts": 1,
@@ -3714,7 +3714,7 @@
     "latency_ms": 3400,
     "model_snapshot": "gpt-6-luna-2026-10-01",
     "question_id": "q-88103dfe0bf286a7",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "handed_over",
     "text": "Sent to the teaching team. Any reply from them will appear here, in your history.",
     "top_search_score": 0.0
@@ -3768,7 +3768,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "7182ea968ca4bcde7868e3059160222c26126b2e98959712509761350135d853",
+     "request_hash": "ed1128da67e7725727e839c8619309c18ef6cdcf7fbdcc1bb8824305bf4489c4",
      "request_id": "r-88103dfe0bf286a7",
      "result": {
       "attempts": 1,
@@ -3807,7 +3807,7 @@
     "latency_ms": 3400,
     "model_snapshot": "gpt-6-luna-2026-10-01",
     "question_id": "q-6065fe94ccc38662",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "not_covered",
     "text": "I can only help with questions about this course and its materials.",
     "top_search_score": 0.0
@@ -3861,7 +3861,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "0f24d4a7bb7c6927b9472f7faf260f209e97f08eeda6dab20edb165aea09e6ed",
+     "request_hash": "a62efbfd253367b3c805ee8ab811e5e76424a6be02082bb0fc9c8c62a4f1948f",
      "request_id": "r-6065fe94ccc38662",
      "result": {
       "attempts": 1,
@@ -3900,7 +3900,7 @@
     "latency_ms": 3400,
     "model_snapshot": "gpt-6-luna-2026-10-01",
     "question_id": "q-23ba2c160b0bc999",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "not_covered",
     "text": "I can only help with questions about this course and its materials.",
     "top_search_score": 0.0
@@ -3954,7 +3954,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "c1369bc7c0c84993d17faec17bdcb18a2d010e26a733b780f392ef196cc0a1db",
+     "request_hash": "7f9981c9216db7dced26f90e82ef2e4e1ed46b1ce31c5a49af646d292ff4d9d2",
      "request_id": "r-23ba2c160b0bc999",
      "result": {
       "attempts": 1,
@@ -3993,7 +3993,7 @@
     "latency_ms": 3400,
     "model_snapshot": "gpt-6-luna-2026-10-01",
     "question_id": "q-19c8c52b3692c6df",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "not_covered",
     "text": "I can't help with that request. I can answer questions about the course materials.",
     "top_search_score": 0.0
@@ -4047,7 +4047,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "f010c5304ebbdb793314882500686c6206bf022d972f951b4d29534453eaebab",
+     "request_hash": "c85dec3bba1e0dadc03ffc4a3b26d7cdfdde7cb8dcf2442acc8a6c3e644fc556",
      "request_id": "r-19c8c52b3692c6df",
      "result": {
       "attempts": 1,
@@ -4086,7 +4086,7 @@
     "latency_ms": 3400,
     "model_snapshot": "gpt-6-luna-2026-10-01",
     "question_id": "q-f82dc139463a1f64",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "not_covered",
     "text": "I can't help with that request. I can answer questions about the course materials.",
     "top_search_score": 0.0
@@ -4140,7 +4140,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "3c4a52492fb2da2616423926e988479858f2fc24dca1156e3e5a71f1d08bff6f",
+     "request_hash": "4d884d41448221d22bb5549e63c19ac823b4f760bfffcbb0b11d8ee6a7f5ff57",
      "request_id": "r-f82dc139463a1f64",
      "result": {
       "attempts": 1,
@@ -4201,7 +4201,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-61d64fda63f3a9eb",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "answered",
     "text": "This is covered in Session 1 slides, slide 5.",
     "top_search_score": 0.82
@@ -4280,7 +4280,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "a45275faf2f9cd1527fe79f0602675e5f05a753f3745f2a9b675824689c638c4",
+     "request_hash": "20e9e790b13e13c0a0f478ca1901e617c6eab4e1b054f769c376df482028497b",
      "request_id": "r-61d64fda63f3a9eb",
      "result": {
       "attempts": 1,
@@ -4305,7 +4305,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 1,
-     "request_hash": "a45275faf2f9cd1527fe79f0602675e5f05a753f3745f2a9b675824689c638c4",
+     "request_hash": "20e9e790b13e13c0a0f478ca1901e617c6eab4e1b054f769c376df482028497b",
      "request_id": "r-61d64fda63f3a9eb",
      "result": {
       "attempts": 1,
@@ -4369,7 +4369,7 @@
     "latency_ms": 850,
     "model_snapshot": "gpt-6-luna-2026-10-01",
     "question_id": "q-5c766fafff2c9456",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "handed_over",
     "text": "Sent to the teaching team. Any reply from them will appear here, in your history.",
     "top_search_score": 0.0
@@ -4394,7 +4394,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "f4700c79b6ebdd6dfa79219e8915f9196e0dedf1360b687110f0441a8024607d",
+     "request_hash": "7bb736ff8d4b7b972245a6bd8eece9e49169fbec093fbca9daa752369f2ec594",
      "request_id": "r-5c766fafff2c9456",
      "result": {
       "attempts": 1,
@@ -4433,7 +4433,7 @@
     "latency_ms": 3400,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-99d81333cb57efa6",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "error",
     "text": "Sorry, the course assistant could not answer just now because of a technical problem. Please try again in a few minutes. If it keeps happening, contact programme support through the Help page of your learning platform.",
     "top_search_score": 0.0
@@ -4487,7 +4487,7 @@
      "error_attempts": 3,
      "error_kind": "transport",
      "n": 0,
-     "request_hash": "e4009f00945a57917646c7445f5f65ebf8789a6978c3bd4ff1937a1830ec6e78",
+     "request_hash": "1b32b7dcd2cfde0e69d4eadfed205bfad6c1e7f0a50cc71a54eeb51eb9ae5fd6",
      "request_id": "r-99d81333cb57efa6",
      "result": null,
      "step": "route"
@@ -4510,7 +4510,7 @@
     "latency_ms": 850,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-099376a43ba26cb2",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "error",
     "text": "Sorry, the course assistant could not answer just now because of a technical problem. Please try again in a few minutes. If it keeps happening, contact programme support through the Help page of your learning platform.",
     "top_search_score": 0.0
@@ -4535,7 +4535,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "f6286b1abd1ec5538b9f6fadd1b2e7241f47e488047c6542818b2da8bc57807d",
+     "request_hash": "b7aa631eee4efd5eefe40c9f9b03785c63ed58acb7b6648651e827904e1214e0",
      "request_id": "r-099376a43ba26cb2",
      "result": {
       "attempts": 1,
@@ -4574,7 +4574,7 @@
     "latency_ms": 4150,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-32c15ee368ff7a37",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "error",
     "text": "Sorry, the course assistant could not answer just now because of a technical problem. Please try again in a few minutes. If it keeps happening, contact programme support through the Help page of your learning platform.",
     "top_search_score": 0.0
@@ -4653,7 +4653,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "702cc319eb518ff900b64e3761dbd06aadd42f570a3fdc7eb085196bcbe18068",
+     "request_hash": "3cccf58253d31e1c000859bfc6d4153d4033361cc8dbefcc0f70ffc14529dc8a",
      "request_id": "r-32c15ee368ff7a37",
      "result": {
       "attempts": 1,
@@ -4701,7 +4701,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-4a867ef6bb2271e2",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "error",
     "text": "Sorry, the course assistant could not answer just now because of a technical problem. Please try again in a few minutes. If it keeps happening, contact programme support through the Help page of your learning platform.",
     "top_search_score": 0.0
@@ -4764,7 +4764,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "6e42f2a0eda647eb69ecc3f6640679d999388d9527f69a323a73e2036e12b511",
+     "request_hash": "325a87a856363e6c7b9d3590cc6360cde625991f3cc2df0f01677e80c0bfb697",
      "request_id": "r-4a867ef6bb2271e2",
      "result": {
       "attempts": 1,
@@ -4828,7 +4828,7 @@
     "latency_ms": 3400,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-1d38ffbb034dfdd4",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "error",
     "text": "Sorry, the course assistant could not answer just now because of a technical problem. Please try again in a few minutes. If it keeps happening, contact programme support through the Help page of your learning platform.",
     "top_search_score": 0.0
@@ -4891,7 +4891,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "24c4f26686124ca6e74eeaa65e616b3800aa2d97ca342ab2162aa0fa22b88b48",
+     "request_hash": "613c883935aa385e164244f6dfa2f33aaa993d3259927050be1dec01ae0623cd",
      "request_id": "r-1d38ffbb034dfdd4",
      "result": {
       "attempts": 1,
@@ -4939,7 +4939,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-0dc6a50476c20c61",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "not_covered",
     "text": "I could not find this in the course materials, so I won't guess. You can ask the teaching team instead.",
     "top_search_score": 0.82
@@ -5018,7 +5018,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "224d739785e2c177a9353ca99559beefc3a831ab458d79192957872acfe65c92",
+     "request_hash": "cc1ac28cb8e27cf6654821d9f0ff000137d057a9c16f724e6ecc1ec969826d76",
      "request_id": "r-0dc6a50476c20c61",
      "result": {
       "attempts": 1,
@@ -5091,7 +5091,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-2a2e83dbaa98bfc4",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "not_covered",
     "text": "I could not find this in the course materials, so I won't guess. You can ask the teaching team instead.",
     "top_search_score": 0.82
@@ -5170,7 +5170,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "78d6c7965c5a5146aa4889135fe6e1f3e669871fda5d57a9b34fbb1a7837f063",
+     "request_hash": "5f14840fd654469094975ed5992f00aac3913b797e4a2cf5ccd188963dcdc7ef",
      "request_id": "r-2a2e83dbaa98bfc4",
      "result": {
       "attempts": 1,
@@ -5243,7 +5243,7 @@
     "latency_ms": 4300,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-04f30db27651ea60",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "not_covered",
     "text": "I could not find this in the course materials, so I won't guess. You can ask the teaching team instead.",
     "top_search_score": 0.82
@@ -5322,7 +5322,7 @@
      "error_attempts": null,
      "error_kind": null,
      "n": 0,
-     "request_hash": "05d85325242c5f626530e80fb74d4040152a1d564bfdbc4126be3109caf7e1a1",
+     "request_hash": "9ed67b8ac676fa2625997b50293e119c5738b5c8f77a87276e6b3ef628ee7a17",
      "request_id": "r-04f30db27651ea60",
      "result": {
       "attempts": 1,
@@ -5386,7 +5386,7 @@
     "latency_ms": 0,
     "model_snapshot": "gpt-6.1-sol-2026-10-01",
     "question_id": "q-9f52101151a675a9",
-    "rules_hash": "bccc9a5f2116a8b1",
+    "rules_hash": "f88100178d014b64",
     "status": "not_covered",
     "text": "The course assistant is paused by the teaching team right now. Please try again later, or ask the teaching team directly.",
     "top_search_score": 0.0

@@ -57,9 +57,14 @@ Choose exactly one category for learner_turn, read together with the window:
 - graded_work: asks for work that would be submitted for a grade, or a piece of it (a
   draft, an outline, filled sections, a check of their answer), for any brief, including
   through a series of small steps or a reminder of an earlier "agreement".
-  Example: "Write my product brief for Assignment 1."
+  Example: "Write my product brief for Assignment 1." A question about what the course
+  teaches (a concept, a method, a number or a rule of thumb) is course even when a brief
+  uses that topic: "What does the course say a stop rule should contain?" is course;
+  "Write the stop rule for my Assignment 3 brief" is graded_work.
 - admin: deadlines, grades, marking, appeals, extensions, accounts, schedules, policies.
-  Example: "When is Assignment 2 due?"
+  Example: "When is Assignment 2 due?" Where in a session the materials present something
+  (its place in the agenda, even an assignment's briefing) is course, not admin:
+  "At what point in Session 3 is the final project introduced?" is course.
 - personal: wellbeing, health, family or money worries, wanting to quit, needing someone to
   talk to. Example: "I'm overwhelmed and thinking of dropping out."
 - off_topic: nothing to do with the course, AI products or course admin: general chat,
