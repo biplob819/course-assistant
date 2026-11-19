@@ -50,9 +50,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--runs", type=int, default=6, help="full runs a month (FRN-03)")
     ap.add_argument("--cost-from", help="smoke LABEL whose ledger cost per question to project")
     ap.add_argument("--run-usd", type=float, help="cost of one full run, when no --run gives it")
-    ap.add_argument("--calibration", type=Path,
-                    help="the calibration run (its EvalKit folder): its certified calibration (against the "
-                         "tuning log) fills the Calibration column instead of EvalKit's status")
+    ap.add_argument(
+        "--calibration",
+        type=Path,
+        help="the calibration run (its EvalKit folder): its certified calibration (against the "
+        "tuning log) fills the Calibration column instead of EvalKit's status",
+    )
     ap.add_argument("--note", action="append", default=[], help="a line for the Notes section")
     ap.add_argument("--write", type=Path, help="write the report here")
     args = ap.parse_args(argv)
@@ -67,8 +70,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.calibration is not None:
         from course_assistant.eval.calibrate import certified_calibration
 
-        cell = F.calibration_label(certified_calibration(
-            args.calibration, log=ROOT / "docs" / "measurements" / "tuning-log.jsonl"))
+        cell = F.calibration_label(
+            certified_calibration(
+                args.calibration, log=ROOT / "docs" / "measurements" / "tuning-log.jsonl"
+            )
+        )
         summaries = [replace(s, calibration=cell) for s in summaries]
     smoke = [F.smoke_row(path, label, rows) for label, path in args.smoke]
     differences = {}
