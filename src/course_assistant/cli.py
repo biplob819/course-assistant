@@ -125,7 +125,9 @@ def build_parser() -> argparse.ArgumentParser:
         "pending.",
     )
     ev.add_argument("--config", required=True, type=Path, help="config.yaml (ingested)")
-    ev.add_argument("--cases", required=True, type=Path, help="your golden cases (JSONL)")
+    ev.add_argument("--cases", required=True, type=Path, nargs="+",
+                    help="your golden cases (JSONL): one file, or the tuning and the held-out "
+                    "file together for a calibration run")  # fmt: skip
     ev.add_argument("--manifest", type=Path, help="default: manifest.yaml next to the config")
     ev.add_argument("--root", type=Path, help="corpus root (default: the config's folder)")
     ev.add_argument("--store", type=Path, help="corpus store folder (default: corpus_store/)")
@@ -169,6 +171,49 @@ def build_parser() -> argparse.ArgumentParser:
                        "the config)")  # fmt: skip
         p.add_argument("--calibration", type=Path,
                        help="the run that certified the judges (default: this run)")  # fmt: skip
+    cal = sub.add_parser(
+        "calibrate",
+        help="certify the judges on a calibration run: export, import labels, score (no calls)",
+        description="Blind labelling sheets from a finished calibration run (an `eval` of your "
+        "tuning and held-out files together), the import of the filled sheets, and the score "
+        "that certifies the judges and writes calibration_scored to your tuning log. A held-out "
+        "set is scored once per rubric; every guard of the repository's calibration applies.",
+    )
+    cal_sub = cal.add_subparsers(dest="step", required=True)
+    c_exp = cal_sub.add_parser("export", help="write the blind groundedness and integrity sheets")
+    c_exp.add_argument("--force", action="store_true", help="replace sheets that have no labels")
+    c_exp.add_argument("--n", type=int, default=100, help="answers per sheet, half held-out")
+    c_exp.add_argument("--n-relabel", type=int, default=20, help="of those, to relabel blind")
+    c_ig = cal_sub.add_parser("import-groundedness", help="import a filled groundedness sheet")
+    c_ii = cal_sub.add_parser("import-integrity", help="import a filled integrity sheet")
+    c_sc = cal_sub.add_parser("score", help="score the labels and log calibration_scored")
+    for p in (c_exp, c_ig, c_ii, c_sc):
+        p.add_argument("run", type=Path, help="the calibration run folder")
+    for p in (c_ig, c_ii):
+        p.add_argument("csv", type=Path, help="the filled sheet")
+        p.add_argument("--relabel", action="store_true", help="the blind relabel round")
+    c_sc.add_argument("--labeller", required=True, choices=("owner", "model-panel"),
+                      help="who made the labels; logged, and noted in every verdict")  # fmt: skip
+    c_sc.add_argument("--config", type=Path, help="config.yaml (the tuning log sits beside it)")
+    c_sc.add_argument("--tuning-log", type=Path, help="default: tuning-log.jsonl by the config")
+    for p in (c_exp, c_sc):
+        p.add_argument("--heldout", required=True, type=Path,
+                       help="your held-out cases file (its ids are the held-out half)")  # fmt: skip
+    tl = sub.add_parser(
+        "tuning-log",
+        help="record a grounding bar, support rules or held-out refresh in your tuning log",
+        description="Append one change to the course's tuning log. It must cite a row of your "
+        "decisions.md (| D-n | ... |) and continue from the logged value; a heldout_refreshed "
+        "line needs a decision whose text opens with 'Refreshes held-out'. The log is "
+        "hash-chained: never edit it by hand.",
+    )
+    tl.add_argument("kind", choices=("grounding_bar", "support_rules", "heldout_refreshed"))
+    tl.add_argument("--decision", required=True, help="the D-n row of decisions.md")
+    tl.add_argument("--to", help="the new bar (grounding_bar); default for support_rules: the "
+                    "support rules this package ships")  # fmt: skip
+    tl.add_argument("--config", type=Path, help="config.yaml (log and decisions sit beside it)")
+    tl.add_argument("--tuning-log", type=Path, help="default: tuning-log.jsonl by the config")
+    tl.add_argument("--decisions", type=Path, help="default: decisions.md by the config")
     pur = sub.add_parser(
         "purge",
         help="apply retention to the app store and retry open trace deletions (deletes)",
@@ -501,9 +546,10 @@ def _verdict(folder: Path, args: argparse.Namespace, env: Mapping[str, str],
     run_dir = course.evalkit_run_dir(folder)
     thresholds = course.course_gate(run_dir)
     if thresholds.split != "heldout":
-        thresholds.notes.append("a tuning run never approves a course version")
+        thresholds.notes.append("only a held-out run can approve a course version")
         return thresholds
-    if args.config is None or args.cases is None:
+    cases_file = getattr(args, "heldout_file", None) or args.cases
+    if args.config is None or cases_file is None:
         raise course.CourseEvalError("a held-out run needs --config and --cases (the held-out "
                                      "file) for the release gate")  # fmt: skip
     if course_data is None:
@@ -518,7 +564,7 @@ def _verdict(folder: Path, args: argparse.Namespace, env: Mapping[str, str],
     config, store, assessments = course_data
     files = course.CourseFiles.beside(
         args.config,
-        args.cases,
+        cases_file,
         public=args.public,
         tuning_log=args.tuning_log,
         decisions=args.decisions,
@@ -579,7 +625,8 @@ def _eval(args: argparse.Namespace, env: Mapping[str, str] | None = None) -> int
         config = load_app_config(args.config)
         assessments = load_assessments(assessments_path)
         manifest = load_manifest(args.manifest or base / "manifest.yaml")
-        cases, split = course.load_cases(args.cases)
+        cases, split, held_path = course.load_case_files(args.cases)
+        args.heldout_file = held_path
         store = CorpusStore(args.store or base / "corpus_store", config.cohort)
         corpus = store.current()
         if corpus is None:
@@ -628,13 +675,13 @@ def _eval(args: argparse.Namespace, env: Mapping[str, str] | None = None) -> int
         return EXIT_CONFIG
     files = course.CourseFiles.beside(
         args.config,
-        args.cases,
+        held_path or args.cases[0],
         public=args.public,
         tuning_log=args.tuning_log,
         decisions=args.decisions,
     )
-    heldout = split == "heldout"
-    if heldout:
+    heldout = split == "heldout"  # only a held-out run can approve
+    if held_path is not None:  # held-out cases are scored: the same refusals as eval_live
         problem = course.heldout_problem(files, config.grounding_bar)
         if problem is not None:
             print(f"eval: {problem}", file=sys.stderr)
@@ -655,7 +702,7 @@ def _eval(args: argparse.Namespace, env: Mapping[str, str] | None = None) -> int
         rows = [r.model_dump_json() for r in getattr(recorder, "recordings", [])]
         (folder / "recordings.jsonl").write_text("".join(x + "\n" for x in rows),
                                                  encoding="utf-8")  # fmt: skip
-        if heldout:  # every run that scores the held-out split is logged (as eval_live)
+        if held_path is not None:  # every run that scores held-out cases is logged
             from course_assistant.answer.ground import GroundStep
             from course_assistant.eval.tuning import log_heldout_scored
 
@@ -676,6 +723,88 @@ def _eval(args: argparse.Namespace, env: Mapping[str, str] | None = None) -> int
                              now=dt.datetime.now(dt.UTC))  # fmt: skip
         print(f"approved: the live course version is now {state['corpus_version'][:12]}")
     return result
+
+
+def _calibrate(args: argparse.Namespace) -> int:
+    """The calibration steps (`calibrate_steps`, the code scripts/calibrate.py runs too)."""
+    try:
+        from evalkit.run import RunError
+
+        from course_assistant.eval import calibrate_steps, course
+    except ImportError as exc:
+        print(f"calibrate: {exc.name} is not installed: pip install 'course-assistant[eval]'",
+              file=sys.stderr)  # fmt: skip
+        return EXIT_CONFIG
+    try:
+        run = course.evalkit_run_dir(args.run)
+        held: frozenset[str] = frozenset()
+        if args.step in ("export", "score"):
+            cases, split = course.load_cases(args.heldout)
+            if split != "heldout":
+                raise course.CourseEvalError(f"{args.heldout.name} is not a held-out file")
+            held = frozenset(c.id for c in cases)
+        if args.step == "export":
+            done = calibrate_steps.export(run, heldout_ids=held, force=args.force, n=args.n,
+                                          n_relabel=args.n_relabel)  # fmt: skip
+            print(
+                f"groundedness: {done.groundedness_rows} claims to label S or U in "
+                f"{done.groundedness_csv} (or label them in `evalkit calibrate label {run}`)"
+            )
+            print(f"integrity: {done.integrity_rows} conversations to label V or C in "
+                  f"{done.integrity_csv}; relabel.csv later, blind")  # fmt: skip
+        elif args.step == "import-groundedness":
+            n = calibrate_steps.import_groundedness(run, args.csv, relabel=args.relabel)
+            print(f"groundedness: imported {n} {'relabel' if args.relabel else 'first-round'} "
+                  "labels")  # fmt: skip
+        elif args.step == "import-integrity":
+            n = calibrate_steps.import_integrity(run, args.csv, relabel=args.relabel)
+            print(f"integrity: imported {n} {'relabel' if args.relabel else 'first-round'} labels")
+        else:
+            if args.tuning_log is None and args.config is None:
+                raise course.CourseEvalError("give --config (the log sits beside it) or "
+                                             "--tuning-log")  # fmt: skip
+            log = args.tuning_log or args.config.parent / "tuning-log.jsonl"
+            report, probe = calibrate_steps.score(
+                run, log=log, heldout_ids=held,
+                labeller=calibrate_steps.labeller_name(args.labeller))  # fmt: skip
+            for line in calibrate_steps.score_lines(report, probe):
+                print(line)
+            print(f"logged calibration_scored for {run.name} in {log.name}")
+    except (ValueError, FileNotFoundError, RunError) as exc:  # ids and counts, never text
+        print(f"calibrate: {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+    return EXIT_OK
+
+
+def _tuning_log(args: argparse.Namespace) -> int:
+    from course_assistant.answer.ground import GroundStep
+    from course_assistant.eval import tuning
+
+    if args.config is None and (args.tuning_log is None or args.decisions is None):
+        print("tuning-log: give --config, or both --tuning-log and --decisions", file=sys.stderr)
+        return EXIT_CONFIG
+    base = args.config.parent if args.config is not None else Path(".")
+    log = args.tuning_log or base / "tuning-log.jsonl"
+    decisions = args.decisions or base / "decisions.md"
+    if not decisions.is_file():
+        print(f"tuning-log: no decisions file {decisions.name}", file=sys.stderr)
+        return EXIT_CONFIG
+    bar, ground = tuning.current(tuning.read_log(log))
+    entry: dict[str, Any] = {"kind": args.kind, "decision": args.decision}
+    try:
+        if args.kind == "grounding_bar":
+            if args.to is None:
+                raise tuning.TuningError("a grounding_bar change needs --to (the new bar)")
+            entry.update({"from": bar, "to": float(args.to)})
+        elif args.kind == "support_rules":
+            entry.update({"from": ground, "to": args.to or GroundStep.version()})
+        row = tuning.log_change(log, entry, decisions.read_text(encoding="utf-8"))
+    except ValueError as exc:  # TuningError and a bar that is not a number
+        print(f"tuning-log: {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+    change = f" {row.get('from')} -> {row.get('to')}" if "to" in row else ""
+    print(f"logged {args.kind}{change} under {args.decision} in {log.name}")
+    return EXIT_OK
 
 
 def _date(text: str) -> object:
@@ -838,6 +967,10 @@ def main(argv: list[str] | None = None) -> int:
         return _gate_report(args.run, args)[0]
     if args.command == "purge":
         return _purge(args)
+    if args.command == "calibrate":
+        return _calibrate(args)
+    if args.command == "tuning-log":
+        return _tuning_log(args)
     return EXIT_OK
 
 

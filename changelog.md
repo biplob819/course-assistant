@@ -28,6 +28,13 @@ waits for the owner (OWNER D-21, D-72). The first public release:
   live run) and on a pass approves the course version `ask` serves; a tuning run checks the
   thresholds only and never approves. `course-assistant eval-check` re-checks a finished run
   with no calls and no approval.
+- `course-assistant calibrate export | import-groundedness | import-integrity | score`: the
+  blind calibration sheets, label import and the score that certifies the judges into the
+  course's tuning log, with every guard of the repository's calibration (one package code
+  path with `scripts/calibrate.py`); `eval` takes a tuning and a held-out file together for a
+  calibration run.
+- `course-assistant tuning-log grounding_bar | support_rules | heldout_refreshed`: one change
+  citing a row of the course's decisions.md, continuing from the logged value.
 - `course-assistant purge` and `make purge`: retention on the app store, retry of open trace
   deletions, exit 1 on a deletion request incomplete after 7 days.
 - `doctor` warns about a provider key only when the configured judge panel needs it.

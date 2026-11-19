@@ -188,7 +188,7 @@ def course_run(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def test_a_full_offline_run_passes_every_threshold_and_writes_gate_json(course_run):
     gate = json.loads((course_run / "gate.json").read_text(encoding="utf-8"))
     assert gate["exit_code"] == 0 and gate["split"] == "public"
-    assert "a tuning run never approves a course version" in gate["notes"]
+    assert "only a held-out run can approve a course version" in gate["notes"]
     names = {g["name"] for g in gate["gates"]}
     assert {
         "grounded",

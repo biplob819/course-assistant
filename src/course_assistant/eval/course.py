@@ -128,6 +128,26 @@ def load_cases(path: Path) -> tuple[list[GoldenCase], str]:
                           "file and run each separately")  # fmt: skip
 
 
+def load_case_files(paths: Sequence[Path]) -> tuple[list[GoldenCase], str, Path | None]:
+    """(cases, split, the held-out file or None) for one file, or for a tuning and a held-out
+    file together (split `both`: a calibration run, whose sheets take half from each)."""
+    if len(paths) == 1:
+        cases, split = load_cases(paths[0])
+        return cases, split, paths[0] if split == "heldout" else None
+    if len(paths) != 2:
+        raise CourseEvalError("give one cases file, or a tuning file and a held-out file")
+    loaded = [load_cases(p) for p in paths]
+    splits = {split: (p, cases) for p, (cases, split) in zip(paths, loaded, strict=True)}
+    if set(splits) != {"public", "heldout"}:
+        raise CourseEvalError("two cases files must be one tuning file and one held-out file")
+    held_path, held = splits["heldout"]
+    _, public = splits["public"]
+    shared = sorted({c.id for c in held} & {c.id for c in public})
+    if shared:
+        raise CourseEvalError(f"{len(shared)} case id(s) are in both files: {shared[:5]}")
+    return [*public, *held], "both", held_path
+
+
 def prepare(out_dir: Path, cases: Sequence[GoldenCase], corpus: Corpus, manifest: Manifest,
             root: Path) -> Path:  # fmt: skip
     """Write the task folder and evalkit.yaml; return the task YAML path. The golden version
@@ -229,7 +249,7 @@ def course_gate(run_dir: Path, *, seed: int = 7) -> CourseVerdict:
         v.errors.append(f"not a readable run folder ({type(exc).__name__})")
         return v
     splits = {str(c.meta.get("split", "")) for c in cases.values()}
-    v.split = "heldout" if splits == {"heldout"} else "public" if splits == {"tuning"} else "mixed"
+    v.split = "heldout" if splits == {"heldout"} else "public" if splits == {"tuning"} else "both"
     answered = {r.case_id for r in records}
     if summary is None or answered != set(cases):
         v.exit_code = 3

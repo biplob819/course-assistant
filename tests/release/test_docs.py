@@ -34,6 +34,11 @@ def _subcommands() -> dict[str, set[str]]:
         if isinstance(action, argparse._SubParsersAction):
             for name, sub in action.choices.items():
                 out[name] = {o for a in sub._actions for o in a.option_strings}
+                for nested in sub._actions:  # `calibrate export` and the like
+                    if isinstance(nested, argparse._SubParsersAction):
+                        for step, leaf in nested.choices.items():
+                            out[f"{name} {step}"] = {o for a in leaf._actions
+                                                     for o in a.option_strings}  # fmt: skip
     return out
 
 
@@ -65,6 +70,8 @@ def command_problems(lines: list[str]) -> list[str]:
             if tok == "course-assistant" and (i == 0 or tokens[i - 1] in ("run", "exec")):
                 rest = tokens[i + 1 :]
                 cmd = rest[0] if rest and not rest[0].startswith("-") else ""
+                if len(rest) > 1 and f"{cmd} {rest[1]}" in subs:
+                    cmd = f"{cmd} {rest[1]}"
                 if cmd not in subs:
                     problems.append(f"no subcommand {cmd!r}: {line}")
                     continue
@@ -91,7 +98,9 @@ def test_command_checker_catches_drift():
     bad = ["uv run course-assistant ask --x", "make deploy-everything", "python scripts/nope.py",
            "course-assistant doctor --nope"]  # fmt: skip
     assert len(command_problems(bad)) == 4
+    assert command_problems(["course-assistant calibrate export r --nope"]) != []
     good = ["uv run course-assistant doctor --config c.yaml", "course-assistant --version",
+            "course-assistant calibrate score r --heldout h.jsonl --labeller owner",
             "make eval-replay", "uv run python scripts/release_gate.py offline"]  # fmt: skip
     assert command_problems(good) == []
 

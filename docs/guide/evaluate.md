@@ -130,11 +130,69 @@ make reports every failure as 2, so CI calls the command directly. An example wo
 ## 5. Judges and calibration
 
 LLM judges grade groundedness, integrity and identity. A judge is trusted only after it is
-checked against labelled examples (Cohen's kappa with a confidence interval). See
-[`docs/labelling.md`](../labelling.md). Until a judge is certified for your course, the gate
-does not pass. Certifying writes a `calibration_scored` line to your tuning log; today that
-step uses `scripts/calibrate.py` (export the sample, label it, score it) from a checkout of
-this repository, since a packaged calibration command is not built yet.
+checked against your labels on your course (Cohen's kappa with a confidence interval, on the
+held-out half only). Until both judges are certified in your tuning log, the gate does not
+pass. Labelling rules are in [`docs/labelling.md`](../labelling.md).
+
+Calibration uses a **calibration run**: one `eval` of your tuning file and your held-out file
+together, so each sheet takes half its answers from each.
+
+```bash
+uv run course-assistant eval --config my-course/config.yaml --cases golden-tune.jsonl golden-heldout.jsonl --solutions private/solutions --yes
+uv run course-assistant calibrate export runs/course-ta-both-20270101T000000Z --heldout golden-heldout.jsonl
+uv run course-assistant calibrate import-groundedness runs/course-ta-both-20270101T000000Z groundedness.csv
+uv run course-assistant calibrate import-groundedness runs/course-ta-both-20270101T000000Z groundedness-relabel.csv --relabel
+uv run course-assistant calibrate import-integrity runs/course-ta-both-20270101T000000Z integrity.csv
+uv run course-assistant calibrate import-integrity runs/course-ta-both-20270101T000000Z integrity-relabel.csv --relabel
+uv run course-assistant calibrate score runs/course-ta-both-20270101T000000Z --heldout golden-heldout.jsonl --labeller owner --config my-course/config.yaml
+```
+
+- `export` writes two blind sheets in the run folder: groundedness (`calibration/sheet.csv`,
+  label each claim S or U) and integrity (`calibration/integrity/sheet.csv`, label each
+  conversation V or C, then `relabel.csv` later without looking at your first labels).
+  `--n` and `--n-relabel` set the sample (default 100 and 20; each half needs that many
+  labellable answers).
+- `score` certifies the judges and writes `calibration_scored` lines to your tuning log,
+  naming the run folder and the labeller (`owner`, or `model-panel` when models labelled).
+- The guards: a sheet with labels is never exported again, a held-out case already scored
+  under another judge rubric refuses, and only a logged score counts.
+
+## 6. The tuning log
+
+The log records every change to what is measured. Each line must cite a row of your
+`decisions.md` (a Markdown table with rows like `| D-1 | 2027-01-01 | Bar 0.5 after tuning |`)
+and continue from the value before it. Never edit the log by hand: it is hash-chained.
+
+```bash
+uv run course-assistant tuning-log grounding_bar --to 0.5 --decision D-1 --config my-course/config.yaml
+uv run course-assistant tuning-log support_rules --decision D-2 --config my-course/config.yaml
+uv run course-assistant tuning-log heldout_refreshed --decision D-3 --config my-course/config.yaml
+```
+
+`support_rules` logs the support rules this package ships. A `heldout_refreshed` line needs a
+decision whose text opens with "Refreshes held-out": log it when you replace your held-out
+file after a change, because a bar or rules change after a held-out score blocks the next
+held-out run until you do.
+
+## From nothing to an approved course
+
+1. `course-assistant init my-course`, fill in the files, `doctor`, `ingest --dry-run`,
+   `ingest` ([bring your own course](own-course.md)).
+2. Write `golden-tune.jsonl` and `golden-heldout.jsonl` (sections 1 and 2) and a
+   `decisions.md`.
+3. Tune on the tuning file only: `eval --cases golden-tune.jsonl`, change the bar if you need
+   to, and repeat. It never approves.
+4. Log the bar and the support rules: `tuning-log grounding_bar ...` and
+   `tuning-log support_rules ...` (section 6). Do this before any run that scores held-out
+   cases.
+5. Calibrate: one `eval` of both files, then `calibrate export`, label, `import-*` and
+   `score` (section 5).
+6. The verdict: `eval --cases golden-heldout.jsonl --public golden-tune.jsonl --calibration
+   runs/course-ta-both-...`. When every check passes, the course version is approved.
+7. Learners' questions are now answered from it: `course-assistant ask "..." --config
+   my-course/config.yaml` needs no `--ungated`.
+
+A test runs this whole path offline (`tests/release/test_zero_to_approved.py`).
 
 ## Offline checks you can run any time
 
