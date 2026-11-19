@@ -12,9 +12,10 @@ everything else to the teaching team. Every change is measured on a golden set w
 [EvalKit](https://github.com/biplob819/evalkit) before it goes live.
 
 > **Status: release draft (OWNER D-72).** The code is built and tested. The first full
-> evaluation has run and **the release gate fails** (see [Measured results](#measured-results)).
-> An improvement round is under way (OWNER D-71). Nothing is on PyPI yet, and the hosted demo
-> is not deployed yet.
+> evaluation has run and **the release gate still fails** on its latest held-out score, on
+> grounding (0.893 against 0.90) and identity (3 of 5); see [Measured results](#measured-results).
+> The next round is being planned (OWNER D-83). Nothing is on PyPI yet, and the hosted demo is
+> not deployed yet.
 
 ## Who it is for
 
@@ -246,42 +247,42 @@ offline gate on every change.
 
 ## Measured results
 
-> **First run, gate failing.** These are the honest numbers from the first full run on
-> 17 Nov 2026 ([report](https://github.com/biplob819/course-assistant/blob/main/docs/measurements/e2.5-report.md)). The run itself was **uncalibrated**.
-> Calibration has since been certified with the model panel (D-79; kappa above), but grounding,
-> locators and identity still fail the gate. The answer model has since moved to GPT Terra under a
-> single GPT Sol judge (OWNER D-80), so the next run is not directly comparable with this one. An improvement round on grounding and
-> locators is under way, tuned on the public half only, and will be followed by one score on a
-> fresh held-out set (OWNER D-71). This table will be replaced, not edited, when that run
-> exists.
+> **Latest held-out score, gate failing (OWNER D-83).** heldout-3, a fresh set of 215 cases,
+> scored once on 19 Nov 2026 at the setting frozen on the public half (D-81)
+> ([report](https://github.com/biplob819/course-assistant/blob/main/docs/measurements/e2.5-heldout3-report.md)).
+> One GPT Sol judge grades (OWNER D-80): there is no cross-family check and EvalKit publishes
+> no headline from a single-judge run. Calibration is certified against model-panel labels
+> (D-79). The first full run of 17 Nov is in the
+> [earlier report](https://github.com/biplob819/course-assistant/blob/main/docs/measurements/e2.5-report.md);
+> its judge and answer model differ, so the two are not directly comparable.
 
-Setting: GPT Sol (medium) answers, GPT Luna checks and hints, `early_finalize` on, hint cache
-on (since turned off, D-70), grounding bar 0.4. 429 cases, 0 errors.
+Setting: GPT Terra (low effort) answers, GPT Luna checks and hints, hint cache off, grounding
+bar 0.4, answer rules `answer-60d66177707e`. 0 errors in either run.
 
-| Metric | Target | Public half (214) | Held-out half (215) | Held-out verdict |
+| Metric | Target | Public half (214, tuned on) | Held-out (215, scored once) | Held-out verdict |
 | --- | --- | --- | --- | --- |
-| Grounded answer rate | ≥ 0.90, lower bound ≥ 0.85 | 0.541 | 0.693 | fail |
+| Grounded answer rate | ≥ 0.90, lower bound ≥ 0.85 | 0.959 | 0.893 (67/75) | fail |
 | Citation validity | ≥ 0.95 | 1.000 | 1.000 | pass |
-| Locator correct | ≥ 0.95 | 0.679 | 0.800 | fail |
+| Locator correct | ≥ 0.95 | 0.986 | 0.973 | pass |
 | Correct handover | ≥ 0.95 | 1.000 | 1.000 | pass |
-| Integrity | zero tolerance | 64/64 | 52/56 | fail |
-| Injection resistance | zero tolerance | 1.000 | 1.000 | pass |
-| Leak | zero tolerance | 40/41 | 1.000 | pass |
-| Identity | zero tolerance | 1.000 | 1.000 | pass |
-| Latency p95 | ≤ 11 s | 10.0 s | 9.1 s | pass |
-| Calibration | certified | uncalibrated | uncalibrated | fail |
+| Integrity | zero tolerance | 64/64 | 56/56 | pass |
+| Injection resistance | zero tolerance | 1.000 | 44/44 | pass |
+| Leak | zero tolerance | 41/41 | 49/49 | pass |
+| Identity | zero tolerance | 5/5 | 3/5 | fail |
+| Latency p95 | ≤ 11 s | 9.6 s | 9.2 s | pass |
+| Calibration | certified | certified (model panel) | certified (model panel) | pass |
 
-Cost: $0.0062 a question; the full 429-case dual-judge run cost $10.68.
+Cost: $0.0058 a question; the 215-case held-out run cost $3.12.
 
 What the failures mean:
 
-- **Grounding and locators.** Most missed answers are sentences the support rule counts as
-  uncited. This is the focus of the improvement round.
-- **Integrity.** All four failures are multi-turn probes on one brief that received the same
-  cached hint. The hint cache is now off until the integrity labels clear it (D-70).
-- **Leak (public half).** One reply was scored as a leak although it holds no canary; read in
-  full, it is a grounded definition, so a judge false positive is likely. Calibration will
-  tell.
+- **Grounding.** 8 of 75 held-out course questions did not come back as fully grounded
+  answers. The public half reached 0.959, so part of the gap is what tuning on one half buys.
+- **Identity.** 2 of 5 held-out replies were judged a false identity claim, as on the previous
+  held-out set. Five cases per set is small: one more failure or pass moves the rate by 0.2.
+- **What improved.** On the previous held-out set grounding was 0.813 and locators 0.874.
+  Terra's uncited "Yes." openers and "the materials do not say" remarks had failed the support
+  check; the answer rules now rule them out (D-81).
 
 ## Privacy and safety
 

@@ -83,10 +83,11 @@ graded-work probes before it can go live.
 - **Small zero-tolerance sets.** With 10 cases a rule (B8, B9), a perfect score shows only a
   failure rate under about 30% with 95% confidence (rule of three). The paraphrases raise B3
   and B10 to 120 and 80 cases.
-- **Judging is uncalibrated** until the model-panel labels are scored (OWNER D-76; see
-  [`docs/labelling.md`](docs/labelling.md)). The calibration sets are labelled by a model panel
-  (claude-fable-5-2 and gpt-6.1-terra, claude-sonnet-5-5 breaking a split), not by a person, so
-  kappa measures agreement with a model panel, not with a person, and same-vendor model families may share blind spots. A person's labels can replace the panel's later.
+- **Judging is calibrated against a model panel, not a person** (OWNER D-79). The calibration
+  sets are labelled by gpt-6.1-terra and gpt-6-luna, with gpt-6.1-terra at high effort breaking
+  a split, so kappa measures agreement with a model panel. The judge is one model, gpt-6.1-sol
+  (OWNER D-80): no cross-family check, and the labellers are also the answer and check models,
+  so they may share blind spots. A person's labels can replace the panel's later.
 
 ## Licence
 
