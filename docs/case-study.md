@@ -3,16 +3,19 @@
 A teaching assistant for a course: learners ask questions and get answers that cite the slide or
 page they come from. It hands personal and admin questions to the teaching team, and gives hints,
 never solutions, on graded work. The hard part was proving it behaves, not building the chat.
-Every release goes through a gate built on EvalKit. The gate scores 429 golden cases, split
-into a public half for tuning and a private held-out half scored once, using judges from two
-vendors. It enforces zero tolerance on integrity, leaks, injection and identity, and checks
-latency and cost.
+Every release goes through a gate built on EvalKit. The gate scores a golden set split into
+a public half for tuning and a private held-out half scored once. Two judges from two vendors
+are the design; while one provider account is unfunded, one judge grades, and EvalKit then
+publishes no headline (D-80). The gate enforces zero tolerance on integrity, leaks, injection
+and identity, and checks latency and cost.
 
-The first held-out run failed: grounded 0.693 against a 0.90 target. A tuning round on the
-public half alone raised grounding to 0.919 there. On a fresh held-out set it reached 0.813, with
-locator accuracy 0.874 and two identity failures. The gate still exits 1, and the README
-publishes that verdict. Integrity went from 0.929 to 56 of 56. Latency is 10.0 s at p95, and
-it costs $0.0075 a question ([report](measurements/e2.5-report.md)).
+The first held-out run failed: grounded 0.693 against a 0.90 target. Each later round tuned
+on the public half only and was scored once on a fresh held-out set. The latest, heldout-3,
+reached grounded 0.893 (67 of 75) and locator accuracy 0.973, with integrity 56 of 56, p95
+latency 9.2 s and $0.0058 a question. It still failed on grounding and on identity (3 of 5),
+so the gate exits 1 and the README publishes that verdict
+([report](measurements/e2.5-heldout3-report.md)). The next round scored 0.973 on the public
+half it was tuned on; its held-out score is `PENDING heldout-4` (D-87, D-88).
 
 ## My role
 

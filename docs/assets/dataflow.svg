@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 860" width="1200" height="860" font-family="Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 930" width="1200" height="930" font-family="Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
   <title id="t">course-assistant: data flow of one learner question</title>
-  <desc id="d">A learner question passes the passcode gate, then route and answer run in parallel; the answer is grounded, integrity-checked and leak-scanned before a status is chosen. Not-covered answers can go to the teaching team's queue. Consenting learners' questions feed a k-anonymous weekly digest.</desc>
+  <desc id="d">A learner question passes the passcode gate, consent and the pause check. Route and answer (with file search) run in parallel. The answer goes through a deterministic citation check (L1), then a sentence support check (L2) and an integrity check over the whole conversation, in parallel. Graded work, or an answer that fails integrity, gets a hint instead. The text to be shown is leak-scanned, then Finalize picks one of four statuses. Not-covered and handed-over questions can reach the teaching team's queue. Consenting learners' questions feed a k-anonymous weekly digest.</desc>
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#334155"/>
@@ -18,121 +18,131 @@
       .dash{stroke:#64748b;stroke-width:1.3;fill:none;stroke-dasharray:5 4;marker-end:url(#a)}
     </style>
   </defs>
-  <rect width="1200" height="860" fill="#ffffff"/>
+  <rect width="1200" height="930" fill="#ffffff"/>
   <text x="600" y="34" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">course-assistant: how one learner question flows</text>
 
-  <!-- learner and gate -->
-  <rect class="box" x="40" y="70" width="190" height="60" rx="8"/>
-  <text class="h" x="135" y="96" text-anchor="middle">Learner</text>
-  <text class="s" x="135" y="116" text-anchor="middle">asks in the chat page</text>
+  <!-- row 1: learner, gate, consent, pause -->
+  <rect class="box" x="40" y="60" width="200" height="62" rx="8"/>
+  <text class="h" x="140" y="86" text-anchor="middle">Learner</text>
+  <text class="s" x="140" y="106" text-anchor="middle">asks in the chat page</text>
+  <rect class="box" x="290" y="60" width="260" height="62" rx="8"/>
+  <text class="h" x="420" y="86" text-anchor="middle">Passcode gate</text>
+  <text class="s" x="420" y="106" text-anchor="middle">salted hash, rate-limited, revocable</text>
+  <rect class="box" x="600" y="60" width="250" height="62" rx="8"/>
+  <text class="h" x="725" y="86" text-anchor="middle">Consent and notice</text>
+  <text class="s" x="725" y="106" text-anchor="middle">purposes chosen by the learner</text>
+  <rect class="box" x="900" y="60" width="260" height="62" rx="8"/>
+  <text class="h" x="1030" y="86" text-anchor="middle">Pause check + window</text>
+  <text class="s" x="1030" y="106" text-anchor="middle">last 6 turns, ≤ 3,000 tokens</text>
+  <path class="ln" d="M240,91 H288"/>
+  <path class="ln" d="M550,91 H598"/>
+  <path class="ln" d="M850,91 H898"/>
+  <!-- fork into route and answer -->
+  <path stroke="#334155" stroke-width="1.5" fill="none" d="M1030,122 V150 H300"/>
+  <path class="ln" d="M300,150 V183"/>
+  <path class="ln" d="M760,150 V183"/>
+  <text class="lbl" x="530" y="170" text-anchor="middle">in parallel (D-9)</text>
 
-  <rect class="box" x="290" y="70" width="230" height="60" rx="8"/>
-  <text class="h" x="405" y="94" text-anchor="middle">Passcode gate</text>
-  <text class="s" x="405" y="114" text-anchor="middle">salted hash, rate-limited, revocable</text>
+  <!-- row 2: route, answer, vector store -->
+  <rect class="model" x="150" y="185" width="300" height="78" rx="8"/>
+  <text class="h" x="300" y="209" text-anchor="middle">Route (GPT Luna)</text>
+  <text class="s" x="300" y="229" text-anchor="middle">course · graded work · admin · personal</text>
+  <text class="s" x="300" y="245" text-anchor="middle">off topic · injection</text>
+  <rect class="model" x="600" y="185" width="320" height="78" rx="8"/>
+  <text class="h" x="760" y="209" text-anchor="middle">Answer (GPT Terra + file search)</text>
+  <text class="s" x="760" y="229" text-anchor="middle">only the served course units</text>
+  <text class="s" x="760" y="245" text-anchor="middle">a citation per sentence: unit, slide or page</text>
+  <rect class="store" x="975" y="185" width="190" height="78" rx="8"/>
+  <text class="h" x="1070" y="209" text-anchor="middle">Vector store</text>
+  <text class="s" x="1070" y="229" text-anchor="middle">gate-approved units</text>
+  <text class="s" x="1070" y="245" text-anchor="middle">(sample course, CC BY 4.0)</text>
+  <path class="ln" d="M975,224 H922"/>
 
-  <rect class="box" x="580" y="70" width="230" height="60" rx="8"/>
-  <text class="h" x="695" y="94" text-anchor="middle">Pause check + window</text>
-  <text class="s" x="695" y="114" text-anchor="middle">last 6 turns, ≤ 3,000 tokens</text>
+  <!-- row 3: L1 -->
+  <rect class="check" x="560" y="300" width="400" height="62" rx="8"/>
+  <text class="h" x="760" y="324" text-anchor="middle">Ground L1: citation rules (no model call)</text>
+  <text class="s" x="760" y="344" text-anchor="middle">every citation resolves to a served unit · fails → not covered</text>
+  <path class="ln" d="M760,263 V298"/>
+  <path stroke="#334155" stroke-width="1.5" fill="none" d="M760,362 V378 H635"/>
+  <path stroke="#334155" stroke-width="1.5" fill="none" d="M760,378 H885"/>
+  <path class="ln" d="M635,378 V393"/>
+  <path class="ln" d="M885,378 V393"/>
+  <text class="lbl" x="1020" y="384" text-anchor="middle">in parallel</text>
 
-  <rect class="store" x="880" y="70" width="280" height="60" rx="8"/>
-  <text class="h" x="1020" y="94" text-anchor="middle">Consent and notice</text>
-  <text class="s" x="1020" y="114" text-anchor="middle">purposes chosen by the learner</text>
+  <!-- row 4: L2 and integrity -->
+  <rect class="check" x="510" y="395" width="250" height="72" rx="8"/>
+  <text class="h" x="635" y="419" text-anchor="middle">Ground L2 (GPT Luna)</text>
+  <text class="s" x="635" y="438" text-anchor="middle">each sentence supported by</text>
+  <text class="s" x="635" y="454" text-anchor="middle">the units it cites · fails → not covered</text>
+  <rect class="check" x="770" y="395" width="250" height="72" rx="8"/>
+  <text class="h" x="895" y="419" text-anchor="middle">Integrity (GPT Luna)</text>
+  <text class="s" x="895" y="438" text-anchor="middle">reads the whole conversation;</text>
+  <text class="s" x="895" y="454" text-anchor="middle">never completes a graded brief</text>
 
-  <path class="ln" d="M230,100 H288"/>
-  <path class="ln" d="M520,100 H578"/>
-  <path class="dash" d="M880,100 H812"/>
+  <!-- graded route and integrity failure go to the hint -->
+  <path class="ln" d="M300,263 V498"/>
+  <text class="lbl" x="310" y="300">graded work</text>
+  <path class="ln" d="M895,467 V484 H420 V498"/>
+  <text class="lbl" x="440" y="480">integrity fails</text>
 
-  <!-- parallel route and answer -->
-  <rect class="model" x="120" y="200" width="300" height="74" rx="8"/>
-  <text class="h" x="270" y="226" text-anchor="middle">Route (Luna)</text>
-  <text class="s" x="270" y="246" text-anchor="middle">course · graded work · admin · personal</text>
-  <text class="s" x="270" y="263" text-anchor="middle">off topic · injection</text>
+  <!-- row 5: hint and leak scan -->
+  <rect class="model" x="140" y="500" width="320" height="72" rx="8"/>
+  <text class="h" x="300" y="524" text-anchor="middle">Hint (GPT Luna)</text>
+  <text class="s" x="300" y="543" text-anchor="middle">where to look, never what it says;</text>
+  <text class="s" x="300" y="559" text-anchor="middle">no methods, numbers or choices (D-87)</text>
+  <rect class="check" x="560" y="500" width="460" height="72" rx="8"/>
+  <text class="h" x="790" y="524" text-anchor="middle">Leak scan (deterministic)</text>
+  <text class="s" x="790" y="543" text-anchor="middle">on the text to be shown: no rules text,</text>
+  <text class="s" x="790" y="559" text-anchor="middle">learner ids or canaries · found → not covered</text>
+  <path class="ln" d="M635,467 V498"/>
+  <path class="ln" d="M460,536 H558"/>
 
-  <rect class="model" x="560" y="200" width="320" height="74" rx="8"/>
-  <text class="h" x="720" y="226" text-anchor="middle">Answer (Sol + file search)</text>
-  <text class="s" x="720" y="246" text-anchor="middle">only the session's course units</text>
-  <text class="s" x="720" y="263" text-anchor="middle">cites unit, slide or page</text>
+  <!-- non-course routes skip the checks -->
+  <path class="ln" d="M150,224 H80 V668 H138"/>
+  <text class="lbl" x="70" y="440" text-anchor="middle" transform="rotate(-90 70 440)">admin, personal, off topic, injection: no checks needed</text>
 
-  <rect class="store" x="940" y="200" width="220" height="74" rx="8"/>
-  <text class="h" x="1050" y="226" text-anchor="middle">Vector store</text>
-  <text class="s" x="1050" y="246" text-anchor="middle">ingested course units</text>
-  <text class="s" x="1050" y="263" text-anchor="middle">(sample course, CC BY 4.0)</text>
+  <!-- row 6: finalize -->
+  <rect class="box" x="140" y="640" width="920" height="56" rx="8"/>
+  <text class="h" x="600" y="663" text-anchor="middle">Finalize: pick one status</text>
+  <text class="s" x="600" y="683" text-anchor="middle">from the route, L1, L2, integrity and the leak scan; a failed call gives a fixed error message</text>
+  <path class="ln" d="M790,572 V638"/>
 
-  <path class="ln" d="M695,130 V160 H270 V198"/>
-  <path class="ln" d="M695,130 V198"/>
-  <text class="lbl" x="470" y="155">in parallel</text>
-  <path class="dash" d="M940,237 H882"/>
+  <!-- row 7: statuses -->
+  <rect class="box" x="140" y="730" width="210" height="58" rx="8"/>
+  <text class="h" x="245" y="754" text-anchor="middle">answered</text>
+  <text class="s" x="245" y="774" text-anchor="middle">source chips, AI label</text>
+  <rect class="box" x="377" y="730" width="210" height="58" rx="8"/>
+  <text class="h" x="482" y="754" text-anchor="middle">hint only</text>
+  <text class="s" x="482" y="774" text-anchor="middle">hint and session to revisit</text>
+  <rect class="box" x="614" y="730" width="210" height="58" rx="8"/>
+  <text class="h" x="719" y="754" text-anchor="middle">not covered</text>
+  <text class="s" x="719" y="774" text-anchor="middle">"Ask the teaching team"</text>
+  <rect class="box" x="851" y="730" width="210" height="58" rx="8"/>
+  <text class="h" x="956" y="754" text-anchor="middle">handed over</text>
+  <text class="s" x="956" y="774" text-anchor="middle">admin or personal</text>
+  <path class="ln" d="M245,696 V728"/>
+  <path class="ln" d="M482,696 V728"/>
+  <path class="ln" d="M719,696 V728"/>
+  <path class="ln" d="M956,696 V728"/>
 
-  <!-- checks -->
-  <rect class="check" x="560" y="330" width="320" height="64" rx="8"/>
-  <text class="h" x="720" y="356" text-anchor="middle">Ground: L1 rules + L2 support (Luna)</text>
-  <text class="s" x="720" y="376" text-anchor="middle">citations resolve; every sentence supported</text>
+  <!-- row 8: store, digest, escalation -->
+  <rect class="store" x="140" y="822" width="290" height="70" rx="8"/>
+  <text class="h" x="285" y="846" text-anchor="middle">Store (SQLite)</text>
+  <text class="s" x="285" y="866" text-anchor="middle">every turn, pseudonymous ids;</text>
+  <text class="s" x="285" y="882" text-anchor="middle">deleted on request</text>
+  <rect class="staff" x="455" y="822" width="280" height="70" rx="8"/>
+  <text class="h" x="595" y="846" text-anchor="middle">Weekly digest</text>
+  <text class="s" x="595" y="866" text-anchor="middle">consenting learners only; counts only,</text>
+  <text class="s" x="595" y="882" text-anchor="middle">a topic shows only with ≥ 5 askers</text>
+  <rect class="staff" x="760" y="822" width="300" height="70" rx="8"/>
+  <text class="h" x="910" y="846" text-anchor="middle">Escalation queue</text>
+  <text class="s" x="910" y="866" text-anchor="middle">staff passcode; every action audited;</text>
+  <text class="s" x="910" y="882" text-anchor="middle">a reply appears in the learner's history</text>
+  <path class="ln" d="M245,788 V820"/>
+  <path class="ln" d="M430,857 H453"/>
+  <path class="dash" d="M719,788 V805 H860 V820"/>
+  <text class="lbl" x="770" y="802">learner clicks</text>
+  <path class="ln" d="M956,788 V820"/>
 
-  <rect class="check" x="560" y="420" width="320" height="64" rx="8"/>
-  <text class="h" x="720" y="446" text-anchor="middle">Integrity check (Luna)</text>
-  <text class="s" x="720" y="466" text-anchor="middle">never completes an assessment brief</text>
-
-  <rect class="check" x="560" y="510" width="320" height="64" rx="8"/>
-  <text class="h" x="720" y="536" text-anchor="middle">Leak scan (deterministic)</text>
-  <text class="s" x="720" y="556" text-anchor="middle">no rules text, learner ids or canaries</text>
-
-  <path class="ln" d="M720,274 V328"/>
-  <path class="ln" d="M720,394 V418"/>
-  <path class="ln" d="M720,484 V508"/>
-
-  <!-- finalize -->
-  <rect class="box" x="120" y="420" width="300" height="64" rx="8"/>
-  <text class="h" x="270" y="446" text-anchor="middle">Finalize: pick one status</text>
-  <text class="s" x="270" y="466" text-anchor="middle">from the route and the checks</text>
-  <path class="ln" d="M270,274 V418"/>
-  <path class="ln" d="M560,542 H460 V470 H422"/>
-
-  <!-- statuses -->
-  <rect class="box" x="40" y="620" width="170" height="64" rx="8"/>
-  <text class="h" x="125" y="646" text-anchor="middle">answered</text>
-  <text class="s" x="125" y="666" text-anchor="middle">source chips, AI label</text>
-
-  <rect class="box" x="225" y="620" width="170" height="64" rx="8"/>
-  <text class="h" x="310" y="646" text-anchor="middle">not covered</text>
-  <text class="s" x="310" y="666" text-anchor="middle">"Ask the teaching team"</text>
-
-  <rect class="box" x="410" y="620" width="170" height="64" rx="8"/>
-  <text class="h" x="495" y="646" text-anchor="middle">hint only</text>
-  <text class="s" x="495" y="666" text-anchor="middle">guidance, never a solution</text>
-
-  <rect class="box" x="595" y="620" width="170" height="64" rx="8"/>
-  <text class="h" x="680" y="646" text-anchor="middle">handed over</text>
-  <text class="s" x="680" y="666" text-anchor="middle">admin or personal</text>
-
-  <path class="ln" d="M270,484 V598 H125 V618"/>
-  <path class="ln" d="M270,484 V598 H310 V618"/>
-  <path class="ln" d="M270,484 V598 H495 V618"/>
-  <path class="ln" d="M270,484 V598 H680 V618"/>
-
-  <!-- staff -->
-  <rect class="staff" x="860" y="620" width="300" height="64" rx="8"/>
-  <text class="h" x="1010" y="646" text-anchor="middle">Escalation queue (no learner id)</text>
-  <text class="s" x="1010" y="666" text-anchor="middle">staff passcode; every action audited</text>
-  <path class="ln" d="M310,684 V720 H800 V652 H858"/>
-  <path class="ln" d="M680,684 V720"/>
-  <text class="lbl" x="420" y="740">question sent with the learner's choice</text>
-
-  <rect class="staff" x="860" y="760" width="300" height="64" rx="8"/>
-  <text class="h" x="1010" y="786" text-anchor="middle">Teaching team replies</text>
-  <text class="s" x="1010" y="806" text-anchor="middle">learner sees "replies waiting"</text>
-  <path class="ln" d="M1010,684 V758"/>
-  <path class="dash" d="M860,792 H135 V686"/>
-
-  <!-- store and digest -->
-  <rect class="store" x="940" y="330" width="220" height="64" rx="8"/>
-  <text class="h" x="1050" y="356" text-anchor="middle">Store (SQLite)</text>
-  <text class="s" x="1050" y="376" text-anchor="middle">pseudonymous; delete on request</text>
-  <rect class="store" x="940" y="420" width="220" height="90" rx="8"/>
-  <text class="h" x="1050" y="446" text-anchor="middle">Weekly digest</text>
-  <text class="s" x="1050" y="466" text-anchor="middle">consenting learners only</text>
-  <text class="s" x="1050" y="483" text-anchor="middle">topic shown only if ≥ 5 learners</text>
-  <text class="s" x="1050" y="500" text-anchor="middle">no question text, no ids</text>
-  <path class="dash" d="M1050,394 V418"/>
-  <path class="dash" d="M1050,510 V618"/>
-  <path class="dash" d="M880,362 H938"/>
+  <text class="lbl" x="600" y="918" text-anchor="middle">Traces hold ids, statuses, timings and costs, never question or answer text. Models as measured in D-80 and D-87.</text>
 </svg>
