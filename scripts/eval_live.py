@@ -263,6 +263,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--yes", action="store_true", help="confirm that this run spends money")
     ap.add_argument("--live-judges", action="store_true",
                     help="judge at full price now instead of provider batches")  # fmt: skip
+    ap.add_argument(
+        "--fresh-store",
+        action="store_true",
+        help="give EvalKit an empty cache in the run folder, so every case is "
+        "generated and judged again (D-89: a rerun after a provider outage)",
+    )
     ap.add_argument("--rules", help="public tuning runs only: just these rules, e.g. B1 or B1,B7")
     args = ap.parse_args(argv)
     if args.rules is not None and (args.split != "public" or args.resume is not None):
@@ -356,11 +362,13 @@ def write_recordings(path: Path, new: Any, *, resume: bool) -> None:
 
 
 def evalkit_args(out_dir: Path, task: Path, n: int, usd: float, *,
-                 live_judges: bool) -> list[str]:  # fmt: skip
+                 live_judges: bool, fresh_store: bool = False) -> list[str]:  # fmt: skip
     """`evalkit run` arguments. `--live-judges` judges at full price now instead of waiting for
     provider batches (used to keep tuning rounds short; a pending batch is never paid twice)."""
     out = ["run", str(out_dir / "evalkit.yaml"), "--task", str(task), "--n", str(n),
            "--out", str(out_dir / "evalkit"), "--max-cost", f"{usd:.4f}"]  # fmt: skip
+    if fresh_store:  # D-89: nothing from EvalKit's shared cache (answers, claims, verdicts)
+        out += ["--store", str(out_dir / "evalkit-store")]
     return [*out, "--live-judges"] if live_judges else out
 
 
@@ -405,8 +413,10 @@ def _run(args: argparse.Namespace, config: Any, corpus: Any, out_dir: Path, task
                        cache=out_dir / "probe-verdicts.jsonl", budget=budget)  # fmt: skip
     scorers.configure_judges(panel, DirSolutionBook(SOLUTIONS), assessments)
     try:
+        own = args.fresh_store or (out_dir / "evalkit-store").is_dir()  # a resume keeps it
         code = evalkit_cli.main(evalkit_args(out_dir, task, n, budget.evalkit_usd,
-                                             live_judges=args.live_judges))  # fmt: skip
+                                             live_judges=args.live_judges,
+                                             fresh_store=own))  # fmt: skip
         if args.resume is not None and not tap.sentences:
             # a resume that answered nothing new keeps the first pass's tap, support rows and
             # agreement as they are

@@ -51,3 +51,16 @@ def test_evalkit_args_pass_live_judges_only_when_asked(tmp_path):
     assert base[base.index("--n") + 1] == "74" and base[base.index("--max-cost") + 1] == "5.0000"
     live = eval_live.evalkit_args(tmp_path, Path("task.yaml"), 74, 5.0, live_judges=True)
     assert live == [*base, "--live-judges"]
+
+
+def test_a_fresh_store_gives_evalkit_an_empty_cache_in_the_run_folder(tmp_path):
+    # D-89: a rerun after a provider outage must not reuse the outage-time answers
+    from pathlib import Path
+
+    import eval_live
+
+    base = eval_live.evalkit_args(tmp_path, Path("task.yaml"), 5, 1.0, live_judges=False)
+    assert "--store" not in base
+    fresh = eval_live.evalkit_args(tmp_path, Path("task.yaml"), 5, 1.0, live_judges=False,
+                                   fresh_store=True)  # fmt: skip
+    assert fresh[fresh.index("--store") + 1] == str(tmp_path / "evalkit-store")
