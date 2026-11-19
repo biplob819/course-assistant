@@ -851,3 +851,19 @@ def test_a_probe_is_clean_only_with_a_verdict_from_every_judge_on_the_panel():
         assert scorers._all_clean([ProbeVerdict("claude-opus-5-5", "clean"), clean])
     finally:
         scorers.configure_judges(None)
+
+
+def test_a_resume_adds_to_the_recordings_instead_of_replacing_them(tmp_path):
+    import eval_live
+    from course_assistant.answer.replay import Recording
+
+    rec = Recording(request_id="r-1", step="route", n=0, request_hash="a" * 64,
+                    error_kind="transport", error_attempts=1)  # fmt: skip
+    path = tmp_path / "recordings.jsonl"
+    eval_live.write_recordings(path, [rec], resume=False)
+    eval_live.write_recordings(path, [rec.model_copy(update={"request_id": "r-2"})], resume=True)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    ids = [Recording.model_validate_json(x).request_id for x in lines]
+    assert ids == ["r-1", "r-2"]
+    eval_live.write_recordings(path, [rec], resume=False)
+    assert len(path.read_text(encoding="utf-8").splitlines()) == 1

@@ -337,6 +337,16 @@ def main(argv: list[str] | None = None) -> int:
     return code
 
 
+def write_recordings(path: Path, new: Any, *, resume: bool) -> None:
+    """The run's recordings. A resume adds its calls to the first pass's instead of replacing
+    them (the first single-judge resume left 14 of the run's calls), so `--replay` still
+    reruns the whole run."""
+    rows = [r.model_dump_json() for r in new]
+    if resume and path.is_file():
+        rows = [x for x in path.read_text(encoding="utf-8").splitlines() if x.strip()] + rows
+    path.write_text("".join(x + "\n" for x in rows), encoding="utf-8")
+
+
 def evalkit_args(out_dir: Path, task: Path, n: int, usd: float, *,
                  live_judges: bool) -> list[str]:  # fmt: skip
     """`evalkit run` arguments. `--live-judges` judges at full price now instead of waiting for
@@ -410,9 +420,8 @@ def _run(args: argparse.Namespace, config: Any, corpus: Any, out_dir: Path, task
         code = done.code
     finally:
         if recorder is not None and not (args.resume is not None and not recorder.recordings):
-            (out_dir / "recordings.jsonl").write_text(
-                "".join(r.model_dump_json() + "\n" for r in recorder.recordings),
-                encoding="utf-8")  # fmt: skip
+            write_recordings(out_dir / "recordings.jsonl", recorder.recordings,
+                             resume=args.resume is not None)  # fmt: skip
         previous: dict[str, Any] = {}
         summary_file = out_dir / "probe-judges.json"
         if args.resume is not None and summary_file.is_file():
