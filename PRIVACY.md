@@ -22,7 +22,7 @@ The software makes network requests only for these purposes:
 | --- | --- | --- |
 | Answers, routing, checks and hints | The OpenAI project you configure (Responses API with `store=false`) | Each learner question |
 | Course files and retrieval | A vector store in that same OpenAI project | `course-assistant ingest`, and each question |
-| Second evaluation judge | Anthropic | Evaluation runs only, never at runtime |
+| Second evaluation judge (only if you configure a two-judge panel) | Anthropic | Evaluation runs only, never at runtime |
 | Traces (optional) | A Langfuse project you configure, if `trace_sink: langfuse` | Each question; no text |
 | Demo only: daily spend counter | The hosted KV store you configure (one number per day) | Each live demo request |
 
@@ -39,9 +39,12 @@ says so.
 | Escalations and teaching-team replies | App store | As above | As above |
 | Consent records | App store | Pilot length + 1 year (proof of consent) | `make purge` |
 | Access log | App store | 1 year, no question text | `make purge` |
-| Traces | JSONL file or Langfuse | 30 days, **no question or answer text** | `make purge`, trace delete by pseudonymous id |
+| Traces | JSONL file or Langfuse | **No question or answer text.** Target 30 days; removal by age is not automated yet | A learner's delete removes their lines at once. Older lines: delete or rotate `trace.jsonl`, or set retention in Langfuse |
 | Weekly digest rows | App store | Pilot length; counts only | — |
-| Course files and vector store | OpenAI | Until teardown | `make teardown` at the end of a pilot |
+| Course files and vector store | OpenAI | Until teardown | Delete the vector store and its files in your OpenAI project at the end of a pilot (a scripted teardown is planned, P4.3) |
+
+`make purge`, which applies these periods, is being added for v0.1.0 and is not in this
+version yet; the retention it runs (`Store.purge`) is built and tested.
 
 ## Rules the code enforces
 
