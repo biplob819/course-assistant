@@ -5,8 +5,8 @@ results on that course. This guide covers writing a golden set, running it and r
 release gate. The method behind it is in Tech Spec §6 and
 [`docs/trust/evaluation-methodology.md`](../trust/evaluation-methodology.md).
 
-You need the `eval` extra (`pip install 'course-assistant[eval]'`, or `uv sync
---all-extras` in a checkout). Your golden cases live in your own files, passed by path; the
+You need the `eval` extra (`uv sync --all-extras` in a checkout; once the package is on PyPI,
+`pip install 'course-assistant[eval]'`). Your golden cases live in your own files, passed by path; the
 package never reads this repository's `golden/` folder.
 
 ## 1. Write golden cases

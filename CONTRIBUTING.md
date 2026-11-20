@@ -58,7 +58,7 @@ in the pull request. The owner reruns the evaluation and the release gate
 ## Versioning
 
 Releases follow [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`), tagged
-`vMAJOR.MINOR.PATCH` on `main`. While the version is 0.x:
+`vMAJOR.MINOR.PATCH` on `main`, and published by trusted publishing (the steps: [docs/release.md](https://github.com/biplob819/course-assistant/blob/main/docs/release.md)). While the version is 0.x:
 
 - a **minor** release (0.1 to 0.2) may change the CLI, the config schema or the Python API
   in a way that breaks existing setups, and its changelog entry says how to upgrade;

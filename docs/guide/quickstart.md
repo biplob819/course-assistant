@@ -59,7 +59,7 @@ the committed `sample_course/manifest.yaml`.
 uv run course-assistant doctor --config my-sample/config.yaml --manifest sample_course/manifest.yaml --root .
 ```
 
-Every line should read `ok` (an `ANTHROPIC_API_KEY` warning is fine). It ends with
+Every line should read `ok`. It ends with
 `doctor: ready`.
 
 **5. See the plan, then ingest.** The dry run makes no API call.

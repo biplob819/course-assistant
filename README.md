@@ -144,7 +144,7 @@ session) and an `assessments.yaml` (the graded briefs the assistant must not com
 | --- | --- | --- |
 | `cohort` | required | Cohort id; scopes the store and the vector store |
 | `vector_store_id` | required | The OpenAI vector store that holds the approved files |
-| `answer_model` | required | Model that writes answers (measured setting: GPT Sol, medium effort) |
+| `answer_model` | required | Model that writes answers (measured setting: GPT Terra, low effort; D-90) |
 | `check_model` | required | Model for routing and the support and integrity checks (measured: GPT Luna) |
 | `hint_model` | answer model | Model for graded-work hints (measured: GPT Luna) |
 | `reasoning_effort` | required | Effort per model; every model named above must be listed |
@@ -164,7 +164,7 @@ the repo.
 | Name | Used by | What it is |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | ingest, app, eval | Key for the OpenAI project you configure |
-| `ANTHROPIC_API_KEY` | eval only | Key for the second judge |
+| `ANTHROPIC_API_KEY` | eval only, optional | Only if you configure a second, Anthropic judge; the shipped panel is one OpenAI judge (D-80) |
 | `DEMO_PASSKEY_HASH`, `STAFF_PASSKEY_HASH` | demo | Salted hashes from `course-assistant passkey-hash`; must differ |
 | `DEMO_KV_REST_URL`, `DEMO_KV_REST_TOKEN` | demo | Hosted KV store for the daily spend counter |
 | `PID_SECRET` | demo | Secret for pseudonymous learner ids |
@@ -367,7 +367,7 @@ If you use this project or its evaluation method, please cite it:
 
 ```bibtex
 @software{course_assistant,
-  title  = {course-assistant: a grounded course assistant with a held-out, dual-judge release gate},
+  title  = {course-assistant: a grounded course assistant with a held-out, judge-calibrated release gate},
   author = {biplob819},
   year   = {2026},
   url    = {https://github.com/biplob819/course-assistant}

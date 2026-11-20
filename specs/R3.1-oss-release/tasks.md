@@ -4,7 +4,7 @@
 - [x] 2. node_start GO
 - [x] 3. Tests first (`tests/release/`) — groundwork under D-72
 - [x] 4. Build: lane B done as groundwork under D-72 (`init`, `doctor`, templates, `release.yml`, `scripts/release_check.py`, README URLs); docs, privacy tests, example Action, changelog and semver drafted 2026-11-19; owner additions for 0.1.0 built 2026-11-19 (`ask`, packaged `eval`/`eval-check`, panel-aware `doctor`, `purge`/`make purge`); README screenshots, demo link and final numbers done 20 Nov (OSS-09)
-- [ ] 5. Converge twice; CI reproduced in a fresh clone (L-31)
-- [ ] 6. Verifier
-- [ ] 7. Owner: trusted publisher, protected `pypi` environment, version 0.1.0, tag `v0.1.0`, publish, clean-venv check, `OWNER D-n` attesting R3.1 (OSS-08)
+- [x] 5. Converge twice; CI reproduced in a fresh clone (L-31)
+- [x] 6. Verifier (pass 1: OSS-01..07 and 09 confirmed; OSS-08 row set up, its owner steps now written in docs/release.md)
+- [ ] 7. Owner, step by step in `docs/release.md`: trusted publisher, protected `pypi` environment, version 0.1.0, tag `v0.1.0`, publish, clean-venv check, `OWNER D-n` attesting R3.1 (OSS-08)
 - [ ] 8. Proofs, green, commit

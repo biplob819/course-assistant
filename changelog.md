@@ -217,3 +217,4 @@ waits for the owner (OWNER D-21, D-72). The first public release:
 - [GREEN] [T3.2] — project page and walkthrough PAG-01, PAG-02 (verifier pass 3 plus one fix): GIF retaken on the demo cache, README screenshots, OWNER D-94
 - [DOCS] [R3.1] — draft: user guides (quickstart, own course, evaluate, cost and privacy), example course-ta gate workflow, 0.1.0 release notes and semver policy, docs and privacy tests; init template on the measured D-81 setting
 - [DOCS] [R3.1] — lane merged into main; 0.1.0 notes carry the heldout-4 results; proof cells OSS-01..07, 09
+- [FIX] [R3.1] — verifier pass 1: owner release checklist (docs/release.md), README measured setting, anchored sdist includes, optional Anthropic key wording, digest retention row

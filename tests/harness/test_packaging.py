@@ -50,6 +50,15 @@ def test_sdist_config_excludes_private_paths():
         assert _forbidden(inc) is None, f"sdist include {inc!r} covers a private path"
 
 
+def test_sdist_includes_are_anchored_and_other_worktrees_are_excluded():
+    # R3.1 verifier: unanchored includes ("README.md") also matched every
+    # .claude/worktrees/*/README.md, so a local sdist shipped other checkouts' files
+    cfg = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    sdist = cfg["tool"]["hatch"]["build"]["targets"]["sdist"]
+    assert all(inc.startswith("/") for inc in sdist["include"]), sdist["include"]
+    assert ".claude" in sdist["exclude"]
+
+
 def test_project_metadata_is_complete():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     for key in ("description", "readme", "license", "keywords", "classifiers", "urls"):

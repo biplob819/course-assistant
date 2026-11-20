@@ -103,15 +103,15 @@ packages = ["src/course_assistant"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "src/course_assistant",
-    "README.md",
-    "LICENSE",
-    "changelog.md",
-    "CONTRIBUTING.md",
-    "SECURITY.md",
-    "PRIVACY.md",
-    "CODE_OF_CONDUCT.md",
-    "DATA_CARD.md",
+    "/src/course_assistant",
+    "/README.md",
+    "/LICENSE",
+    "/changelog.md",
+    "/CONTRIBUTING.md",
+    "/SECURITY.md",
+    "/PRIVACY.md",
+    "/CODE_OF_CONDUCT.md",
+    "/DATA_CARD.md",
 ]
 # never shipped, even if an include above is widened (tests/harness/test_packaging.py)
 exclude = [
@@ -124,6 +124,7 @@ exclude = [
     "corpus",
     "corpus_store",
     ".streamlit/secrets.toml",
+    ".claude",
 ]
 
 [tool.ruff]
