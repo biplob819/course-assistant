@@ -1,24 +1,24 @@
 # Model card: course-assistant
 
-> **Draft (OWNER D-72).** Nothing here is green. Numbers that depend on the final run are
-> marked `PENDING (D-71)`. The first-run numbers below are a recorded result, not the release
-> result (OWNER D-71).
+> **Draft (OWNER D-72).** Nothing here is green. Release numbers come from heldout-4, which is
+> not scored yet: `PENDING (heldout-4)` (D-88). Public-half numbers are tuned on, so they are not
+> a release result.
 
 ## Models used and why
 
 | Role | Model | Why | Source |
 | --- | --- | --- | --- |
-| Answers (with file search) | GPT Sol, `medium` effort | Higher answer rate than Luna: 51 vs 30 of 74 public B1 questions at status level; `low` gave nothing over `medium` | D-61, OWNER D-65, `README.md` (Configuration) |
-| Routing, support check (L2), integrity check | GPT Luna | Cheaper, fast checks; run in parallel with the answer call | D-1, D-8, D-9, Tech Spec §5 |
-| Hints on graded work | GPT Luna (`hint_model`) | Closes the latency gap on hint turns | D-61, `src/course_assistant/schemas/config.py` |
-| Offline judges | Claude Opus 5.5 and GPT Sol (two vendors) | A case passes only if both agree; guards against self-preference | D-12, Tech Spec §12 |
+| Answers (with file search) | gpt-6.1-terra, `low` effort | The judge is gpt-6.1-sol, so the answer model must differ; `medium` was no better and slower | OWNER D-80, D-81 |
+| Routing, support check (L2), integrity check, hints | gpt-6-luna | Cheaper, fast checks; run in parallel with the answer call | D-1, D-8, D-9, D-61, Tech Spec §5 |
+| Offline judge | gpt-6.1-sol alone (single judge) | The second vendor is unfunded; the dual judges (D-12) return with a fresh calibration | OWNER D-80 |
+| Offline extractor | gpt-6-luna | Replaces the unfunded Claude extractor | OWNER D-80 |
 
 ## Chosen setting
 
-Sol `medium` answers, Luna checks and hints, `early_finalize` on, grounding bar 0.4 tuned on the
-public half only, hint cache **off** until the integrity labels clear it.
-Sources: D-61, OWNER D-65, OWNER D-67, D-70, `docs/measurements/e2.5-report.md` (Notes).
-The final frozen setting is `PENDING (D-71)`.
+gpt-6.1-terra at `low` answers, gpt-6-luna checks and hints, grounding bar 0.4 tuned on the
+public half only, hint cache **off** (D-70). Rules hash `bbddb60809a20b3e`: route rules
+`route-c63e31a87740`, hint rules `hint-dadb39174cbe`, the D-85 handover text and three probe
+samples. Frozen on the public half as `runs/e27/d87-frozen.yaml` (D-87).
 
 ## Intended use
 
@@ -39,29 +39,29 @@ team (`README.md`, How it works; Tech Spec §2.2). Statuses: `answered`, `not_co
 
 ## Measured results and their status
 
-First full run, 17 Nov 2026, dual judges, **uncalibrated** (calibration labels now come from a model panel, OWNER D-76). Source:
-`docs/measurements/e2.5-report.md`, Tech Spec §6.4.
+One judge, gpt-6.1-sol (OWNER D-80); calibration against model-panel labels (OWNER D-79).
+heldout-3 was scored at the earlier D-81 setting and is retired (D-83, D-88); the public half
+grew from 214 to 240 cases in between (D-84), so the columns are not directly comparable.
 
-| Metric (target) | First run, held-out (215) | Status | Release value |
+| Metric (target) | Public half, 240, D-87 | heldout-3, D-81 setting (D-83) | Release value, heldout-4 |
 | --- | --- | --- | --- |
-| Grounded answer rate (≥ 0.90, lower bound ≥ 0.85) | 0.693 | fail | `PENDING (D-71)` |
-| Citation validity (≥ 0.95) | 1.000 | pass | `PENDING (D-71)` |
-| Locator correct (≥ 0.95) | 0.800 | fail | `PENDING (D-71)` |
-| Correct handover (≥ 0.95) | 1.000 | pass | `PENDING (D-71)` |
-| Integrity (zero tolerance) | 52/56 | fail | `PENDING (D-71)` |
-| Injection (zero tolerance) | 1.000 | pass | `PENDING (D-71)` |
-| Leak (zero tolerance) | 1.000 | pass | `PENDING (D-71)` |
-| Identity (zero tolerance) | 1.000 | pass | `PENDING (D-71)` |
-| Latency p95 (≤ 11 s, OWNER D-65) | 9.1 s | pass | `PENDING (D-71)` |
-| Support check vs judges, kappa (monitor, ≥ 0.6) | 0.15 [−0.01, 0.33], both halves | below monitor | `PENDING (D-71)` |
-| Calibration | uncalibrated | fail | `PENDING (D-71)` |
-| Cost per question | $0.0062 | within $150 cap (OWNER D-64) | `PENDING (D-71)` |
+| Grounded answer rate (≥ 0.90, lower bound ≥ 0.85) | 0.973 | 0.893, fail | `PENDING (heldout-4)` |
+| Citation validity (≥ 0.95) | 1.000 | 1.000 | `PENDING (heldout-4)` |
+| Locator correct (≥ 0.95) | 0.973 | 0.973 | `PENDING (heldout-4)` |
+| Correct handover (≥ 0.95) | 1.000 | 1.000 | `PENDING (heldout-4)` |
+| Integrity (zero tolerance) | 1.000 | 56/56 | `PENDING (heldout-4)` |
+| Injection (zero tolerance) | 1.000 | 44/44 | `PENDING (heldout-4)` |
+| Leak (zero tolerance) | 1.000 | 49/49 | `PENDING (heldout-4)` |
+| Identity (zero tolerance; monitored, not certified, D-86) | 1.000 | 3/5, fail | `PENDING (heldout-4)` |
+| Latency p95 (≤ 11 s, OWNER D-65) | 13.6 s, fail (provider latency, D-87) | 9.2 s | `PENDING (heldout-4)` |
+| Cost per question | not yet reported | $0.0058 | `PENDING (heldout-4)` |
 
-Release gate on the first run's held-out records: exit 1 (`docs/measurements/e2.5-report.md`, Notes).
+Per-rule results and the public case ids behind them: [`behavioral-spec.md`](behavioral-spec.md).
+Reports: `docs/measurements/e2.5-heldout3-report.md`, `docs/measurements/e2.5-report.md`.
 
 ## Known limits
 
 See [`known-limits.md`](known-limits.md). In short: one small English sample course
-(`DATA_CARD.md`, Known gaps); judging uncalibrated, and once scored its kappa is agreement with a model panel, not a person (OWNER D-76); runtime support check agrees
+(`DATA_CARD.md`, Known gaps); one judge, calibrated against an OpenAI-only model panel rather than a person (OWNER D-79, D-80); identity monitored, not certified (OWNER D-86); runtime support check agrees
 weakly with the judges (kappa 0.15, Tech Spec §6.4); the deterministic leak scan has a stated
 scope (D-51); provider model drift is caught only by the weekly gate (Tech Spec §6.5, §12).
