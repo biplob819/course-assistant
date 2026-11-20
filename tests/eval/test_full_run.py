@@ -365,3 +365,17 @@ def test_the_calibration_cell_is_our_certified_calibration_not_evalkits_status()
     panel = {**both, "integrity_labeller": "model-panel:a+b", "groundedness_labeller": "owner"}
     assert calibration_label(panel) == "certified (model panel)"
     assert calibration_label({"integrity_labeller": "owner"}) == "unknown"
+
+
+def test_calibration_takes_the_run_folder_or_its_evalkit_folder_like_the_gate(tmp_path: Path):
+    # E2.5 verifier: given the run folder, the report printed "uncalibrated" without a word,
+    # while release_gate.py resolves it to the one EvalKit run inside
+    import full_run_report
+
+    inner = tmp_path / "evalkit" / "r-1"
+    inner.mkdir(parents=True)
+    (inner / "run.json").write_text("{}", encoding="utf-8")
+    assert full_run_report.calibration_folder(tmp_path) == inner
+    assert full_run_report.calibration_folder(inner) == inner
+    with pytest.raises(SystemExit):
+        full_run_report.calibration_folder(tmp_path / "missing")

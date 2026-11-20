@@ -25,6 +25,19 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 
+def calibration_folder(folder: Path) -> Path:
+    """The calibration's EvalKit run: FOLDER itself, or the one run under FOLDER/evalkit/, as
+    `release_gate.py` takes it; anything else is an error, never a quiet "uncalibrated"."""
+    if (folder / "run.json").is_file():
+        return folder
+    found = sorted(p.parent for p in (folder / "evalkit").glob("**/run.json"))
+    if len(found) != 1:
+        raise SystemExit(
+            f"--calibration: expected one EvalKit run under {folder}, found {len(found)}"
+        )
+    return found[0]
+
+
 def pair(value: str) -> tuple[str, Path]:
     label, sep, path = value.partition("=")
     if not sep or not label or not path:
@@ -72,7 +85,8 @@ def main(argv: list[str] | None = None) -> int:
 
         cell = F.calibration_label(
             certified_calibration(
-                args.calibration, log=ROOT / "docs" / "measurements" / "tuning-log.jsonl"
+                calibration_folder(args.calibration),
+                log=ROOT / "docs" / "measurements" / "tuning-log.jsonl",
             )
         )
         summaries = [replace(s, calibration=cell) for s in summaries]

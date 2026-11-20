@@ -5,11 +5,13 @@ cohort: my-course-2027            # lower case, digits, . _ : - ; must match man
 # Create a vector store in your own OpenAI project and paste its id here ("vs_" + letters
 # and digits). `doctor` fails until this is replaced.
 vector_store_id: vs_REPLACE_WITH_YOUR_STORE_ID
-answer_model: gpt-6.1-sol
+answer_model: gpt-6.1-terra        # the setting measured for v0.1.0 (D-80, D-87, D-90)
 check_model: gpt-6-luna
+hint_model: gpt-6-luna
 reasoning_effort:                 # every model above must be named here
-  gpt-6.1-sol: medium
+  gpt-6.1-terra: low
   gpt-6-luna: low
+early_finalize: true
 max_num_results: 8
 grounding_bar: 0.4                # tune on your own golden set before relying on it
 monthly_budget_usd: 50.0
