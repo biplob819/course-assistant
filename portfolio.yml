@@ -15,3 +15,56 @@ images:
   architecture: docs/assets/architecture.svg
 tech: [Python, uv, OpenAI API, Pydantic, pypdf, python-pptx, SQLite, Streamlit, EvalKit, GitHub Actions]
 status: approved  # v0.1.0 (OWNER D-90); walkthrough GIF and screenshots approved by the owner, 20 Nov 2026
+priorities:
+  - item: "Answers only from approved course materials, citing the slide or page"
+    call: built
+    why: "Learners get answers they can check against the session, with no guessing."
+    source: "changelog.md (0.1.0)"
+  - item: "Hints on graded work, never the work itself"
+    call: built
+    why: "The assistant helps learners study without doing their assignments for them."
+    source: "changelog.md (0.1.0)"
+  - item: "Admin and personal questions handed to the teaching team"
+    call: built
+    why: "Deadlines, grades and personal matters belong with people, not a model."
+    source: "changelog.md (0.1.0)"
+  - item: "Teaching-team page with queue, replies, pause switches and weekly digest"
+    call: built
+    why: "Staff answer what the assistant cannot and can switch it off at once."
+    source: "changelog.md (0.1.0)"
+  - item: "Release gate on a fresh held-out set, scored once, with EvalKit"
+    call: built
+    why: "Every change is measured on questions nobody tuned against before it goes live."
+    source: "D-90"
+  - item: "Open-source package on PyPI and a passkey-protected live demo"
+    call: built
+    why: "Anyone can install it or try it on the sample course."
+    source: "D-96, D-93"
+  - item: "Grading or feedback on submissions"
+    call: cut
+    why: "Marking stays with the teaching team; the assistant only gives hints."
+    source: "AI Teaching Assistant PRD.md (non-goals)"
+  - item: "Answers from the web or general knowledge"
+    call: cut
+    why: "Answers must come from the course, so anything else is not covered."
+    source: "AI Teaching Assistant PRD.md (non-goals)"
+  - item: "A second judge from another vendor"
+    call: cut
+    why: "Without funded access to a second vendor, one calibrated judge grades every run."
+    source: "D-80"
+  - item: "A walkthrough video"
+    call: cut
+    why: "A short silent GIF of real screens replaced the video."
+    source: "D-75"
+  - item: "A pilot with one real cohort"
+    call: later
+    why: "It needs a cohort, a pilot host and platform sign-in; the pilot pack is ready."
+    source: "docs/pilot/README.md"
+  - item: "Fewer refusals when injected text comes with a real question"
+    call: later
+    why: "Today it fails safe by saying not found; a fix is planned after v0.1.0."
+    source: "D-91"
+  - item: "Reaching the grounding and latency targets on held-out questions"
+    call: later
+    why: "Version 0.1.0 shipped with both misses stated, and the targets unchanged."
+    source: "D-90"
