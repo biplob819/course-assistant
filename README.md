@@ -130,7 +130,7 @@ For your own course, `course-assistant init` writes a starter config, manifest a
 assessments file, and `course-assistant doctor` checks the setup offline with exit codes.
 `course-assistant ask` answers one question, `course-assistant eval` measures the course on
 your own golden files, and `make purge` applies the retention periods.
-Guides (drafts for the release, R3.1): [quickstart](https://github.com/biplob819/course-assistant/blob/main/docs/guide/quickstart.md) ·
+Guides: [quickstart](https://github.com/biplob819/course-assistant/blob/main/docs/guide/quickstart.md) ·
 [bring your own course](https://github.com/biplob819/course-assistant/blob/main/docs/guide/own-course.md) · [evaluate your course](https://github.com/biplob819/course-assistant/blob/main/docs/guide/evaluate.md) ·
 [cost and privacy](https://github.com/biplob819/course-assistant/blob/main/docs/guide/cost-and-privacy.md).
 
@@ -303,7 +303,7 @@ What the misses mean:
 ## Privacy and safety
 
 Full detail: [`PRIVACY.md`](https://github.com/biplob819/course-assistant/blob/main/PRIVACY.md) and Tech Spec §7.
-The trust pack (draft) maps every rule to its cases and tests, and every privacy duty to its
+The trust pack maps every rule to its cases and tests, and every privacy duty to its
 control: [`docs/trust/`](https://github.com/biplob819/course-assistant/tree/main/docs/trust).
 
 - **No telemetry.** The project never phones home. Streamlit usage statistics are off.

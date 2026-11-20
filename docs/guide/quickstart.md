@@ -95,7 +95,7 @@ an assignment for you, to see `not_covered` and `hint_only`.
 To see latency and cost over 30 questions from the public golden set, run
 `uv run python scripts/smoke_live.py --config my-sample/config.yaml --latency-only --yes`.
 
-> **Pending (R3.1).** A local run of the learner page without the demo's secrets is not
+> **Known limit.** A local run of the learner page without the demo's secrets is not
 > built yet. The learner page today needs the demo setup in [`docs/deploy.md`](../deploy.md).
 
 ## When you are done
