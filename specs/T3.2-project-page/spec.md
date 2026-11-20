@@ -3,9 +3,10 @@
 **Wave 3. Depends on:** T3.1, E2.5, D3.2. **Unblocks:** none (end of the demo path).
 
 ## Goal
-A case study for recruiters and hiring managers: problem, approach, what was hard, methodology,
-honest current results, architecture with both diagrams, the walkthrough GIF, links and the demo. Hosted on
-Cloudflare Pages (Tech Spec §11.2). Drafted under OWNER D-72; not published.
+A case study for readers of the project: problem, approach, what was hard, methodology,
+honest current results, architecture with both diagrams, the walkthrough GIF, links and the demo. It
+lives in the repository and the README links it; no Pages site is built (OWNER D-94, replacing the
+Cloudflare Pages plan of Tech Spec §11.2).
 
 ## Outputs
 - `docs/project/project-page.md` — page draft under the nine architecture areas.
@@ -14,5 +15,5 @@ Cloudflare Pages (Tech Spec §11.2). Drafted under OWNER D-72; not published.
 - Diagrams: existing `docs/assets/architecture.svg`, `docs/assets/dataflow.svg` (PAG-02).
 
 ## Rules
-Headline numbers carry their CIs and stamps (PAG-01); `PENDING (D-71)` until the fresh run. No
+Headline numbers carry their CIs and stamps (PAG-01); filled from heldout-4 (OWNER D-90). No
 personal names, course material or held-out text. No publish without asking (OWNER D-72).

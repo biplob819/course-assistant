@@ -155,6 +155,10 @@ class Term:
         for s in spellings:
             toks = tokens(s)
             self.variants.append((" " + " ".join(toks) + " ", "".join(toks)))
+            if toks and toks[-1].isalpha():  # the plural too: "...s" and "...es"
+                for end in ("s", "es"):
+                    plural = [*toks[:-1], toks[-1] + end]
+                    self.variants.append((" " + " ".join(plural) + " ", "".join(plural)))
         # split on every clause mark the term does not hold itself: "A. Kumar" keeps its
         # full stop but still never matches across a comma ("plan A, Kumar agreed")
         # A full stop breaks only where it ends a sentence (space or line end after it): a dot

@@ -72,15 +72,15 @@ The full design, every schema and the build graph are in the
 The walkthrough runs the app locally on recorded answers, with no key and no spend
 ([shot list](https://github.com/biplob819/course-assistant/blob/main/docs/walkthrough.md), D-75).
 
-> **Pending.** Still screenshots are taken from the deployed demo once the owner has deployed
-> it (OWNER D-46, D-72). The paths below are reserved.
+Still screenshots of both pages, captured the same way on the committed demo cache (no key, no
+spend). The teaching-team queue is empty in a local run with no live questions, so the team
+page is shown on its pause switches and its weekly digest.
 
-| Page | Screenshot |
+| Learner chat: an answer with its source | Learner chat: graded work gets a hint |
 | --- | --- |
-| Learner chat: an answer with source chips | `docs/assets/screenshots/learner-answer.png` (pending) |
-| Learner chat: a graded-work question answered with a hint | `docs/assets/screenshots/learner-hint.png` (pending) |
-| Teaching team: queue, replies and pause switches | `docs/assets/screenshots/team-queue.png` (pending) |
-| Teaching team: weekly digest (counts only) | `docs/assets/screenshots/team-digest.png` (pending) |
+| ![Learner page: an answer from the course materials with its source open](https://raw.githubusercontent.com/biplob819/course-assistant/main/docs/assets/screenshots/learner-answer.png) | ![Learner page: a hint and the sessions to revisit](https://raw.githubusercontent.com/biplob819/course-assistant/main/docs/assets/screenshots/learner-hint.png) |
+| **Teaching team: pause switches** | **Teaching team: weekly digest (counts only)** |
+| ![Teaching-team page: pause switches per session](https://raw.githubusercontent.com/biplob819/course-assistant/main/docs/assets/screenshots/team-pause-switches.png) | ![Teaching-team page: the weekly digest](https://raw.githubusercontent.com/biplob819/course-assistant/main/docs/assets/screenshots/team-digest.png) |
 
 ## Quickstart (offline)
 
