@@ -5,6 +5,9 @@ or the host's secret store (D3.1 `read_secret`), never from a file in the repo.
                        unset, the course comes from the demo cache named by CA_REPLAY (D3.2)
     CA_REPLAY          a D3.1 demo cache: the page's worked examples (D3.2)
     CA_DAILY_RESET     "1": one app store per UTC day, earlier days removed (D3.2)
+    CA_ACCESS_CODES    a pilot's access-code registry: personal codes replace the shared
+                       passkey and each code is its learner's id (D-98)
+    CA_DAILY_QUESTIONS questions per learner per UTC day with personal codes (default 20)
     CA_ASSESSMENTS     assessment briefs (default sample_course/assessments.yaml)
     CA_APP_DIR         app store, trace file and local spend counter (default runs/app)
     DEMO_PASSKEY_HASH  the passkey hash (D3.1); unset keeps the page closed
@@ -40,6 +43,23 @@ if TYPE_CHECKING:
 CONFIG = "CA_CONFIG"
 REPLAY = "CA_REPLAY"
 DAILY_RESET = "CA_DAILY_RESET"
+ACCESS_CODES = "CA_ACCESS_CODES"
+DAILY_QUESTIONS = "CA_DAILY_QUESTIONS"
+DEFAULT_DAILY_QUESTIONS = 20
+
+
+def daily_questions(env: Mapping[str, str]) -> int:
+    """The per-learner daily cap for personal codes (default 20)."""
+    raw = (env.get(DAILY_QUESTIONS) or "").strip()
+    try:
+        n = int(raw) if raw else DEFAULT_DAILY_QUESTIONS
+    except ValueError:
+        raise WiringError(f"{DAILY_QUESTIONS} must be a whole number.") from None
+    if n < 1:
+        raise WiringError(f"{DAILY_QUESTIONS} must be at least 1.")
+    return n
+
+
 ASSESSMENTS = "CA_ASSESSMENTS"
 APP_DIR = "CA_APP_DIR"
 OWNER_KEY = "OPENAI_API_KEY"
@@ -284,7 +304,14 @@ def from_env(env: Mapping[str, str] | None = None,
     raw_sink = JsonlSink(app_dir / "trace.jsonl")
     sink = VersionedSink(raw_sink, serving.version)  # calls made outside one Assistant
     prices = load_prices()
-    gate = PasskeyGate(env_hash(env, secrets_store))
+    codes = (env.get(ACCESS_CODES) or "").strip()
+    if codes:  # pilot learners with personal codes (D-98)
+        from course_assistant.pilot.access import AccessCodeGate
+
+        gate: PasskeyGate = AccessCodeGate(Path(codes), lambda: secret("PID_SECRET"))
+    else:
+        gate = PasskeyGate(env_hash(env, secrets_store))
+    daily = daily_questions(env) if codes else None
     url, token = secret(KV_URL), secret(KV_TOKEN)
     counter: SpendCounter = (KVSpendCounter(RestKV(url, token)) if url and token
                              else FileSpendCounter(app_dir / "spend.json"))  # fmt: skip
@@ -313,4 +340,5 @@ def from_env(env: Mapping[str, str] | None = None,
     demo = LiveDemo(gate, guard, assistant_for=assistant_for, owner_responder=owner,
                     responder_for_key=for_key, prices=prices, cache=cache)  # fmt: skip
     return ServedChat(gate, demo, assistant_for=assistant_for, store=stores,
-                      traces=[raw_sink], corpus=corpus, serving=serving)  # fmt: skip
+                      traces=[raw_sink], corpus=corpus, serving=serving,
+                      daily_questions=daily)  # fmt: skip

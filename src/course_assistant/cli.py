@@ -241,6 +241,21 @@ def build_parser() -> argparse.ArgumentParser:
     td.add_argument("--proof", required=True, type=Path,
                     help="where to write the proof JSON (outside --app-dir)")  # fmt: skip
     td.add_argument("--yes", action="store_true", help="confirm the deletions")
+    ac = sub.add_parser(
+        "access-codes",
+        help="personal access codes for pilot learners: make or revoke",
+        description="Make one random code per learner (written once to --out, mode 600; the "
+        "registry keeps only keyed hashes, which are the learners' ids), or revoke a code by "
+        "its label. Needs PID_SECRET in the environment. Codes are never printed.",
+    )
+    acs = ac.add_subparsers(dest="action", required=True)
+    acn = acs.add_parser("new", help="add codes to the registry and write them to --out")
+    acn.add_argument("--count", required=True, type=int)
+    acn.add_argument("--registry", required=True, type=Path, help="access-codes.json")
+    acn.add_argument("--out", required=True, type=Path, help="a new CSV of label,code")
+    acr = acs.add_parser("revoke", help="revoke the code with this label")
+    acr.add_argument("--registry", required=True, type=Path)
+    acr.add_argument("--label", required=True)
     sub.add_parser(
         "passkey-hash",
         help="turn the demo passcode into the salted hash for the secret store",
@@ -868,6 +883,38 @@ def _purge(args: argparse.Namespace, now: Any = None) -> int:
     return EXIT_OK
 
 
+def _access_codes(args: argparse.Namespace) -> int:
+    """Make or revoke pilot learners' personal codes (D-98). Codes go only to --out."""
+    from course_assistant.pilot import access
+
+    if args.action == "revoke":
+        try:
+            done = access.revoke(args.registry, args.label)
+        except access.AccessError as exc:
+            print(f"access-codes: {exc}", file=sys.stderr)
+            return EXIT_CONFIG
+        if not done:
+            print(f"access-codes: no code with label {args.label}", file=sys.stderr)
+            return EXIT_CONFIG
+        print(f"access-codes: {args.label} revoked; its sessions close at their next step")
+        return EXIT_OK
+    if args.out.exists():
+        print(f"access-codes: {args.out} exists; choose a new file", file=sys.stderr)
+        return EXIT_CONFIG
+    secret = os.environ.get("PID_SECRET", "")
+    try:
+        rows = access.new_codes(args.registry, args.count, secret)
+    except access.AccessError as exc:
+        print(f"access-codes: {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+    fd = os.open(args.out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write("label,code\n" + "".join(f"{lab},{code}\n" for lab, code in rows))
+    print(f"access-codes: {len(rows)} code(s) {rows[0][0]}..{rows[-1][0]} written to "
+          f"{args.out} (keep it private; send each learner one code)")  # fmt: skip
+    return EXIT_OK
+
+
 def _teardown(args: argparse.Namespace, api: Any = None, now: Any = None) -> int:
     """P4.3: delete the cohort's vector store, its files and the app's data, with a proof."""
     import datetime as dt
@@ -1024,6 +1071,8 @@ def main(argv: list[str] | None = None) -> int:
         return _purge(args)
     if args.command == "teardown":
         return _teardown(args)
+    if args.command == "access-codes":
+        return _access_codes(args)
     if args.command == "calibrate":
         return _calibrate(args)
     if args.command == "tuning-log":

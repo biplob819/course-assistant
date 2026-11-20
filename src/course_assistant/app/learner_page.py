@@ -92,8 +92,8 @@ def _passkey(chat: LearnerChat, state: ChatState) -> None:
     if reason and "closed" in reason:
         st.info(reason)
     with st.form("passkey", clear_on_submit=True):
-        st.text_input("Passkey", type="password", key=SECRET_INPUTS[0],
-                      help="The numeric passkey the course team gave you.")  # fmt: skip
+        field_name, field_help = chat.gate.PROMPT  # fixed text of the gate class
+        st.text_input(field_name, type="password", key=SECRET_INPUTS[0], help=field_help)
         unlocked = st.form_submit_button("Unlock")
     if unlocked:
         code = st.session_state.get(SECRET_INPUTS[0]) or ""

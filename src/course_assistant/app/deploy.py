@@ -73,7 +73,13 @@ def apply_defaults(env: MutableMapping[str, str], root: Path = ROOT) -> None:
 
 def startup_problem(env: Mapping[str, str] | None = None,
                     secrets_store: Mapping[str, object] | None = None) -> str | None:  # fmt: skip
-    """None when the demo may serve; else what is wrong, by secret name only (never a value)."""
+    """None when the demo may serve; else what is wrong, by secret name only (never a value).
+    With `CA_ACCESS_CODES` (a pilot with personal codes, D-98) the learner passkey and the
+    hosted spend counter are not used: the key, the staff hash, PID_SECRET and a readable
+    registry are."""
+    codes = ((env or {}).get("CA_ACCESS_CODES") or "").strip()
+    if codes:
+        return _pilot_problem(codes, env, secrets_store)
     values = {n: read_secret(n, env=env, secrets_store=secrets_store) for n in REQUIRED}
     missing = [n for n, v in values.items() if v is None]
     if missing:
@@ -90,6 +96,26 @@ def startup_problem(env: Mapping[str, str] | None = None,
         return "DEMO_KV_REST_URL is not an https URL"
     if same_hash(values["DEMO_PASSKEY_HASH"] or "", values["STAFF_PASSKEY_HASH"] or ""):
         return "DEMO_PASSKEY_HASH and STAFF_PASSKEY_HASH are equal"
+    return None
+
+
+def _pilot_problem(codes: str, env: Mapping[str, str] | None,
+                   secrets_store: Mapping[str, object] | None) -> str | None:  # fmt: skip
+    from course_assistant.pilot.access import AccessError, load
+
+    names = ("OPENAI_API_KEY", "STAFF_PASSKEY_HASH", "PID_SECRET")
+    values = {n: read_secret(n, env=env, secrets_store=secrets_store) for n in names}
+    missing = [n for n, v in values.items() if v is None]
+    if missing:
+        return "missing " + ", ".join(missing)
+    try:
+        _parse(values["STAFF_PASSKEY_HASH"] or "")
+    except PasskeyConfigError:
+        return "not a passkey hash: STAFF_PASSKEY_HASH"
+    try:
+        load(Path(codes))
+    except AccessError:
+        return "the access codes registry (CA_ACCESS_CODES) cannot be read"
     return None
 
 

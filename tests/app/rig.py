@@ -54,11 +54,13 @@ def queues(*kinds: str) -> dict[str, list[Any]]:
 class ChatRig:
     def __init__(self, tmp: Path, *, owner: dict[str, list[Any]] | None = None,
                  visitor: dict[str, list[Any]] | None = None, owner_key: bool = True,
-                 key_factory: Any = None) -> None:  # fmt: skip
+                 key_factory: Any = None, gate: Any = None,
+                 daily_questions: int | None = None) -> None:  # fmt: skip
         self.tmp = tmp
         self.secret = Secret()
         self.clock = Tick()
-        self.gate = passkey.PasskeyGate(self.secret, clock=self.clock)
+        self.gate = gate if gate is not None else passkey.PasskeyGate(self.secret, clock=self.clock)
+        self.daily_questions = daily_questions
         self.counter = spend.FileSpendCounter(tmp / "spend.json")
         self.alerts: list[tuple[str, str]] = []
         self.guard = guard_with(self.counter, self.gate, None, self.clock, self.alerts)
@@ -77,7 +79,7 @@ class ChatRig:
                              responder_for_key=self.for_key, prices=PRICES)  # fmt: skip
         self.chat = LearnerChat(self.gate, self.demo, assistant_for=self.assistant_for,
                                 store=self.stores, traces=[self.sink], corpus=CORPUS,
-                                now=Clock())  # fmt: skip
+                                now=Clock(), daily_questions=daily_questions)  # fmt: skip
         self.state = ChatState.new()
 
     def assistant_for(self, source: Any) -> Assistant:

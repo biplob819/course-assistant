@@ -307,9 +307,13 @@ class LearnerChat:
     def __init__(self, gate: PasskeyGate, demo: LiveDemo, *,
                  assistant_for: Callable[[Source], Assistant], store: Callable[[], Store],
                  traces: Sequence[TraceSink], corpus: Corpus,
-                 now: Callable[[], dt.datetime] | None = None) -> None:  # fmt: skip
+                 now: Callable[[], dt.datetime] | None = None,
+                 daily_questions: int | None = None) -> None:  # fmt: skip
         if demo.gate is not gate:
             raise ValueError("the live demo must use the same passkey gate")
+        if daily_questions is not None and daily_questions < 1:
+            raise ValueError("daily_questions must be at least 1")
+        self.daily_questions = daily_questions  # per learner per UTC day (pilot codes)
         self.gate = gate
         self.demo = demo
         self.assistant_for = assistant_for
@@ -334,6 +338,9 @@ class LearnerChat:
 
     def unlock(self, state: ChatState, code: str, ip: str | None = None) -> None:
         self.gate.unlock(code, session=state.token, ip=ip)
+        pid = self.gate.identity(state.token)  # a personal code names its learner (D-98)
+        if pid is not None:
+            state.pid = pid
 
     def sign_out(self, state: ChatState) -> None:
         """Lock this session and forget everything it held: the own key, the turns shown,
@@ -418,6 +425,15 @@ class LearnerChat:
             raise GuardRefused(EMPTY_QUESTION)
         if len(q) > RouteStep.MAX_QUESTION_CHARS:
             raise GuardRefused(TOO_LONG)
+        if self.daily_questions is not None:
+            today = self.now().astimezone(dt.UTC).date()
+            asked = sum(1 for x in self.store().questions_for(state.pid)
+                        if x.asked_at.astimezone(dt.UTC).date() == today)  # fmt: skip
+            if asked >= self.daily_questions:
+                raise GuardRefused(
+                    f"You have asked today's {self.daily_questions} questions. "
+                    "You can ask more tomorrow (the count resets at midnight UTC)."
+                )
         turn: Turn | None = None
         try:
             turn = self.demo.ask(state.token, q, state.pid, own_key=state.own_key.reveal(),

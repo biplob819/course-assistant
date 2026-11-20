@@ -35,11 +35,12 @@ Built for the pilot after v0.1.0 (tests in `tests/pilot/`, no model call):
 | A persistent app store | Set `CA_DAILY_RESET=0` on the pilot host: one `app.sqlite` in `CA_APP_DIR`, created on first use, never reset (the demo's `1` keeps one store a day) | `src/course_assistant/app/wiring.py` |
 | Teardown with a proof | `make teardown CONFIG=... APP_DIR=... PROOF=... YES=--yes` (or `course-assistant teardown`): deletes every file in the vector store and the store, checks it is gone, deletes the app store and traces, writes a proof (ids and counts only); exit 1 if anything is left | P4.3, `src/course_assistant/pilot/teardown.py` |
 
+| Personal access codes for learners (no SSO is offered) | `course-assistant access-codes new --count N --registry REG --out codes.csv` (needs `PID_SECRET`); set `CA_ACCESS_CODES=REG` on the host; revoke with `access-codes revoke --label L007`; `CA_DAILY_QUESTIONS` caps each learner's day (default 20) | OWNER D-98, `src/course_assistant/pilot/access.py` |
+
 Still to build, after your choices in section 3:
 
 | Gap | Why it matters | Where it is specified |
 | --- | --- | --- |
-| Sign-in through the learning platform (SSO) wired into both pages | The pages use passcodes today; with SSO each learner's page uses `learner_pid` of their platform id, so history, consent and deletion follow the person | D-13, PIL-03 |
 | Langfuse trace sink, if chosen | Only the local JSONL sink exists; `trace_sink: langfuse` is a config value with no sink behind it | D-15 |
 
 ## 3. Decisions and documents from you (P4.1)
@@ -49,8 +50,8 @@ Still to build, after your choices in section 3:
    of the pages. Options: a private deploy under the programme provider's account; a small
    container host with a persistent volume behind the provider's sign-in. The public Streamlit
    Community Cloud app is not suitable (public, no persistent disk).
-2. **Sign-in.** The platform's single sign-on (OIDC or SAML) and which claim carries the
-   learner's platform id. Staff sign in the same way, with a staff role.
+2. **Sign-in.** No single sign-on is offered (OWNER D-98). Learners use personal access codes,
+   one each, sent privately by the teaching team; staff use the staff passcode.
 3. **Processor agreement.** The programme provider is the data fiduciary; you are its
    processor (Tech Spec §7). Points it should cover: purposes (answering questions; optional
    course improvement counts), data held (questions, answers, escalations, pseudonymous ids,

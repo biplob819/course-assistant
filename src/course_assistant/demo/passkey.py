@@ -26,6 +26,7 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable, Mapping
+from typing import Any
 
 from course_assistant.demo._errors import GuardRefused, PasskeyConfigError
 
@@ -139,6 +140,8 @@ def env_hash(
 
 
 class PasskeyGate:
+    PROMPT = ("Passkey", "The numeric passkey the course team gave you.")  # the page's field
+
     def __init__(self, load_hash: Callable[[], str | None], *, max_failures: int = 5,
                  window_s: float = 900.0, clock: Callable[[], float] = time.monotonic,
                  max_keys: int = MAX_KEYS, global_max_failures: int = 50) -> None:  # fmt: skip
@@ -211,7 +214,8 @@ class PasskeyGate:
                 self._recent(key, now)
                 self._failures.setdefault(key, deque()).append(now)
             self._bound(self._failures)
-        if verify_passcode(code, stored):
+        mark = self._accept(code, stored)
+        if mark is not None:
             with self._lock:
                 for key in keys:
                     hits = self._failures.get(key)
@@ -219,10 +223,22 @@ class PasskeyGate:
                         with contextlib.suppress(ValueError):
                             hits.remove(now)
                 self._failures.pop(("session", session), None)
-                self._unlocked[session] = fingerprint(stored)
+                self._unlocked[session] = mark
                 self._bound(self._unlocked)
             return
         raise GuardRefused(WRONG)
+
+    def _accept(self, code: str, stored: Any) -> str | None:
+        """The session's mark when `code` is right, else None (the slow check)."""
+        return fingerprint(stored) if verify_passcode(code, stored) else None
+
+    def _valid(self, mark: str, stored: Any) -> bool:
+        """Whether an unlocked session's mark still holds against what is set now."""
+        return mark == fingerprint(stored)
+
+    def identity(self, session: str) -> str | None:
+        """The learner id an unlock gave this session; a shared passkey gives none."""
+        return None
 
     def _all_keys(self, session: str, ip: str | None) -> list[tuple[str, str]]:
         """Per session and per IP; the global cap counts only attempts with no IP, so a flood of
@@ -238,7 +254,8 @@ class PasskeyGate:
         the hash that is set now."""
         stored = self._stored()
         with self._lock:
-            ok = isinstance(session, str) and self._unlocked.get(session) == fingerprint(stored)
+            mark = self._unlocked.get(session) if isinstance(session, str) else None
+            ok = mark is not None and self._valid(mark, stored)
         if not ok:
             raise GuardRefused(NEEDED)
 
