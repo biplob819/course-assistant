@@ -37,7 +37,7 @@ The project shows how to put a model in front of learners responsibly. It answer
 | Demo | Learner chat and teaching-team view on the sample course; replay by default, live with a passcode | Shared Streamlit app portfolio-demos | Fri 27 Nov |
 | Golden set and results | 280 cases scored by EvalKit on GPT-6.1 Sol and GPT-6 Luna | Repo and EvalKit dashboard | Fri 27 Nov |
 | Trust pack | Behavioral spec, data card, privacy notice, DPDP mapping, incident runbook | Repo and project page | Sat 28 Nov |
-| Project page and walkthrough | Case study under the nine architecture areas; walkthrough GIF (D-75) | Portfolio site on Cloudflare Pages | Sat 28 Nov |
+| Project page and walkthrough | Case study under the nine architecture areas; walkthrough GIF (D-75) | Portfolio site on Cloudflare Pages (this repo builds no Pages site; the README links the case study, OWNER D-94) | Sat 28 Nov |
 | Pilot report | Use, answer quality, handovers and learner ratings after four weeks | Programme owners first; a public summary only if they agree | Six weeks after sign-off |
 
 ## Personas, user stories and flows

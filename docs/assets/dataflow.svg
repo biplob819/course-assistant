@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 930" width="1200" height="930" font-family="Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
   <title id="t">course-assistant: data flow of one learner question</title>
-  <desc id="d">A learner question passes the passcode gate, consent and the pause check. Route and answer (with file search) run in parallel. The answer goes through a deterministic citation check (L1), then a sentence support check (L2) and an integrity check over the whole conversation, in parallel. Graded work, or an answer that fails integrity, gets a hint instead. The text to be shown is leak-scanned, then Finalize picks one of four statuses. Not-covered and handed-over questions can reach the teaching team's queue. Consenting learners' questions feed a k-anonymous weekly digest.</desc>
+  <desc id="d">A learner question passes the passcode gate, consent and the pause check. Route and answer (with file search) run in parallel. The answer goes through a deterministic citation and grounding-bar check (L1), then a sentence support check (L2) and an integrity check over the whole conversation, in parallel. Graded work, or an answer that fails integrity, gets a hint instead. The text to be shown is leak-scanned, then Finalize picks one of four statuses. Not-covered and handed-over questions can reach the teaching team's queue. Consenting learners' questions feed a k-anonymous weekly digest.</desc>
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#334155"/>
@@ -61,7 +61,7 @@
   <!-- row 3: L1 -->
   <rect class="check" x="560" y="300" width="400" height="62" rx="8"/>
   <text class="h" x="760" y="324" text-anchor="middle">Ground L1: citation rules (no model call)</text>
-  <text class="s" x="760" y="344" text-anchor="middle">every citation resolves to a served unit · fails → not covered</text>
+  <text class="s" x="760" y="344" text-anchor="middle">citations resolve to served units · top search score ≥ bar 0.4 · fails → not covered</text>
   <path class="ln" d="M760,263 V298"/>
   <path stroke="#334155" stroke-width="1.5" fill="none" d="M760,362 V378 H635"/>
   <path stroke="#334155" stroke-width="1.5" fill="none" d="M760,378 H885"/>

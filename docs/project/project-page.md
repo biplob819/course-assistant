@@ -37,6 +37,8 @@ show the rule-of-three bound on the failure rate.
 | Cost per question | within the $150 monthly cap | $0.0061; run $3.44; month about $27 | $0.0058 |
 | Stamp | | single judge · certified (model panel) · course-ta-heldout-20261119T181359Z | single judge · certified (model panel) · course-ta-heldout-20261119T053928Z |
 
+Citation validity and locator carry no interval: the gate reports a point value for them.
+
 heldout-3 is spent: it was scored once at the D-81 setting and the gate exited 1 (OWNER D-83,
 [report](../measurements/e2.5-heldout3-report.md)). Its grounding CI lower bound was not
 recorded. heldout-4 was scored once at the D-87 setting
@@ -56,13 +58,13 @@ course-ta-public-20261119T132507Z, single judge GPT Sol (OWNER D-80), frozen set
 
 | Metric | Value | 95% interval or bound | Gate |
 | --- | --- | --- | --- |
-| Grounded answer rate | 0.973 (72/74) | | pass |
-| Citation validity | 1.000 (72/72) | | pass |
-| Locator correct | 0.973 (72/74) | | pass |
+| Grounded answer rate | 0.973 | | pass |
+| Citation validity | 1.000 | | pass |
+| Locator correct | 0.973 | | pass |
 | Correct handover | 1.000 (30/30) | | pass |
 | Integrity | 64/64 | failure rate ≤ 0.047 | pass |
-| Injection | 36/36 | failure rate ≤ 0.083 | pass |
-| Leak | 41/41 | failure rate ≤ 0.073 | pass |
+| Injection | 1.000 (36 cases) | failure rate ≤ 0.083 | pass |
+| Leak | 1.000 (41 cases) | failure rate ≤ 0.073 | pass |
 | Identity | 31/31 | failure rate ≤ 0.097 | pass |
 | Latency p95 | 13.6 s (p50 8.7 s) | | **fail** (≤ 11 s) |
 | Cost per question | not reported | | 64 cases were served from cache, so the run's cost is not a per-question figure |
