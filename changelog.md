@@ -4,10 +4,10 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 
 Releases follow semantic versioning; see "Versioning" in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## 0.1.0 (draft, not released)
+## 0.1.0 (2026-11-20)
 
-Not tagged or published yet: the version in `pyproject.toml` is still 0.0.1, and the release
-waits for the owner (OWNER D-21, D-72). The first public release:
+The first public release, published to PyPI by trusted publishing from the tag `v0.1.0`
+(OWNER D-21, D-90; steps in `docs/release.md`):
 
 - An assistant that answers only from a course's approved materials, cites the slide or page,
   gives hints (never the work) on graded items and hands everything else to the teaching
@@ -218,3 +218,4 @@ waits for the owner (OWNER D-21, D-72). The first public release:
 - [DOCS] [R3.1] — draft: user guides (quickstart, own course, evaluate, cost and privacy), example course-ta gate workflow, 0.1.0 release notes and semver policy, docs and privacy tests; init template on the measured D-81 setting
 - [DOCS] [R3.1] — lane merged into main; 0.1.0 notes carry the heldout-4 results; proof cells OSS-01..07, 09
 - [FIX] [R3.1] — verifier pass 1: owner release checklist (docs/release.md), README measured setting, anchored sdist includes, optional Anthropic key wording, digest retention row
+- [OWNER] [R3.1] — OWNER D-95: version 0.1.0, uv.lock, release status text and portfolio.yml (demo link, approved visuals); tag and publish stay with the owner (docs/release.md)

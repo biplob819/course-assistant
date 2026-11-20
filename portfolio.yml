@@ -8,10 +8,10 @@ links:
   report: https://github.com/biplob819/course-assistant/blob/main/docs/measurements/e2.5-report.md
   data_card: https://github.com/biplob819/course-assistant/blob/main/DATA_CARD.md
   decisions: https://github.com/biplob819/course-assistant/blob/main/docs/decisions.md
-  demo: null  # set when the Streamlit demo is live (docs/deploy.md)
+  demo: https://course-assistant-demo1.streamlit.app/  # passkey-protected (OWNER D-93)
 images:
   walkthrough: docs/assets/walkthrough.gif  # D-75: replaces the video
   dataflow: docs/assets/dataflow.svg
   architecture: docs/assets/architecture.svg
-tech: [Python, uv, OpenAI API, Anthropic API, Pydantic, pypdf, python-pptx, SQLite, Streamlit, EvalKit, GitHub Actions]
-status: draft  # the release gate still fails; owner approval pending
+tech: [Python, uv, OpenAI API, Pydantic, pypdf, python-pptx, SQLite, Streamlit, EvalKit, GitHub Actions]
+status: approved  # v0.1.0 (OWNER D-90); walkthrough GIF and screenshots approved by the owner, 20 Nov 2026

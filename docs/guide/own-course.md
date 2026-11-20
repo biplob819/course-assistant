@@ -3,9 +3,8 @@
 This guide sets the assistant up on your own course materials. Do the
 [quickstart](quickstart.md) first, so you know what a working setup looks like.
 
-> **Draft (R3.1).** Until the package is on PyPI, run these commands from a checkout with
-> `uv run`. Once it is published, `pip install 'course-assistant[openai,ingest]'` gives the
-> same `course-assistant` command.
+> `pip install 'course-assistant[openai,ingest]'` gives the `course-assistant` command; from a
+> checkout, run the same commands with `uv run`.
 
 ## What a course is
 

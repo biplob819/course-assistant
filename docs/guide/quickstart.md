@@ -4,8 +4,8 @@ This guide takes you from a fresh checkout to grounded answers on the sample cou
 needs no key and spends nothing. Part 2 uses your own OpenAI key, should take under
 10 minutes and spends well under $1.
 
-> **Draft (R3.1).** The 10-minute figure is a target, not yet timed on a clean machine. Until
-> the package is on PyPI, install from a checkout as shown below.
+> The 10-minute figure is a target, not timed on a clean machine. You can install from PyPI
+> (`pip install 'course-assistant[openai,ingest]'`) or work from a checkout as shown below.
 
 You need [uv](https://docs.astral.sh/uv/) and Python 3.11 or newer.
 

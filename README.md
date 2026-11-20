@@ -11,11 +11,12 @@ cites the slide or page it used, gives hints (never the answer) on graded work, 
 everything else to the teaching team. Every change is measured on a golden set with
 [EvalKit](https://github.com/biplob819/evalkit) before it goes live.
 
-> **Status: release draft (OWNER D-72, D-90).** The code is built and tested. The latest
+> **Status: v0.1.0 (OWNER D-90).** The code is built and tested. The latest
 > held-out score passes every safety gate and **misses two quality bars**: grounding (0.880
 > against 0.90) and latency p95 (11.03 s against 11 s). The owner accepted both as known limits
 > for v0.1.0, with the bars left unchanged (D-90); see [Measured results](#measured-results).
-> Nothing is on PyPI yet. The hosted demo is live (passkey-protected); see [Demo](#demo).
+> Install with `pip install course-assistant`. The hosted demo is live (passkey-protected); see
+> [Demo](#demo).
 
 ## Who it is for
 
@@ -102,8 +103,8 @@ uv run pytest -q                      # the full test suite; every model is scri
 `eval-replay` sends each recorded request back through the real `ask()` path and compares
 every answer with the stored one. It prints `golden replay: 40/40 requests match` and exits 0.
 
-Once published, the package will install with `pip install course-assistant` (pending the
-owner's go-ahead, OWNER D-21).
+The package installs with `pip install course-assistant` (add the `openai`, `ingest`, `app`
+or `eval` extras as the guides say).
 
 ## Step-by-step guide
 
@@ -333,7 +334,7 @@ hard spend limit. Demo data resets each night. Deploy guide: [`docs/deploy.md`](
 | What | Where |
 | --- | --- |
 | Source and issues | [github.com/biplob819/course-assistant](https://github.com/biplob819/course-assistant) · [issues](https://github.com/biplob819/course-assistant/issues) |
-| PyPI | `course-assistant` (pending publish: [pypi.org/project/course-assistant](https://pypi.org/project/course-assistant/)) |
+| PyPI | [`course-assistant`](https://pypi.org/project/course-assistant/) |
 | Live demo | [course-assistant-demo1.streamlit.app](https://course-assistant-demo1.streamlit.app/) (passkey-protected) |
 | EvalKit | [repo](https://github.com/biplob819/evalkit) · [`evalkit-harness` on PyPI](https://pypi.org/project/evalkit-harness/) |
 | Case study | [docs/project/project-page.md](https://github.com/biplob819/course-assistant/blob/main/docs/project/project-page.md) (OWNER D-94) · [trust pack](https://github.com/biplob819/course-assistant/tree/main/docs/trust) |

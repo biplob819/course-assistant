@@ -1,6 +1,6 @@
 [project]
 name = "course-assistant"
-version = "0.0.1"
+version = "0.1.0"
 description = "A course assistant that answers only from approved session materials, cites every slide, and hands the rest to the teaching team."
 readme = "README.md"
 license = "MIT"
