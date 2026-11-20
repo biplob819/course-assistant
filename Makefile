@@ -13,6 +13,7 @@ JSONFLAG = $(if $(JSON),--json,)
 ENVFILE = $(if $(wildcard .env),--env-file .env,)
 
 APP_DIR ?= runs/app
+PROOF ?= teardown-proof.json
 PILOT_END ?=
 
 .PHONY: eval eval-check eval-offline eval-replay demo-cache demo-check purge
@@ -20,6 +21,9 @@ PILOT_END ?=
 # make purge PILOT_END=2027-03-31 YES=--yes  (deletes; the confirmation is the caller's)
 purge:  ## deletes: retention purge of the app store and retry of open trace deletions
 	uv run course-assistant purge --app-dir $(APP_DIR) --pilot-end $(PILOT_END) $(YES)
+
+teardown:  ## deletes: end a pilot (vector store, its files, app data) with a proof (P4.3)
+	uv run --env-file .env course-assistant teardown --config $(CONFIG) --app-dir $(APP_DIR) --proof $(PROOF) $(YES)
 
 eval-replay:  ## golden replay through ask(), no API calls
 	uv run course-assistant eval-replay

@@ -229,6 +229,7 @@ def app_stores(env: Mapping[str, str], app_dir: Path) -> Callable[[], Store]:
         from course_assistant.app.deploy import DailyStores
 
         return DailyStores(app_dir)
+    Path(app_dir).mkdir(parents=True, exist_ok=True)  # a fresh pilot host has no folder yet
     return PerThreadStore(app_dir / "app.sqlite")
 
 

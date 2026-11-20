@@ -21,7 +21,7 @@
 | Grounded answer rate 0.880 on heldout-4 (66/75, lower bound 0.80) against 0.90; the public half reached 0.973. Shipped as a documented limit, target unchanged | OWNER D-90 |
 | Latency p95 11.03 s on heldout-4 against 11 s (13.6 s on the public half during a provider slowdown); shipped as a documented limit | OWNER D-90, D-87 |
 | Over-refusal: injected text in a question or an earlier turn can lower the search score under the grounding bar, so a real course question gets "not found" (9 of 36 public B10 cases); a mixed course-and-identity question twice failed the support check. Fails safe; a fix is planned after v0.1.0 | D-91 |
-| No `make purge` target yet: `Store.purge` is tested, its schedule is a pilot step; teardown is not built | P4.2, P4.3 (`docs/graph/graph.md`) |
+| The purge (`make purge`) and teardown (`make teardown`) are built and tested; running them on a schedule and at the end of a pilot are pilot steps | P4.2, P4.3 (`docs/graph/graph.md`) |
 | Runtime support check agrees weakly with the judges (kappa 0.15) | Tech Spec §6.4 |
 | Provider retention up to 30 days for abuse monitoring unless zero data retention applies | Tech Spec §7 |
 | Out-of-app notification of teaching-team replies decided at sign-off; the app holds no email | Tech Spec §7 |

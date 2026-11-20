@@ -85,6 +85,19 @@ class OpenAIVectorStore:
     def list_files(self, vector_store_id: str) -> list[VectorStoreFile]:
         return list(self._c.vector_stores.files.list(vector_store_id=vector_store_id, limit=100))
 
+    def delete_store(self, vector_store_id: str) -> Any:
+        return self._c.vector_stores.delete(vector_store_id)
+
+    def store_exists(self, vector_store_id: str) -> bool:
+        """False only on the API's not-found answer; any other error is raised."""
+        import openai
+
+        try:
+            self._c.vector_stores.retrieve(vector_store_id)
+        except openai.NotFoundError:
+            return False
+        return True
+
 
 class Target(Model):
     """A planned unit: its place in the corpus and the attributes its file must carry."""

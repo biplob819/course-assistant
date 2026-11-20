@@ -27,17 +27,20 @@ digest, privacy notice and consent by purpose, history deletion, the purge job (
 pause switches, the release gate and `course-assistant eval`, and serving only the
 gate-approved course version (`LIVE.json`).
 
-Not built yet, needed before real learners:
+Built for the pilot after v0.1.0 (tests in `tests/pilot/`, no model call):
+
+| Piece | How to use it | Where |
+| --- | --- | --- |
+| Learner ids from platform ids, `HMAC-SHA256(platform_user_id, PID_SECRET)` cut to 16 hex | `course_assistant.privacy.pseudonym.learner_pid(platform_id, secret)`; refuses a missing id or a short secret, and its errors never carry either | D-13, `src/course_assistant/privacy/pseudonym.py` |
+| A persistent app store | Set `CA_DAILY_RESET=0` on the pilot host: one `app.sqlite` in `CA_APP_DIR`, created on first use, never reset (the demo's `1` keeps one store a day) | `src/course_assistant/app/wiring.py` |
+| Teardown with a proof | `make teardown CONFIG=... APP_DIR=... PROOF=... YES=--yes` (or `course-assistant teardown`): deletes every file in the vector store and the store, checks it is gone, deletes the app store and traces, writes a proof (ids and counts only); exit 1 if anything is left | P4.3, `src/course_assistant/pilot/teardown.py` |
+
+Still to build, after your choices in section 3:
 
 | Gap | Why it matters | Where it is specified |
 | --- | --- | --- |
-| Sign-in through the learning platform (SSO) and learner ids derived from platform ids, `HMAC-SHA256(platform_user_id, PID_SECRET)` | The pages use passcodes today; a pilot needs each learner's own pseudonymous id so history, consent and deletion follow the person | D-13, PIL-03 |
-| A persistent app store on the pilot host | The demo deploy keeps one store per day and deletes the rest; a pilot keeps history for the pilot length plus 30 days | `src/course_assistant/app/deploy.py` (`DailyStores`), PRIVACY.md |
+| Sign-in through the learning platform (SSO) wired into both pages | The pages use passcodes today; with SSO each learner's page uses `learner_pid` of their platform id, so history, consent and deletion follow the person | D-13, PIL-03 |
 | Langfuse trace sink, if chosen | Only the local JSONL sink exists; `trace_sink: langfuse` is a config value with no sink behind it | D-15 |
-| `make teardown` with proof that the store and files are gone | P4.3 closes the pilot by deleting the vector store, its files and the app store | P4.3, NFR4 |
-
-The builder can build these as code with tests once you decide the host and the sign-in
-method (section 3). None needs a model call except their final live checks.
 
 ## 3. Decisions and documents from you (P4.1)
 
@@ -91,7 +94,7 @@ method (section 3). None needs a model call except their final live checks.
 
 A pilot report to the programme owners (usage, results, incidents, costs), then teardown:
 delete the vector store and its files in the pilot's OpenAI project, delete the app store and
-traces, and record the proof (`make teardown`, to be built; see section 2).
+traces, and keep the proof (`make teardown`; see section 2).
 
 ## 7. Teaching-team quick guide
 

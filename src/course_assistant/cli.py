@@ -227,6 +227,20 @@ def build_parser() -> argparse.ArgumentParser:
     pur.add_argument("--pilot-end", required=True, type=_date,
                      help="the pilot's last day, YYYY-MM-DD")  # fmt: skip
     pur.add_argument("--yes", action="store_true", help="confirm the deletions")
+    td = sub.add_parser(
+        "teardown",
+        help="end a pilot: delete the vector store, its files and the app data (deletes)",
+        description="Delete every file in the config's vector store and the store itself in "
+        "your OpenAI project, check the store is gone, delete the app's own files in "
+        "--app-dir (app.sqlite and its journal, trace.jsonl) and write a proof (ids and counts "
+        "only) to --proof. Refuses without --yes. Exit 1 when anything is left.",
+    )
+    td.add_argument("--config", required=True, type=Path, help="the cohort's config.yaml")
+    td.add_argument("--app-dir", required=True, type=Path,
+                    help="the folder with app.sqlite and trace.jsonl (CA_APP_DIR)")  # fmt: skip
+    td.add_argument("--proof", required=True, type=Path,
+                    help="where to write the proof JSON (outside --app-dir)")  # fmt: skip
+    td.add_argument("--yes", action="store_true", help="confirm the deletions")
     sub.add_parser(
         "passkey-hash",
         help="turn the demo passcode into the salted hash for the secret store",
@@ -854,6 +868,47 @@ def _purge(args: argparse.Namespace, now: Any = None) -> int:
     return EXIT_OK
 
 
+def _teardown(args: argparse.Namespace, api: Any = None, now: Any = None) -> int:
+    """P4.3: delete the cohort's vector store, its files and the app's data, with a proof."""
+    import datetime as dt
+
+    from course_assistant.pilot.teardown import teardown, write_proof
+    from course_assistant.schemas import ConfigError, load_app_config
+
+    try:
+        config = load_app_config(args.config)
+    except (ConfigError, OSError, ValueError):
+        print(f"teardown: cannot read the config at {args.config}", file=sys.stderr)
+        return EXIT_CONFIG
+    if not args.app_dir.is_dir():
+        print(f"teardown: no app folder at {args.app_dir} (check --app-dir)", file=sys.stderr)
+        return EXIT_CONFIG
+    if args.app_dir.resolve() in args.proof.resolve().parents:
+        print("teardown: write the proof outside --app-dir", file=sys.stderr)
+        return EXIT_CONFIG
+    if not args.yes:
+        print(f"teardown: this deletes vector store {config.vector_store_id}, every file in "
+              f"it and the app data in {args.app_dir}; pass --yes to confirm",
+              file=sys.stderr)  # fmt: skip
+        return EXIT_CONFIG
+    if api is None:
+        if not os.environ.get("OPENAI_API_KEY", "").strip():
+            print("teardown: OPENAI_API_KEY is not set", file=sys.stderr)
+            return EXIT_CONFIG
+        api = _vector_store_api()
+    report = teardown(api, config.vector_store_id, args.app_dir,
+                      now=now or dt.datetime.now(dt.UTC))  # fmt: skip
+    write_proof(report, args.proof)
+    print(f"teardown: {report.files_deleted} file(s) deleted from {config.vector_store_id}; "
+          f"store gone: {'yes' if report.store_gone else 'NO'}; app files removed: "
+          f"{len(report.app_files_removed)}; proof: {args.proof}")  # fmt: skip
+    if not report.complete:
+        print(f"teardown: incomplete (files failed: {len(report.files_failed)}, app files "
+              f"left: {len(report.app_files_left)}); run it again", file=sys.stderr)  # fmt: skip
+        return EXIT_GATE
+    return EXIT_OK
+
+
 def _passkey_hash(read: Callable[[str], str] | None = None) -> int:
     from course_assistant.demo.passkey import SECRET_NAME, hash_passcode, valid_code
 
@@ -967,6 +1022,8 @@ def main(argv: list[str] | None = None) -> int:
         return _gate_report(args.run, args)[0]
     if args.command == "purge":
         return _purge(args)
+    if args.command == "teardown":
+        return _teardown(args)
     if args.command == "calibrate":
         return _calibrate(args)
     if args.command == "tuning-log":

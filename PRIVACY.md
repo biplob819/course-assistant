@@ -44,8 +44,8 @@ says so.
 | Consent records | App store | Pilot length + 1 year (proof of consent) | `make purge` (runs `Store.purge`) |
 | Access log | App store | 1 year, no question text | `make purge` (runs `Store.purge`) |
 | Traces | JSONL file or Langfuse | **No question or answer text.** Target 30 days; removal by age is not automated yet | A learner's delete removes their lines at once; `make purge` retries any that failed (JSONL file only). Older lines: delete or rotate `trace.jsonl`, or set retention in Langfuse |
-| Weekly digest rows | App store | Counts only, no question text; not deleted by the purge job | Delete the app store at the end of a pilot (teardown, P4.3) |
-| Course files and vector store | OpenAI | Until teardown | Delete the vector store and its files in your OpenAI project at the end of a pilot (a scripted `make teardown` is planned, P4.3) |
+| Weekly digest rows | App store | Counts only, no question text; not deleted by the purge job | Deleted with the app store at the end of a pilot (`make teardown`, P4.3) |
+| Course files and vector store | OpenAI | Until teardown | Delete the vector store and its files in your OpenAI project at the end of a pilot or with `make teardown`, which also deletes the app store and traces and writes a proof (P4.3) |
 
 **Running the purge.** `make purge PILOT_END=YYYY-MM-DD YES=--yes` (or
 `course-assistant purge --app-dir DIR --pilot-end YYYY-MM-DD --yes`) applies the periods
