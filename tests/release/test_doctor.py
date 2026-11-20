@@ -205,3 +205,32 @@ def test_sample_course_manifest_passes_corpus_check(env, capsys):
     )
     corpus = [c for c in report if c.check == "corpus"]
     assert corpus and corpus[0].level == "ok", corpus
+
+
+def _secret_warnings(out: str) -> list[str]:
+    return [ln for ln in out.splitlines() if ln.startswith("warn secrets:")]
+
+
+def test_an_openai_only_panel_needs_no_anthropic_key(tmp_path, env, capsys):
+    """OWNER D-80: one OpenAI judge and extractor, so a missing Anthropic key is no warning."""
+    from course_assistant.eval import panel
+
+    assert panel.needed_keys() == {"OPENAI_API_KEY"}
+    env.delenv("ANTHROPIC_API_KEY")
+    code, out, _ = _run(capsys, "--config", str(_course(tmp_path)))
+    assert code == cli.EXIT_OK
+    assert "ANTHROPIC_API_KEY" not in out
+    assert _secret_warnings(out) == []
+
+
+def test_a_configured_anthropic_judge_warns_by_name_only(tmp_path, env, capsys, monkeypatch):
+    from course_assistant.eval import panel
+
+    monkeypatch.setattr(panel, "JUDGES", ("claude-opus-5-5", "gpt-6.1-sol"))
+    env.delenv("ANTHROPIC_API_KEY")
+    code, out, _ = _run(capsys, "--config", str(_course(tmp_path / "a")))
+    assert code == cli.EXIT_OK, "a warning, not a failure"
+    assert [w.split(":", 1)[1].split()[0] for w in _secret_warnings(out)] == ["ANTHROPIC_API_KEY"]
+    env.setenv("ANTHROPIC_API_KEY", SENTINEL)
+    _, out, _ = _run(capsys, "--config", str(_course(tmp_path / "b")))
+    assert _secret_warnings(out) == []
