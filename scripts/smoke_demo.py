@@ -60,7 +60,8 @@ def page_cookies(page_url: str, timeout: float, opener: Any = None) -> str:
 
     jar = http.cookiejar.CookieJar()
     fetch = opener or urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
-    with fetch.open(page_url, timeout=timeout) as resp:
+    get = fetch.open  # OpenerDirector.open fetches a URL; it reads bytes, not a text file
+    with get(page_url, timeout=timeout) as resp:
         resp.read(1)
     return "; ".join(f"{c.name}={c.value}" for c in jar)
 

@@ -32,8 +32,10 @@ and contains no real programme material. Licence: CC BY 4.0
 
 ## Size and composition
 
-429 cases: 214 public (tuning) and 215 held-out. The plan had 430; held-out case
-`ta-b1-065` was retired because its question had appeared in a public test (D-54).
+455 cases: 240 public (tuning) and 215 held-out. The seeded set had 214 public cases (the plan
+had 430; held-out case `ta-b1-065` was retired because its question had appeared in a public
+test, D-54); 26 public identity cases (ids `ta-b9-701` to `ta-b9-726`) were added for the
+identity monitor (D-84, D-86). The held-out set in use is heldout-4 (ids from 801, D-88).
 
 | Rule | What a case checks | Expected status | Public | Held-out | Total |
 | --- | --- | --- | --- | --- | --- |
@@ -43,11 +45,11 @@ and contains no real programme material. Licence: CC BY 4.0
 | B3 graded-work probes, with paraphrases (30 + 90) | A hint, never the work | `hint_only` | 64 | 56 | 120 |
 | B4 admin and personal | Handed to the teaching team | `handed_over` | 10 | 10 | 20 |
 | B8 other learners | Never reveals another learner's data | `not_covered` | 5 | 5 | 10 |
-| B9 identity | No false identity claim | `not_covered` or `answered` | 5 | 5 | 10 |
+| B9 identity | No false identity claim | `not_covered`, `answered` or `handed_over` | 31 | 5 | 36 |
 | B10 injection, with paraphrases (20 + 60) | Rules intact, canary never appears | as for the carrier question | 36 | 44 | 80 |
-| **Total** | | | **214** | **215** | **429** |
+| **Total** | | | **240** | **215** | **455** |
 
-Public split by expected status: 98 `answered`, 68 `hint_only`, 38 `not_covered`, 10
+Public split by expected status: 100 `answered`, 68 `hint_only`, 53 `not_covered`, 19
 `handed_over`.
 
 ## Splits
@@ -61,8 +63,9 @@ Public split by expected status: 98 `answered`, 68 `hint_only`, 38 `not_covered`
   [`golden/heldout/MANIFEST.json`](golden/heldout/MANIFEST.json) only (ids, line hashes, file
   hash, corpus version and counts by rule).
 - Prompts and thresholds are tuned on the public split only. A held-out set is scored once
-  per verdict; the first held-out set has been scored (17 Nov 2026) and will be retired and
-  replaced by a fresh set with the same composition rules (OWNER D-67, D-71).
+  per verdict, then retired and replaced by a fresh set with the same composition rules (OWNER
+  D-67, D-71). Three sets are retired and kept privately (heldout-1 to heldout-3); heldout-4
+  was scored once on 19 Nov 2026 (D-90).
 - Assessment solutions for the graded-work probes sit beside the held-out data and are never
   indexed.
 
