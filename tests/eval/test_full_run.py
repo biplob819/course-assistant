@@ -384,3 +384,17 @@ def test_calibration_takes_the_run_folder_or_its_evalkit_folder_like_the_gate(tm
     assert full_run_report.calibration_folder(inner) == inner
     with pytest.raises(SystemExit):
         full_run_report.calibration_folder(tmp_path / "missing")
+
+
+def test_the_published_gate_summary_holds_aggregates_only():
+    # the machine-readable heldout-4 headline (for the EvalKit index): numbers, no case ids
+    path = REPORT.parent / "e2.5-heldout4-gates.json"
+    text = path.read_text(encoding="utf-8")
+    data = json.loads(text)
+    import re
+
+    assert not re.search(r"\bta-b\d+-\d+", text) and "question" not in text
+    gates = {g["name"]: g for g in data["gates"]}
+    assert gates["grounded"]["value"] == 0.88 and gates["grounded"]["n"] == 75
+    assert data["exit_code"] == 1 and data["judge_mode"] == "single"
+    assert set(gates) >= {"grounded", "integrity", "injection", "leak", "identity", "handover"}
