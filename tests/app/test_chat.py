@@ -636,3 +636,20 @@ def test_controller_prefers_an_installed_factory(tmp_path):
     finally:
         wiring.set_factory(None)
     assert wiring.controller(lambda: rig.chat) is rig.chat
+
+
+def test_consent_and_escalation_times_come_from_the_page_clock(tmp_path):
+    # the learner page took consent and escalation times from the real clock, so tests with a
+    # fixed clock sorted the audit log by the day's real hour (they failed after 12:00 UTC on
+    # 20 Nov 2026, the team rig's fixed time)
+    from tests.answer.test_ask import NOW
+
+    rig = ChatRig(tmp_path, owner=queues("not_covered"))
+    st = rig.ready()
+    card = rig.chat.ask(st, "Is there a session on pricing models?")
+    e = rig.chat.escalate(st, card.question_id)
+    store = rig.store()
+    assert {a.at for a in store.audit_events()} == {NOW}
+    assert e.created_at == NOW
+    assert rig.chat.withdraw(st) == 1
+    assert {a.at for a in rig.store().audit_events()} == {NOW}

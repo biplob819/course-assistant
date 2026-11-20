@@ -669,3 +669,62 @@ def test_page_cookies_joins_what_the_host_sets_on_a_page_load():
     o = Opener()
     assert sd.page_cookies("https://x.streamlit.app/", 5, opener=o) == ""  # no jar: no cookie
     assert o.urls == [("https://x.streamlit.app/", 5)]
+
+
+def _cookie(name: str, domain: str):
+    import http.cookiejar
+
+    return http.cookiejar.Cookie(0, name, "v-" + name, None, False, domain, True, False, "/",
+                                 True, True, None, False, None, None, {})  # fmt: skip
+
+
+def test_page_cookies_sends_only_the_app_hosts_cookies():
+    # D3.2 verifier: the redirect through share.streamlit.io may set its own cookies too; only
+    # the app host's go to the app's stream
+    import http.cookiejar
+
+    import smoke_demo as sd
+
+    jar = http.cookiejar.CookieJar()
+
+    class Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self, n):
+            return b"<"
+
+    class Opener:
+        def open(self, url, timeout):
+            jar.set_cookie(_cookie("app", "x.streamlit.app"))
+            jar.set_cookie(_cookie("parent", ".streamlit.app"))
+            jar.set_cookie(_cookie("share", "share.streamlit.io"))
+            return Resp()
+
+    got = sd.page_cookies("https://x.streamlit.app/", 5, opener=Opener(), jar=jar)
+    assert sorted(got.split("; ")) == ["app=v-app", "parent=v-parent"]
+
+
+def test_the_websocket_sends_the_cookie_and_origin_headers(monkeypatch):
+    import websockets.sync.client as wsc
+
+    import smoke_demo as sd
+
+    seen = {}
+
+    class CM:
+        def __enter__(self):
+            return object()
+
+    def connect(url, **kw):
+        seen.update(kw, url=url)
+        return CM()
+
+    monkeypatch.setattr(wsc, "connect", connect)
+    sd._WebSocket("wss://x.streamlit.app/_stcore/stream", 5, "a=1", "https://x.streamlit.app")
+    assert seen["additional_headers"] == {"Cookie": "a=1", "Origin": "https://x.streamlit.app"}
+    sd._WebSocket("wss://x/_stcore/stream", 5)
+    assert seen["additional_headers"] is None

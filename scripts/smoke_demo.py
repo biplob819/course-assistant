@@ -51,19 +51,26 @@ def stream_url(url: str) -> str:
     return urlunsplit((scheme, parts.netloc, base + "/_stcore/stream", "", ""))
 
 
-def page_cookies(page_url: str, timeout: float, opener: Any = None) -> str:
+def page_cookies(page_url: str, timeout: float, opener: Any = None, jar: Any = None) -> str:
     """The cookies the app's host sets on a plain page load, as one Cookie header. Community
     Cloud answers a cookieless request with a redirect through share.streamlit.io that sets a
     cookie and comes back; a websocket opened without it gets an HTTP status, not a stream."""
     import http.cookiejar
     import urllib.request
+    from urllib.parse import urlsplit
 
-    jar = http.cookiejar.CookieJar()
+    jar = http.cookiejar.CookieJar() if jar is None else jar
     fetch = opener or urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
     get = fetch.open  # OpenerDirector.open fetches a URL; it reads bytes, not a text file
     with get(page_url, timeout=timeout) as resp:
         resp.read(1)
-    return "; ".join(f"{c.name}={c.value}" for c in jar)
+    host = (urlsplit(page_url).hostname or "").lower()
+
+    def for_app(domain: str) -> bool:  # the app host's cookies only, not the redirect's
+        d = domain.lower().lstrip(".")
+        return host == d or host.endswith("." + d)
+
+    return "; ".join(f"{c.name}={c.value}" for c in jar if for_app(c.domain))
 
 
 class _WebSocket:

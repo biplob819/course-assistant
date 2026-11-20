@@ -9,5 +9,5 @@
 - [x] 7. Read 20 records; report; §2.6, §9, D-61 (gate check waits for task 6)
 - [x] 7b. Hint cache (D-63) and alarm at $135 (D-64), tests first; cached smoke
 - [x] 8. Converge twice; clean clone (L-31)
-- [ ] 9. Verifier
-- [ ] 10. Proofs, green, commit (owner)
+- [x] 9. Verifier (pass 2 confirmed all four)
+- [x] 10. Proofs, green, commit

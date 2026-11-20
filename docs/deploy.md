@@ -53,14 +53,13 @@ Make a long random value, for example with
 
 ## 5. Build and commit the worked examples
 
-With the demo project's key in your local `.env`, build the replay file (the D3.1 step that
-is still open). Run `make demo-cache YES=--yes` with your config. It prints the estimated
+With the demo project's key in your local `.env`, build the replay file (committed for the sample course on 20 Nov 2026, 9c38428;
+rebuild it only when the course or setting changes). Run `make demo-cache YES=--yes` with your config. It prints the estimated
 cost first. Then check it offline with
 `uv run python scripts/demo_cache.py --check`, and commit `demo/replay.json`. The file holds
 only sample-course text, which is public under CC BY 4.0. The learner page opens on these
-worked examples, with no live call. Until `demo/replay.json` is committed, the app shows only
-the locked page (its log says the course is missing), because the hosted app takes the
-sample course from that file.
+worked examples, with no live call. Without `demo/replay.json` the app shows only the locked page (its log says the course is
+missing), because the hosted app takes the sample course from that file.
 
 ## 6. Create the app on Community Cloud
 

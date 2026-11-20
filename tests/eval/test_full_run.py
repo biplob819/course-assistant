@@ -91,13 +91,18 @@ def test_the_report_holds_ids_and_numbers_and_no_case_text(run_dir: Path):
 
 
 def test_the_published_report_quotes_no_public_question():
-    if not REPORT.is_file():
+    # every published E2.5 report, the held-out ones too (E2.5 verifier: only the first was read)
+    reports = [REPORT, *sorted(REPORT.parent.glob("e2.5-heldout*-report.md"))]
+    reports = [r for r in reports if r.is_file()]
+    if not reports:
         pytest.skip("the report is written by scripts/full_run_report.py after the live run")
-    text = REPORT.read_text(encoding="utf-8")
     from course_assistant.eval.dataset import load_public
 
-    for c in load_public(E.PUBLIC):
-        assert c.question not in text
+    questions = [c.question for c in load_public(E.PUBLIC)]
+    for r in reports:
+        text = r.read_text(encoding="utf-8")
+        assert all(q not in text for q in questions), r.name
+    assert any("heldout4" in r.name for r in reports)
 
 
 def test_eval_live_ledgers_judging_spend_under_the_run_id(run_dir: Path, tmp_path: Path):

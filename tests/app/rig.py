@@ -76,7 +76,8 @@ class ChatRig:
                              owner_responder=self.owner if owner_key else None,
                              responder_for_key=self.for_key, prices=PRICES)  # fmt: skip
         self.chat = LearnerChat(self.gate, self.demo, assistant_for=self.assistant_for,
-                                store=self.stores, traces=[self.sink], corpus=CORPUS)  # fmt: skip
+                                store=self.stores, traces=[self.sink], corpus=CORPUS,
+                                now=Clock())  # fmt: skip
         self.state = ChatState.new()
 
     def assistant_for(self, source: Any) -> Assistant:

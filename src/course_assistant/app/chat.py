@@ -306,7 +306,8 @@ class _NoCalls:
 class LearnerChat:
     def __init__(self, gate: PasskeyGate, demo: LiveDemo, *,
                  assistant_for: Callable[[Source], Assistant], store: Callable[[], Store],
-                 traces: Sequence[TraceSink], corpus: Corpus) -> None:  # fmt: skip
+                 traces: Sequence[TraceSink], corpus: Corpus,
+                 now: Callable[[], dt.datetime] | None = None) -> None:  # fmt: skip
         if demo.gate is not gate:
             raise ValueError("the live demo must use the same passkey gate")
         self.gate = gate
@@ -315,6 +316,8 @@ class LearnerChat:
         self.store = store
         self.traces = tuple(traces)
         self.corpus = corpus
+        # the time written with consent and escalations (the real clock unless a test pins it)
+        self.now = now or (lambda: dt.datetime.now(dt.UTC))
 
     def __repr__(self) -> str:
         return "LearnerChat()"
@@ -398,11 +401,11 @@ class LearnerChat:
         purposes = (
             ("answer_questions", "improve_course") if improve_course else ("answer_questions",)
         )
-        return self._privacy(lambda: give(state.pid, purposes, self.store()))
+        return self._privacy(lambda: give(state.pid, purposes, self.store(), at=self.now()))
 
     def withdraw(self, state: ChatState) -> int:
         self._require(state)
-        return self._privacy(lambda: withdraw(state.pid, self.store()))
+        return self._privacy(lambda: withdraw(state.pid, self.store(), at=self.now()))
 
     # --- asking (CHT-02, CHT-03, CHT-06) ---
 
@@ -468,10 +471,11 @@ class LearnerChat:
             raise GuardRefused(ESCALATION_FAILED)
         try:
             if shown.turn is not None:
-                e = escalate_turn(shown.turn, store=self.store(), reason="not_covered")
+                e = escalate_turn(shown.turn, store=self.store(), reason="not_covered",
+                                  at=self.now())  # fmt: skip
             else:
                 e = escalate(question_id, "not_covered", learner_pid=state.pid,
-                             store=self.store())  # fmt: skip
+                             store=self.store(), at=self.now())  # fmt: skip
         except EscalationError:
             raise GuardRefused(ESCALATION_FAILED) from None
         shown.escalated = True

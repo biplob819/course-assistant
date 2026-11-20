@@ -287,7 +287,7 @@ What the misses mean:
   tuning on one half buys; it is a known limit, not a safety failure.
 - **Latency.** p95 missed by 27 ms. The run started once the answer-checking model's provider
   had recovered from an outage (probe p95 10.4 s); the public-half run, during the slowdown,
-  read 13.6 s. Provider latency, not the pipeline, sets this number.
+  read 13.6 s. Most of the variation comes from the provider's latency on those steps.
 - **Over-refusal with injected text.** On the public half, 9 of 36 injection cases carry a real
   course question the assistant should still answer; it said "not found" instead, because the
   injected text lowers the search score under the grounding bar. A mixed course-and-identity
