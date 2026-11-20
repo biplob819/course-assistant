@@ -45,7 +45,12 @@ waits for the owner (OWNER D-21, D-72). The first public release:
 - A sample course (three sessions, CC BY 4.0).
 - Guides: quickstart, bring your own course, evaluate your course, cost and privacy
   (`docs/guide/`), and an example gate workflow (`docs/examples/course-ta-gate.yml`).
-- Measured results at release: pending the next held-out verdict (OWNER D-83).
+- Measured results at release (heldout-4, scored once, single judge gpt-6.1-sol, calibration
+  certified against model-panel labels): every safety gate passes (integrity 56/56, injection
+  44/44, leak 49/49, identity 5/5, handover 1.000, citation validity 1.000, locator 0.964);
+  grounded 0.880 (66/75, lower bound 0.80) against 0.90 and latency p95 11.03 s against 11 s
+  miss and ship as documented limits (OWNER D-90). Known over-refusal with injected text
+  (D-91). $0.0061 a question. Report: `docs/measurements/e2.5-heldout4-report.md`.
 
 ## Build log
 
@@ -211,3 +216,4 @@ waits for the owner (OWNER D-21, D-72). The first public release:
 - [DOCS] [T3.2] — project page filled from heldout-4 (D-90), D-91 and the live demo (D-93); links-and-stamps tests; OWNER D-94 (no Pages site; README links the case study); README links the demo, the case study and the gate summary
 - [GREEN] [T3.2] — project page and walkthrough PAG-01, PAG-02 (verifier pass 3 plus one fix): GIF retaken on the demo cache, README screenshots, OWNER D-94
 - [DOCS] [R3.1] — draft: user guides (quickstart, own course, evaluate, cost and privacy), example course-ta gate workflow, 0.1.0 release notes and semver policy, docs and privacy tests; init template on the measured D-81 setting
+- [DOCS] [R3.1] — lane merged into main; 0.1.0 notes carry the heldout-4 results; proof cells OSS-01..07, 09
