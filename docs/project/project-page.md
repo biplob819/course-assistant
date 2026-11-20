@@ -92,7 +92,8 @@ vendors are the design (D-12) and return when Anthropic credit is restored.
 Each question runs through one small typed graph (D-1). Route and answer start in parallel
 (D-9). Grounding has two levels: L1 checks that every citation resolves to a served unit and
 that the top search score reaches the grounding bar (0.4), with no model call; the bar is why
-injected text can turn a real question into "not covered" (D-91); L2 checks each sentence against the units it cites. L2 and the integrity check run
+injected text can turn a real question into "not covered" (D-91); L2 checks each sentence
+against the units it cites. L2 and the integrity check run
 in parallel. Graded work, or an answer that fails integrity, gets a hint instead. A leak scan
 reads the text to be shown, then Finalize picks one of four statuses: `answered`,
 `not_covered`, `hint_only`, `handed_over` ([behavioral spec](../trust/behavioral-spec.md)).
@@ -166,7 +167,8 @@ revocation shown working on the live app).
 I wrote the product requirements and owned every ruling that shaped the system: multi-turn
 conversations, a passcode on every page, the monthly spend cap, the order in which held-out data
 may be used, and the restated latency target. I approved each paid evaluation run, ruled that a
-model panel labels the calibration sets (OWNER D-76, D-79), and deployed and attested the live demo (OWNER D-93).
+model panel labels the calibration sets (OWNER D-76, D-79), and deployed and attested the live
+demo (OWNER D-93).
 
 Claude Code built the code, tests, evaluation runs and documents under EvalKit's node harness.
 Every node needed tests first, two clean convergence runs and a fresh skeptical verifier that
@@ -192,14 +194,17 @@ the spend cap or reach the staff queue anonymously.
 setting met the original 8 s p95. The faster model answered 30 of 74 course questions where the
 stronger one answered 51.
 *Trade-off:* answers take about two seconds longer at p95. In exchange, the answers are more
-often grounded and less often "not covered". Later, OWNER D-80 moved answers to GPT Terra, so that the
+often grounded and less often "not covered". Later, OWNER D-80 moved answers to GPT Terra, so
+that the
 single judge, GPT Sol, never grades its own work.
 
 ## Demo and links
 
 ![Walkthrough: ten screens, 2.5 s each](../assets/walkthrough.gif) (shot list:
-[`docs/walkthrough.md`](../walkthrough.md); D-75). The GIF was captured from the app run
-locally on the committed replay fixture; a retake from the live demo is optional (D-46). Demo:
+[`docs/walkthrough.md`](../walkthrough.md); D-75). Screens 1 to 7 were captured from the app
+run locally on the committed demo cache (`demo/replay.json`), with real slide text and no model
+call; screens 8 to 10 render committed output, numbers and the architecture diagram. A retake
+from the live demo is optional (D-46). Demo:
 https://course-assistant-demo1.streamlit.app/ (passkey-protected).
 
 Source: github.com/biplob819/course-assistant · EvalKit: github.com/biplob819/evalkit ·
