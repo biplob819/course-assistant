@@ -62,7 +62,7 @@ Generated from the Tech Spec §11.2 on 2026-11-15; edit here from now on and kee
 | **D3.1** | Demo replay and guard | A2.5, B2.1 | node_converge + verifier | `make demo-cache`, replay file, guard with persistent KV counter, demo OpenAI project with spend limit | US10 |
 | **D3.2** | Demo deploy | D3.1, B2.5, B2.3 | node_converge + verifier | Both pages in `portfolio-demos`, replay default, passcodes, off switch shown working | US10 |
 | **T3.1** | Trust pack | B2.2, E2.5, D3.2 | node_converge + verifier | Behavioral spec, data card, privacy notice, DPDP and UK GDPR mapping, incident runbook (72-hour report), off-switch test evidence | NFR2, NFR7 |
-| **T3.2** | Project page and walkthrough | T3.1, E2.5, D3.2 | node_converge + verifier | Case study under the nine architecture areas on Cloudflare Pages, walkthrough GIF (D-75) | — |
+| **T3.2** | Project page and walkthrough | T3.1, E2.5, D3.2 | node_converge + verifier | Case study under the nine architecture areas in the repo, linked from the README and pulled by the portfolio site (OWNER D-94), walkthrough GIF (D-75) | — |
 | **R3.1** | Open-source packaging and v0.1.0 | T3.1, D3.2 | node_converge + verifier | PyPI `course-assistant` by trusted publishing, `init` and `doctor`, docs (quickstart on the sample course, bring your own course, evaluate your course), community files, privacy statement, eval GitHub Action example, tag v0.1.0 | US7, US8, US10 |
 
 ## Wave 4 — pilot (after sign-off)

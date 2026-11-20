@@ -92,7 +92,7 @@ def test_the_report_holds_ids_and_numbers_and_no_case_text(run_dir: Path):
 
 def test_the_published_report_quotes_no_public_question():
     # every published E2.5 report, the held-out ones too (E2.5 verifier: only the first was read)
-    reports = [REPORT, *sorted(REPORT.parent.glob("e2.5-heldout*-report.md"))]
+    reports = sorted({REPORT, *REPORT.parent.glob("e2.5-*-report.md")})
     reports = [r for r in reports if r.is_file()]
     if not reports:
         pytest.skip("the report is written by scripts/full_run_report.py after the live run")

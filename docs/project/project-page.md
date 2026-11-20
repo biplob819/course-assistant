@@ -51,11 +51,12 @@ fix planned after v0.1.0 (D-91).
 
 The setting was tuned on these cases, so they show what tuning bought, not how the system does
 on questions it has not seen. 240 cases (214 plus the D-84 identity supplement), run
-course-ta-public-20261119T132507Z, single judge GPT Sol (OWNER D-80), frozen setting D-87.
+course-ta-public-20261119T132507Z, single judge GPT Sol (OWNER D-80), frozen setting D-87
+([report](../measurements/e2.5-d87-public-report.md)).
 
 | Metric | Value | 95% interval or bound | Gate |
 | --- | --- | --- | --- |
-| Grounded answer rate | 0.973 (72/74) | [0.932, 1.000] | pass |
+| Grounded answer rate | 0.973 (72/74) | | pass |
 | Citation validity | 1.000 (72/72) | | pass |
 | Locator correct | 0.973 (72/74) | | pass |
 | Correct handover | 1.000 (30/30) | | pass |
@@ -76,8 +77,9 @@ at D-80, so the trend is indicative only.
 
 ## 1. Models
 
-GPT Terra at low effort writes answers. GPT Luna routes, checks support and integrity, writes
-hints and extracts claims for the judge. GPT Sol judges offline and never grades its own
+GPT Terra (`gpt-6.1-terra`) at low effort writes answers. GPT Luna (`gpt-6-luna`) routes, checks
+support and integrity, writes hints and extracts claims for the judge. GPT Sol (`gpt-6.1-sol`)
+judges offline and never grades its own
 answers (OWNER D-80, D-81). Earlier, GPT Sol at medium effort wrote answers: it answered 51 of
 74 public course questions where the faster model answered 30 (D-61). Dual judges from two
 vendors are the design (D-12) and return when Anthropic credit is restored.
@@ -86,8 +88,9 @@ vendors are the design (D-12) and return when Anthropic credit is restored.
 ## 2. Applications
 
 Each question runs through one small typed graph (D-1). Route and answer start in parallel
-(D-9). Grounding has two levels: L1 checks every citation resolves to a served unit, with no
-model call; L2 checks each sentence against the units it cites. L2 and the integrity check run
+(D-9). Grounding has two levels: L1 checks that every citation resolves to a served unit and
+that the top search score reaches the grounding bar (0.4), with no model call; the bar is why
+injected text can turn a real question into "not covered" (D-91); L2 checks each sentence against the units it cites. L2 and the integrity check run
 in parallel. Graded work, or an answer that fails integrity, gets a hint instead. A leak scan
 reads the text to be shown, then Finalize picks one of four statuses: `answered`,
 `not_covered`, `hint_only`, `handed_over` ([behavioral spec](../trust/behavioral-spec.md)).
@@ -160,8 +163,8 @@ revocation shown working on the live app).
 
 I wrote the product requirements and owned every ruling that shaped the system: multi-turn
 conversations, a passcode on every page, the monthly spend cap, the order in which held-out data
-may be used, and the restated latency target. I approved each paid evaluation run, ruled that a model panel labels the
-calibration sets (OWNER D-76, D-79), and deployed and attested the live demo (OWNER D-93).
+may be used, and the restated latency target. I approved each paid evaluation run, ruled that a
+model panel labels the calibration sets (OWNER D-76, D-79), and deployed and attested the live demo (OWNER D-93).
 
 Claude Code built the code, tests, evaluation runs and documents under EvalKit's node harness.
 Every node needed tests first, two clean convergence runs and a fresh skeptical verifier that
@@ -183,7 +186,7 @@ and revocable. Learner and staff codes can never match.
 *Trade-off:* friction for casual visitors to the open-source demo. In exchange, nobody can drain
 the spend cap or reach the staff queue anonymously.
 
-**Keep the stronger answer model and restate the latency target to 11 s (D-61, D-65).** No
+**History: keep the stronger answer model and restate the latency target to 11 s (D-61, D-65).** No
 setting met the original 8 s p95. The faster model answered 30 of 74 course questions where the
 stronger one answered 51.
 *Trade-off:* answers take about two seconds longer at p95. In exchange, the answers are more
@@ -192,7 +195,7 @@ single judge, GPT Sol, never grades its own work.
 
 ## Demo and links
 
-![Walkthrough: ten real screens, 2.5 s each](../assets/walkthrough.gif) (shot list:
+![Walkthrough: ten screens, 2.5 s each](../assets/walkthrough.gif) (shot list:
 [`docs/walkthrough.md`](../walkthrough.md); D-75). The GIF was captured from the app run
 locally on the committed replay fixture; a retake from the live demo is optional (D-46). Demo:
 https://course-assistant-demo1.streamlit.app/ (passkey-protected).

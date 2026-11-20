@@ -313,3 +313,13 @@ def test_docs_assets_admits_images_and_fonts_only(tmp_path):
     f = tmp_path / "docs" / "assets" / "deck.zip"
     f.write_bytes(b"PK\x03\x04\x14\x00")
     assert corpus_guard.problems(tmp_path, [f])
+
+
+def test_a_term_matches_its_plural_too():
+    # T3.2 verifier: a plural ("...s") slipped past a singular term in the list
+    from corpus_guard import Term
+
+    assert Term("blue widget").found_in("notes for two blue widgets here")
+    assert Term("glass box").found_in("three glass boxes")
+    assert Term("blue widget").found_in("a blue widget")
+    assert not Term("blue widget").found_in("blue widgetry is fine")
