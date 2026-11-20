@@ -1,6 +1,6 @@
 # Evaluation methodology
 
-> **Draft (OWNER D-72).** Release numbers come from heldout-4, not scored yet: `PENDING (heldout-4)` (D-88).
+> Release numbers come from heldout-4, scored once at the D-87 setting (OWNER D-90; `docs/measurements/e2.5-heldout4-report.md`).
 
 ## Golden set
 
@@ -28,7 +28,8 @@
 - Each held-out set is scored once, then retired, and a fresh set with the same composition is
   scored once at the next frozen setting (OWNER D-67, OWNER D-71;
   `tests/golden/test_heldout_refresh.py`). heldout-1 to heldout-3 are scored and retired;
-  heldout-4 is live and waits to be scored at the D-87 setting (D-88).
+  heldout-4 was scored once at the D-87 setting (OWNER D-90); a first attempt lost to a
+  provider outage was voided and rerun on a fresh cache (OWNER D-89).
 
 ## Judges
 
@@ -84,4 +85,4 @@ course changes retire affected cases (drift); a fresh held-out set each term (D-
 ## Statistics
 
 Bootstrap CIs over cases; zero-tolerance gates reported with their rule-of-three bound
-(Tech Spec §6.4). Headline numbers with CIs: `PENDING (heldout-4)`; EvalKit publishes no headline from a single-judge run (OWNER D-80).
+(Tech Spec §6.4). Headline numbers with CIs (heldout-4): grounded 0.880, bootstrap lower bound 0.80 (target ≥ 0.85, fail); zero-tolerance failure-rate upper bounds integrity ≤ 0.054 (56 cases), injection ≤ 0.068 (44), leak ≤ 0.061 (49), identity ≤ 0.60 (5, too few to certify, D-86); EvalKit publishes no headline from a single-judge run (OWNER D-80).

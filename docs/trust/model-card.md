@@ -1,8 +1,7 @@
 # Model card: course-assistant
 
-> **Draft (OWNER D-72).** Nothing here is green. Release numbers come from heldout-4, which is
-> not scored yet: `PENDING (heldout-4)` (D-88). Public-half numbers are tuned on, so they are not
-> a release result.
+> Release numbers come from heldout-4, scored once at the D-87 setting (OWNER D-90). Public-half
+> numbers are tuned on, so they are not a release result.
 
 ## Models used and why
 
@@ -45,19 +44,23 @@ grew from 214 to 240 cases in between (D-84), so the columns are not directly co
 
 | Metric (target) | Public half, 240, D-87 | heldout-3, D-81 setting (D-83) | Release value, heldout-4 |
 | --- | --- | --- | --- |
-| Grounded answer rate (≥ 0.90, lower bound ≥ 0.85) | 0.973 | 0.893, fail | `PENDING (heldout-4)` |
-| Citation validity (≥ 0.95) | 1.000 | 1.000 | `PENDING (heldout-4)` |
-| Locator correct (≥ 0.95) | 0.973 | 0.973 | `PENDING (heldout-4)` |
-| Correct handover (≥ 0.95) | 1.000 | 1.000 | `PENDING (heldout-4)` |
-| Integrity (zero tolerance) | 1.000 | 56/56 | `PENDING (heldout-4)` |
-| Injection (zero tolerance) | 1.000 | 44/44 | `PENDING (heldout-4)` |
-| Leak (zero tolerance) | 1.000 | 49/49 | `PENDING (heldout-4)` |
-| Identity (zero tolerance; monitored, not certified, D-86) | 1.000 | 3/5, fail | `PENDING (heldout-4)` |
-| Latency p95 (≤ 11 s, OWNER D-65) | 13.6 s, fail (provider latency, D-87) | 9.2 s | `PENDING (heldout-4)` |
-| Cost per question | not yet reported | $0.0058 | `PENDING (heldout-4)` |
+| Grounded answer rate (≥ 0.90, lower bound ≥ 0.85) | 0.973 | 0.893, fail | 0.880 (66/75, lower bound 0.80), **fail** |
+| Citation validity (≥ 0.95) | 1.000 | 1.000 | 1.000 |
+| Locator correct (≥ 0.95) | 0.973 | 0.973 | 0.964 |
+| Correct handover (≥ 0.95) | 1.000 | 1.000 | 1.000 (30) |
+| Integrity (zero tolerance) | 1.000 | 56/56 | 56/56 |
+| Injection (zero tolerance) | 1.000 | 44/44 | 44/44 |
+| Leak (zero tolerance) | 1.000 | 49/49 | 49/49 |
+| Identity (zero tolerance; monitored, not certified, D-86) | 1.000 | 3/5, fail | 5/5 (worst of three samples, D-85) |
+| Latency p95 (≤ 11 s, OWNER D-65) | 13.6 s, fail (provider latency, D-87) | 9.2 s | 11.03 s, **fail** by 27 ms |
+| Cost per question | not yet reported | $0.0058 | $0.0061 |
 
 Per-rule results and the public case ids behind them: [`behavioral-spec.md`](behavioral-spec.md).
-Reports: `docs/measurements/e2.5-heldout3-report.md`, `docs/measurements/e2.5-report.md`.
+The release gate on heldout-4 exits 1 on grounded and latency; the owner shipped v0.1.0 with both
+as documented limits and the targets unchanged (OWNER D-90).
+
+Reports: `docs/measurements/e2.5-heldout4-report.md`, `docs/measurements/e2.5-heldout3-report.md`,
+`docs/measurements/e2.5-report.md`.
 
 ## Known limits
 

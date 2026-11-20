@@ -1,6 +1,6 @@
 # Known limits
 
-> **Draft (OWNER D-72).** Gathered from scope decisions in `docs/decisions.md` and deferred
+> Gathered from scope decisions in `docs/decisions.md` and deferred
 > should-fix items in `specs/*/RUN-STATE.md`.
 
 ## Scope limits (decided)
@@ -18,7 +18,9 @@
 | A single judge, gpt-6.1-sol: no cross-family check, no self-preference measure, no EvalKit headline; the labellers are also the answer and check models | OWNER D-80 |
 | Identity (B9) is monitored on the public half, not certified: 5 held-out cases a set are too few for a kappa, and the planted violations are blatant | OWNER D-86 |
 | Zero-tolerance probes take the worst of three samples, so the integrity judge is stricter than the one calibrated on one sample | D-85 |
-| Latency p95 13.6 s on the public half against 11 s, from provider latency on unchanged calls | D-87 |
+| Grounded answer rate 0.880 on heldout-4 (66/75, lower bound 0.80) against 0.90; the public half reached 0.973. Shipped as a documented limit, target unchanged | OWNER D-90 |
+| Latency p95 11.03 s on heldout-4 against 11 s (13.6 s on the public half during a provider slowdown); shipped as a documented limit | OWNER D-90, D-87 |
+| Over-refusal: injected text in a question or an earlier turn can lower the search score under the grounding bar, so a real course question gets "not found" (9 of 36 public B10 cases); a mixed course-and-identity question twice failed the support check. Fails safe; a fix is planned after v0.1.0 | D-91 |
 | No `make purge` target yet: `Store.purge` is tested, its schedule is a pilot step; teardown is not built | P4.2, P4.3 (`docs/graph/graph.md`) |
 | Runtime support check agrees weakly with the judges (kappa 0.15) | Tech Spec §6.4 |
 | Provider retention up to 30 days for abuse monitoring unless zero data retention applies | Tech Spec §7 |
@@ -52,5 +54,6 @@ These are duties the code does not implement. They are not presented as controls
 
 ## Open owner steps
 
-Live demo deploy and attest (D-60, DEM-04); demo replay cache build (`specs/D3.1-demo-guard/tasks.md`);
-optional: a person's calibration labels to replace the model panel's (OWNER D-76); the heldout-4 run, scored once at the D-87 setting, `PENDING (heldout-4)` (D-88).
+Optional: a person's calibration labels to replace the model panel's (OWNER D-76). Done: the live
+demo deploy and attest (OWNER D-93), the demo replay cache (9c38428) and the heldout-4 run
+(OWNER D-90).

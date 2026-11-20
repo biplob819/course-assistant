@@ -1,6 +1,6 @@
 # Incident and kill-switch runbook
 
-> **Draft (OWNER D-72).** Four steps: detect, pause, notify the data fiduciary, and a detailed
+>Four steps: detect, pause, notify the data fiduciary, and a detailed
 > report within 72 hours. Steps 1 to 3 below (pause, passkey, spend) are backed by code and
 > tests. Step 4 (notify the fiduciary, the 72-hour report) is **owner process, no code**
 > (`docs/trust/known-limits.md`). Live drills on the hosted demo are an owner step (D3.2
@@ -58,5 +58,6 @@ goes to the Data Protection Board and to learners (Tech Spec §7; `PRIVACY.md`, 
 ## Off-switch evidence
 
 - In code: the pause switch, the paused message and fail-closed reads are tested (step 1).
-- On the live app: `PENDING (D3.2 owner attest)`. The hosted demo is not deployed yet; the
-  owner attests the drill under D3.2 DEM-04 (D-60).
+- On the live app: the owner paused all sessions on the teaching-team page, saw the fixed
+  paused message on the learner page with no model call, resumed, and revoked a passcode, on
+  the deployed demo (OWNER D-93, D3.2 DEM-04; `docs/deploy.md` steps 8 and 9).

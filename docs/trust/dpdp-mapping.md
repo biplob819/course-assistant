@@ -1,6 +1,6 @@
 # DPDP Act 2023 mapping, with a UK GDPR column
 
-> **Draft (OWNER D-72).** This maps the assistant's controls to the duties. It is not legal
+>This maps the assistant's controls to the duties. It is not legal
 > advice. Roles: the programme provider is the data fiduciary (controller); the assistant's
 > operator is its processor under a written agreement (Tech Spec §7; OWNER D-47; `PRIVACY.md`).
 > Section numbers are the Act's; the DPDP Rules 2025's detail (forms, timelines) is not mapped
