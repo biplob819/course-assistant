@@ -66,5 +66,5 @@ Reports: `docs/measurements/e2.5-heldout4-report.md`, `docs/measurements/e2.5-he
 
 See [`known-limits.md`](known-limits.md). In short: one small English sample course
 (`DATA_CARD.md`, Known gaps); one judge, calibrated against an OpenAI-only model panel rather than a person (OWNER D-79, D-80); identity monitored, not certified (OWNER D-86); runtime support check agrees
-weakly with the judges (kappa 0.15, Tech Spec §6.4); the deterministic leak scan has a stated
+weakly with the judges (kappa 0.15 on the D-71 public runs, Tech Spec §6.4; the heldout-4 gate reads 0.0, a monitor); the deterministic leak scan has a stated
 scope (D-51); provider model drift is caught only by the weekly gate (Tech Spec §6.5, §12).

@@ -160,3 +160,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [GREEN] [E2.5] — full run and model choice FRN-01..04 (verifier pass 2); report --calibration resolves like the gate; init template at the shipped setting
 - [GREEN] [D3.2] — DEM-04 live deploy attested (OWNER D-93); demo/replay.json committed; smoke check sends only the app host's cookies; learner page clock for consent and escalation times
 - [DOCS] [T3.1] — trust pack filled from heldout-4 (D-90), the live off-switch drill (D-93) and the D-91 limit; no PENDING marker remains; proof cells for TRU-01..04
+- [GREEN] [T3.1] — trust pack TRU-01..04 (verifier pass 1 plus fixes): purge wording matches the code, DATA_CARD holds the D-90 limits, heldout-4 named as spent

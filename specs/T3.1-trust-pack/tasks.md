@@ -7,5 +7,5 @@
 - [x] 3. Tests first (link checker over `docs/trust/`); drafted early under OWNER D-72: `tests/trust/test_trust_pack.py`
 - [x] 4. Fill `PENDING (heldout-4)` from the heldout-4 run (D-88; was `PENDING (D-71)`)
 - [x] 5. Converge twice
-- [ ] 6. Verifier
-- [ ] 7. Proofs, green, commit
+- [x] 6. Verifier (pass 1 confirmed TRU-01, 03, 04; TRU-02 after its fixes)
+- [x] 7. Proofs, green, commit

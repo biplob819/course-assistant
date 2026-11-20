@@ -29,7 +29,8 @@
   scored once at the next frozen setting (OWNER D-67, OWNER D-71;
   `tests/golden/test_heldout_refresh.py`). heldout-1 to heldout-3 are scored and retired;
   heldout-4 was scored once at the D-87 setting (OWNER D-90); a first attempt lost to a
-  provider outage was voided and rerun on a fresh cache (OWNER D-89).
+  provider outage was voided and rerun on a fresh cache (OWNER D-89). heldout-4 is now spent;
+  the next held-out verdict needs a fresh heldout-5.
 
 ## Judges
 

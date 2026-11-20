@@ -57,7 +57,8 @@ goes to the Data Protection Board and to learners (Tech Spec §7; `PRIVACY.md`, 
 
 ## Off-switch evidence
 
-- In code: the pause switch, the paused message and fail-closed reads are tested (step 1).
+- In code: the pause switch, the paused message with no model call, and fail-closed reads are
+  tested (step 1).
 - On the live app: the owner paused all sessions on the teaching-team page, saw the fixed
-  paused message on the learner page with no model call, resumed, and revoked a passcode, on
+  paused message on the learner page, resumed, and revoked a passcode, on
   the deployed demo (OWNER D-93, D3.2 DEM-04; `docs/deploy.md` steps 8 and 9).

@@ -45,7 +45,8 @@ and contains no real programme material. Licence: CC BY 4.0
 455 cases: 240 public (tuning) and 215 held-out. The seeded set had 214 public cases (the plan
 had 430; held-out case `ta-b1-065` was retired because its question had appeared in a public
 test, D-54); 26 public identity cases (ids `ta-b9-701` to `ta-b9-726`) were added for the
-identity monitor (D-84, D-86). The held-out set in use is heldout-4 (ids from 801, D-88).
+identity monitor (D-84, D-86). The held-out set is heldout-4 (ids from 801, D-88); it was
+scored once (OWNER D-90), so it is spent, and the next held-out verdict needs a fresh heldout-5.
 
 | Rule | What a case checks | Expected status | Public | Held-out | Total |
 | --- | --- | --- | --- | --- | --- |
@@ -76,7 +77,7 @@ rightly handed over, and the identity gate judges only the false claim (D-84).
 - Prompts and thresholds are tuned on the public split only. A held-out set is scored once
   per verdict, then retired and replaced by a fresh set with the same composition rules (OWNER
   D-67, D-71). Three sets are retired and kept privately (heldout-1 to heldout-3); heldout-4
-  was scored once on 19 Nov 2026 (D-90).
+  was scored once on 19 Nov 2026 (D-90) and is spent; the next verdict needs heldout-5.
 - `golden_tool.py refresh` refuses a new set that copies or nearly copies a public or retired
   question, shares a unit with the public split, or changes the composition (ids only, D-74,
   D-82). `golden_tool.py extend` adds public cases on the tuning side only, with the same copy
@@ -93,13 +94,19 @@ graded-work probes before it can go live.
 
 ## Known gaps
 
+- **Two quality bars missed in v0.1.0** (OWNER D-90). On heldout-4 the grounded answer rate is
+  0.880 (66/75, lower bound 0.80) against 0.90, and latency p95 is 11.03 s against 11 s. Every
+  zero-tolerance gate passes. The targets are unchanged; the misses are documented limits. A
+  public review found the assistant over-refuses when injected text rides along with a real
+  course question (D-91).
 - **One small course.** Three sessions in one subject, in English. Results do not show how the
   assistant does on long courses, other subjects, other languages or other file layouts.
 - **Written questions.** Cases were written by the builder, not collected from learners, so
   they are cleaner than real questions. D-69 adds cases from verifier findings, flagged
   escalations and digest topics, with owner approval.
 - **Small zero-tolerance sets.** With 5 held-out cases a rule (B8, B9), a perfect held-out
-  score shows only a failure rate under about 45% with 95% confidence (exact binomial bound). The
+  score shows only a failure rate under about 45% with 95% confidence (exact binomial bound; the
+  rule of three, used in the gate output, gives 60%). The
   paraphrases raise B3 and B10 to 56 and 44 held-out cases. The D-84 supplement adds public B9
   cases only, so it helps tuning, not the held-out verdict.
 - **Identity is monitored, not certified** (OWNER D-86). Five held-out B9 cases a set are too

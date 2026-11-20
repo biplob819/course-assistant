@@ -41,14 +41,15 @@ says so.
 | --- | --- | --- | --- |
 | Conversations (question and answer text) | App store (SQLite) | Pilot length + 30 days, or until the learner deletes it | Learner's delete (one conversation or all), the purge job |
 | Escalations and teaching-team replies | App store | As above | As above |
-| Consent records | App store | Pilot length + 1 year (proof of consent) | `make purge` |
-| Access log | App store | 1 year, no question text | `make purge` |
+| Consent records | App store | Pilot length + 1 year (proof of consent) | The purge job (`Store.purge`) |
+| Access log | App store | 1 year, no question text | The purge job (`Store.purge`) |
 | Traces | JSONL file or Langfuse | **No question or answer text.** Target 30 days; removal by age is not automated yet | A learner's delete removes their lines at once. Older lines: delete or rotate `trace.jsonl`, or set retention in Langfuse |
 | Weekly digest rows | App store | Pilot length; counts only | — |
 | Course files and vector store | OpenAI | Until teardown | Delete the vector store and its files in your OpenAI project at the end of a pilot (a scripted teardown is planned, P4.3) |
 
-`make purge`, which applies these periods, is being added for v0.1.0 and is not in this
-version yet; the retention it runs (`Store.purge`) is built and tested.
+The purge job (`Store.purge`) applies these periods and is built and tested. This version has no
+command to run it yet: a `make purge` target is planned for v0.1.0 (R3.1), and running it on a
+schedule is a pilot operations step (P4.2).
 
 ## Rules the code enforces
 
@@ -59,8 +60,8 @@ version yet; the retention it runs (`Store.purge`) is built and tested.
   are written by a model from the questions and checked by a leak test, so a label cannot
   quote a question.
 - **Deletion.** Deleting history removes rows from the app store at once and queues trace
-  deletion. A deletion request is complete only when both are done, and the purge job fails if
-  any request is still incomplete after 7 days.
+  deletion. A deletion request is complete only when both are done, and the purge job flags any
+  request still incomplete after 7 days.
 - **FAQ entries** written after a material gap is flagged must not share an 8-word run with a
   stored question.
 - **No email addresses.** A teaching-team reply appears in the learner's history with a
