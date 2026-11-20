@@ -125,9 +125,13 @@ owner's go-ahead, OWNER D-21).
    release gate (spends money; it prints an estimate first). See [Evaluation](#evaluation).
 7. **Deploy the demo** with [`docs/deploy.md`](https://github.com/biplob819/course-assistant/blob/main/docs/deploy.md).
 
-Planned for the release (Tech Spec R3.1, not built yet): `course-assistant init`, which
-writes a starter config, manifest and assessments file for your own course, and
-`course-assistant doctor`, which checks your setup with exit codes.
+For your own course, `course-assistant init` writes a starter config, manifest and
+assessments file, and `course-assistant doctor` checks the setup offline with exit codes.
+`course-assistant ask` answers one question, `course-assistant eval` measures the course on
+your own golden files, and `make purge` applies the retention periods.
+Guides (drafts for the release, R3.1): [quickstart](https://github.com/biplob819/course-assistant/blob/main/docs/guide/quickstart.md) ·
+[bring your own course](https://github.com/biplob819/course-assistant/blob/main/docs/guide/own-course.md) · [evaluate your course](https://github.com/biplob819/course-assistant/blob/main/docs/guide/evaluate.md) ·
+[cost and privacy](https://github.com/biplob819/course-assistant/blob/main/docs/guide/cost-and-privacy.md).
 
 ## Configuration
 

@@ -2,6 +2,53 @@
 
 One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNESS, OWNER.
 
+Releases follow semantic versioning; see "Versioning" in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## 0.1.0 (draft, not released)
+
+Not tagged or published yet: the version in `pyproject.toml` is still 0.0.1, and the release
+waits for the owner (OWNER D-21, D-72). The first public release:
+
+- An assistant that answers only from a course's approved materials, cites the slide or page,
+  gives hints (never the work) on graded items and hands everything else to the teaching
+  team; four statuses: `answered`, `not_covered`, `hint_only`, `handed_over`.
+- `course-assistant init` writes a starter `config.yaml`, `manifest.yaml`,
+  `assessments.yaml` and `.env.example`, never overwriting a file.
+- `course-assistant doctor` checks Python, extras, config, the OpenAI key (by name only),
+  the vector store id format and the corpus hashes, offline, with exit codes.
+- `course-assistant ingest` syncs a vector store with the manifest (`--dry-run` first).
+- `course-assistant eval-replay` replays the recorded sample-course questions offline.
+- `course-assistant ask` sends one question through the full answer path and prints the
+  reply, status and sources; gate-approved corpus only unless `--ungated`; $0.50 cap per
+  question and the monthly budget checked against the ledger.
+- `course-assistant eval` evaluates a course on its own golden files (by path, one split per
+  file) with EvalKit and the probe judges. A held-out run goes through the release gate (the
+  same package code `scripts/release_gate.py` runs: thresholds, certified calibration, the
+  course's tuning log and decisions, coverage, exposure, drift, regression against the last
+  live run) and on a pass approves the course version `ask` serves; a tuning run checks the
+  thresholds only and never approves. `course-assistant eval-check` re-checks a finished run
+  with no calls and no approval.
+- `course-assistant calibrate export | import-groundedness | import-integrity | score`: the
+  blind calibration sheets, label import and the score that certifies the judges into the
+  course's tuning log, with every guard of the repository's calibration (one package code
+  path with `scripts/calibrate.py`); `eval` takes a tuning and a held-out file together for a
+  calibration run.
+- `course-assistant tuning-log grounding_bar | support_rules | heldout_refreshed`: one change
+  citing a row of the course's decisions.md, continuing from the logged value.
+- `course-assistant purge` and `make purge`: retention on the app store, retry of open trace
+  deletions, exit 1 on a deletion request incomplete after 7 days.
+- `doctor` warns about a provider key only when the configured judge panel needs it.
+- `course-assistant passkey-hash` for the hosted demo's passcodes.
+- Learner and teaching-team Streamlit pages, the demo guard and the deploy guide.
+- EvalKit plug-ins (system `course_ta` and five scorers), a golden set on the sample course
+  and the release gate script.
+- A sample course (three sessions, CC BY 4.0).
+- Guides: quickstart, bring your own course, evaluate your course, cost and privacy
+  (`docs/guide/`), and an example gate workflow (`docs/examples/course-ta-gate.yml`).
+- Measured results at release: pending the next held-out verdict (OWNER D-83).
+
+## Build log
+
 - [DOCS] [—] — PRD, Tech Spec, build graph and PRD loophole review; owner rulings D-6, D-11, D-19, D-20
 - [HARNESS] [W0.1] — EvalKit harness ported: eligibility, node_start, node_converge (12 gates), status, secret scan, new corpus guard and external attest nodes; graph and catalog generated from the Tech Spec
 - [FIX] [W0.1] — verifier pass 1: exact external marker and attest-backed green, strict criteria lines, gate 10 self-test names the defect, corpus guard normalises text and withholds private paths (D-22, L-16 to L-18)
@@ -162,3 +209,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [DOCS] [T3.1] — trust pack filled from heldout-4 (D-90), the live off-switch drill (D-93) and the D-91 limit; no PENDING marker remains; proof cells for TRU-01..04
 - [GREEN] [T3.1] — trust pack TRU-01..04 (verifier pass 1 plus fixes): purge wording matches the code, DATA_CARD holds the D-90 limits, heldout-4 named as spent
 - [DOCS] [T3.2] — project page filled from heldout-4 (D-90), D-91 and the live demo (D-93); links-and-stamps tests; OWNER D-94 (no Pages site; README links the case study); README links the demo, the case study and the gate summary
+- [DOCS] [R3.1] — draft: user guides (quickstart, own course, evaluate, cost and privacy), example course-ta gate workflow, 0.1.0 release notes and semver policy, docs and privacy tests; init template on the measured D-81 setting

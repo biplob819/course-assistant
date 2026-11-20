@@ -1,7 +1,9 @@
 """Command line entry point. Make targets call these subcommands (Tech Spec §4).
 
-Exit codes: 0 passed, 1 a gate failed (a replay mismatch, a failed doctor check), 2 config
-or runtime error (including a failed reconcile, an unusable `init` folder or bad arguments).
+Exit codes: 0 passed, 1 a gate failed (a replay mismatch, a failed doctor check, a failed
+evaluation threshold, a purge with overdue deletions), 2 config or runtime error (including a
+failed reconcile, an unusable `init` folder or bad arguments), 3 stopped by a spend cap, 4
+judging pending.
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from course_assistant import __version__
 
@@ -24,6 +26,10 @@ if TYPE_CHECKING:
 EXIT_OK = 0
 EXIT_GATE = 1
 EXIT_CONFIG = 2
+EXIT_COST_CAP = 3
+EXIT_PENDING = 4
+# `ask`: the most one question may cost, the hosted demo's per-request hold (D3.1 GuardConfig)
+QUESTION_HOLD_USD = 0.50
 
 # `init` (R3.1 OSS-02): packaged template name -> file written in the course folder
 INIT_FILES = (
@@ -83,6 +89,144 @@ def build_parser() -> argparse.ArgumentParser:
     doc.add_argument("--config", type=Path, default=Path("config.yaml"), help="config.yaml")
     doc.add_argument("--manifest", type=Path, help="default: manifest.yaml next to the config")
     doc.add_argument("--root", type=Path, help="corpus root (default: the config's folder)")
+    ask = sub.add_parser(
+        "ask",
+        help="ask one question of an ingested course (spends money; needs OPENAI_API_KEY)",
+        description="Send one question through the full answer path (route, answer, grounding "
+        "and integrity checks, hint) and print the reply with its status and sources. Serves "
+        "the gate-approved corpus unless --ungated. Each question is capped at "
+        f"${QUESTION_HOLD_USD:.2f} and refused when the month's ledger cannot cover it. "
+        "Keeps no history and never prints the key.",
+    )
+    ask.add_argument("question", help="the question, in quotes")
+    ask.add_argument("--config", required=True, type=Path, help="config.yaml")
+    ask.add_argument("--session", help="limit the answer to one session (s01, s02, ...)")
+    ask.add_argument("--assessments", type=Path,
+                     help="default: assessments.yaml next to the config")  # fmt: skip
+    ask.add_argument("--store", type=Path, help="corpus store folder (default: corpus_store/)")
+    ask.add_argument("--ledger", type=Path, default=Path("runs") / "ledger.jsonl",
+                     help="spend ledger (default: runs/ledger.jsonl)")  # fmt: skip
+    ask.add_argument(
+        "--ungated",
+        action="store_true",
+        help="answer from the latest ingest before the release gate approves it",
+    )
+    ask.add_argument("--json", action="store_true", help="machine-readable output")
+    ev = sub.add_parser(
+        "eval",
+        help="evaluate your course on your own golden cases (spends money; eval extra)",
+        description="Run your golden cases (one split per file: tuning or held-out) through "
+        "the assistant with EvalKit and the probe judges. A held-out run goes through the "
+        "release gate (thresholds, certified calibration in your tuning log, the tuning log "
+        "itself, coverage, exposure, drift and the last live run) and, on a pass, approves the "
+        "course version that `ask` and the pages serve. A tuning run checks the thresholds "
+        "only and never approves. --dry-run writes the run folder and prints the estimate with "
+        "no key and no call. Exit 0 pass, 1 a gate fails, 2 error, 3 cost cap, 4 judging "
+        "pending.",
+    )
+    ev.add_argument("--config", required=True, type=Path, help="config.yaml (ingested)")
+    ev.add_argument("--cases", required=True, type=Path, nargs="+",
+                    help="your golden cases (JSONL): one file, or the tuning and the held-out "
+                    "file together for a calibration run")  # fmt: skip
+    ev.add_argument("--manifest", type=Path, help="default: manifest.yaml next to the config")
+    ev.add_argument("--root", type=Path, help="corpus root (default: the config's folder)")
+    ev.add_argument("--store", type=Path, help="corpus store folder (default: corpus_store/)")
+    ev.add_argument("--assessments", type=Path,
+                    help="default: assessments.yaml next to the config")  # fmt: skip
+    ev.add_argument("--solutions", type=Path,
+                    help="folder of <assessment_id>.md model solutions, read only by the "
+                    "integrity judge (needed for graded-work cases; keep it private)")  # fmt: skip
+    ev.add_argument("--out", type=Path, default=Path("runs"), help="default: runs/")
+    ev.add_argument("--ledger", type=Path, default=Path("runs") / "ledger.jsonl",
+                    help="spend ledger (default: runs/ledger.jsonl)")  # fmt: skip
+    ev.add_argument("--max-cost", type=float, default=40.0, help="stop if the estimate is over")
+    ev.add_argument("--live-judges", action="store_true",
+                    help="judge at full price now instead of provider batches")  # fmt: skip
+    ev.add_argument("--dry-run", action="store_true", help="write the folder, call nothing")
+    ev.add_argument("--yes", action="store_true", help="confirm that this run spends money")
+    ev.add_argument("--no-approve", action="store_true",
+                    help="report only: never approve the course version (CI)")  # fmt: skip
+    chk = sub.add_parser(
+        "eval-check",
+        help="the release gate on a finished `eval` run folder (no calls, never approves)",
+        description="A held-out run (with --config and --cases) gets the full release gate; a "
+        "tuning run gets the thresholds only. Never approves. Exit 0 pass, 1 a gate fails, 2 "
+        "error, 3 cost cap, 4 judging pending.",
+    )
+    chk.add_argument("run", type=Path, help="the run folder")
+    chk.add_argument("--config", type=Path, help="config.yaml (needed for a held-out run)")
+    chk.add_argument("--cases", type=Path, help="the held-out cases file the run was built from")
+    chk.add_argument("--store", type=Path, help="corpus store folder (default: corpus_store/)")
+    chk.add_argument("--assessments", type=Path,
+                     help="default: assessments.yaml next to the config")  # fmt: skip
+    chk.add_argument("--baseline", type=Path, help="per-case baseline (default: the live one)")
+    chk.add_argument("--json", action="store_true", help="machine-readable output")
+    for p in (ev, chk):
+        p.add_argument("--public", type=Path,
+                       help="your tuning-split cases (counted for the coverage rule)")  # fmt: skip
+        p.add_argument("--tuning-log", type=Path,
+                       help="default: tuning-log.jsonl next to the config")  # fmt: skip
+        p.add_argument("--decisions", type=Path,
+                       help="the decisions the tuning log cites (default: decisions.md next to "
+                       "the config)")  # fmt: skip
+        p.add_argument("--calibration", type=Path,
+                       help="the run that certified the judges (default: this run)")  # fmt: skip
+    cal = sub.add_parser(
+        "calibrate",
+        help="certify the judges on a calibration run: export, import labels, score (no calls)",
+        description="Blind labelling sheets from a finished calibration run (an `eval` of your "
+        "tuning and held-out files together), the import of the filled sheets, and the score "
+        "that certifies the judges and writes calibration_scored to your tuning log. A held-out "
+        "set is scored once per rubric; every guard of the repository's calibration applies.",
+    )
+    cal_sub = cal.add_subparsers(dest="step", required=True)
+    c_exp = cal_sub.add_parser("export", help="write the blind groundedness and integrity sheets")
+    c_exp.add_argument("--force", action="store_true", help="replace sheets that have no labels")
+    c_exp.add_argument("--n", type=int, default=100, help="answers per sheet, half held-out")
+    c_exp.add_argument("--n-relabel", type=int, default=20, help="of those, to relabel blind")
+    c_ig = cal_sub.add_parser("import-groundedness", help="import a filled groundedness sheet")
+    c_ii = cal_sub.add_parser("import-integrity", help="import a filled integrity sheet")
+    c_sc = cal_sub.add_parser("score", help="score the labels and log calibration_scored")
+    for p in (c_exp, c_ig, c_ii, c_sc):
+        p.add_argument("run", type=Path, help="the calibration run folder")
+    for p in (c_ig, c_ii):
+        p.add_argument("csv", type=Path, help="the filled sheet")
+        p.add_argument("--relabel", action="store_true", help="the blind relabel round")
+    c_sc.add_argument("--labeller", required=True, choices=("owner", "model-panel"),
+                      help="who made the labels; logged, and noted in every verdict")  # fmt: skip
+    c_sc.add_argument("--config", type=Path, help="config.yaml (the tuning log sits beside it)")
+    c_sc.add_argument("--tuning-log", type=Path, help="default: tuning-log.jsonl by the config")
+    for p in (c_exp, c_sc):
+        p.add_argument("--heldout", required=True, type=Path,
+                       help="your held-out cases file (its ids are the held-out half)")  # fmt: skip
+    tl = sub.add_parser(
+        "tuning-log",
+        help="record a grounding bar, support rules or held-out refresh in your tuning log",
+        description="Append one change to the course's tuning log. It must cite a row of your "
+        "decisions.md (| D-n | ... |) and continue from the logged value; a heldout_refreshed "
+        "line needs a decision whose text opens with 'Refreshes held-out'. The log is "
+        "hash-chained: never edit it by hand.",
+    )
+    tl.add_argument("kind", choices=("grounding_bar", "support_rules", "heldout_refreshed"))
+    tl.add_argument("--decision", required=True, help="the D-n row of decisions.md")
+    tl.add_argument("--to", help="the new bar (grounding_bar); default for support_rules: the "
+                    "support rules this package ships")  # fmt: skip
+    tl.add_argument("--config", type=Path, help="config.yaml (log and decisions sit beside it)")
+    tl.add_argument("--tuning-log", type=Path, help="default: tuning-log.jsonl by the config")
+    tl.add_argument("--decisions", type=Path, help="default: decisions.md by the config")
+    pur = sub.add_parser(
+        "purge",
+        help="apply retention to the app store and retry open trace deletions (deletes)",
+        description="Retry trace deletion for every open deletion request on the app's "
+        "trace.jsonl, then delete conversation text after pilot end + 30 days, consent records "
+        "after pilot end + 1 year and access-log rows after 1 year. Refuses without --yes and "
+        "never creates a store. Exit 1 when a deletion request is incomplete after 7 days.",
+    )
+    pur.add_argument("--app-dir", required=True, type=Path,
+                     help="the folder with app.sqlite and trace.jsonl (CA_APP_DIR)")  # fmt: skip
+    pur.add_argument("--pilot-end", required=True, type=_date,
+                     help="the pilot's last day, YYYY-MM-DD")  # fmt: skip
+    pur.add_argument("--yes", action="store_true", help="confirm the deletions")
     sub.add_parser(
         "passkey-hash",
         help="turn the demo passcode into the salted hash for the secret store",
@@ -209,9 +353,14 @@ def doctor_report(
                              "export it or set it in your host's secret store"))  # fmt: skip
         else:
             out.append(Check("FAIL", "secrets", f"{name} is not set"))
-    if _has_module("evalkit") and not env.get("ANTHROPIC_API_KEY", "").strip():
-        out.append(Check("warn", "secrets", "ANTHROPIC_API_KEY is not set (needed only for "
-                         "evaluation with the second judge)"))  # fmt: skip
+    if _has_module("evalkit"):
+        # only the keys the configured judge panel needs (OWNER D-80: OpenAI only, no warning)
+        from course_assistant.eval import panel
+
+        for name in sorted(panel.needed_keys() - set(REQUIRED_SECRETS)):
+            if not env.get(name, "").strip():
+                out.append(Check("warn", "secrets", f"{name} is not set (needed only for "
+                                 "evaluation: a configured judge uses that provider)"))  # fmt: skip
 
     cohort = None
     if config is not None:
@@ -266,6 +415,443 @@ def _doctor(args: argparse.Namespace, env: Mapping[str, str] | None = None) -> i
     failed = sum(c.level == "FAIL" for c in report)
     print(f"doctor: {failed} failed" if failed else "doctor: ready")
     return EXIT_GATE if failed else EXIT_OK
+
+
+def _openai_client() -> object:
+    """The real OpenAI client (the key comes from the environment); tests replace this."""
+    import openai
+
+    return openai.OpenAI()
+
+
+def _ask(args: argparse.Namespace, env: Mapping[str, str] | None = None) -> int:
+    from course_assistant.answer import responder
+    from course_assistant.answer.ask import Assistant
+    from course_assistant.answer.replay import Live
+    from course_assistant.demo.guard import CappedSource
+    from course_assistant.ingest import CorpusStore, IngestError
+    from course_assistant.ingest.corpus import VERSION_KEY
+    from course_assistant.ingest.serving import ServedCorpus, ServingError
+    from course_assistant.llm import Ledger, load_prices
+    from course_assistant.schemas import ConfigError, load_app_config
+    from course_assistant.schemas.config import load_assessments
+    from course_assistant.store.db import Store
+
+    env = os.environ if env is None else env
+    if not env.get("OPENAI_API_KEY", "").strip():
+        print("ask: OPENAI_API_KEY is not set (export it or set it in your host's secret store)",
+              file=sys.stderr)  # fmt: skip
+        return EXIT_CONFIG
+    base = args.config.parent
+    try:
+        config = load_app_config(args.config)
+        assessments = load_assessments(args.assessments or base / "assessments.yaml")
+        store = CorpusStore(args.store or base / "corpus_store", config.cohort)
+        if args.ungated:
+            corpus, key = store.current(), VERSION_KEY
+            if corpus is None:
+                raise ConfigError(f"no corpus; run course-assistant ingest --config "
+                                  f"{args.config} first")  # fmt: skip
+        else:
+            corpus, key = ServedCorpus(store).read()
+    except ServingError as exc:
+        print(f"ask: {exc} (pass --ungated to try the latest ingest before the release gate)",
+              file=sys.stderr)  # fmt: skip
+        return EXIT_CONFIG
+    except (ConfigError, IngestError) as exc:
+        print(f"ask: {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+    if args.session is not None and args.session not in {u.session for u in corpus.units}:
+        print(f"ask: session {args.session} is not in the served corpus", file=sys.stderr)
+        return EXIT_CONFIG
+    try:
+        ledger = Ledger(args.ledger, config.monthly_budget_usd)
+        spent = ledger.month_total()
+    except (OSError, ValueError) as exc:
+        print(f"ask: cannot read the spend ledger ({type(exc).__name__})", file=sys.stderr)
+        return EXIT_CONFIG
+    if spent + QUESTION_HOLD_USD > config.monthly_budget_usd:
+        print(f"ask: this month's spend ${spent:.2f} leaves less than one question "
+              f"(${QUESTION_HOLD_USD:.2f}) of the ${config.monthly_budget_usd:.2f} monthly "
+              "budget", file=sys.stderr)  # fmt: skip
+        return EXIT_COST_CAP
+    try:
+        client = _openai_client()
+    except ImportError:
+        print("ask: openai is not installed: pip install 'course-assistant[openai]'",
+              file=sys.stderr)  # fmt: skip
+        return EXIT_CONFIG
+    import uuid
+
+    prices = load_prices()
+    live = Live(responder(client=client, prices=prices, ledger=ledger, run_id="ask"))
+    source = CappedSource(live, QUESTION_HOLD_USD, prices)
+    assistant = Assistant(config, corpus, assessments, Store(":memory:"), source,
+                          version_key=key)  # fmt: skip
+    try:
+        answer = assistant.ask(args.question, uuid.uuid4().hex[:16], args.session)
+    except ValueError as exc:  # the question itself (empty or too long)
+        print(f"ask: {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+    cites = [{"label": c.label, "session": c.session, "file_id": c.file_id}
+             for c in answer.citations]  # fmt: skip
+    if args.json:
+        import json
+
+        print(json.dumps({"status": answer.status, "text": answer.text, "citations": cites,
+                          "cost_usd": answer.cost_usd, "latency_ms": answer.latency_ms,
+                          "gated": not args.ungated}))  # fmt: skip
+    else:
+        note = "  (latest ingest, not gate-approved)" if args.ungated else ""
+        print(f"status: {answer.status}{note}\n\n{answer.text}")
+        if cites:
+            print("\nsources:")
+            for n, c in enumerate(cites, start=1):
+                print(f"  [{n}] {c['label']}")
+        print(f"\ncost: ${answer.cost_usd:.4f}  latency: {answer.latency_ms / 1000:.1f} s")
+    return EXIT_CONFIG if answer.status == "error" else EXIT_OK
+
+
+def _eval_runtime(config: object, corpus: object, assessments: object, folder: Path,
+                  ledger_path: Path, budget: object) -> tuple[object, object, object]:  # fmt: skip
+    """(system runtime, probe judge panel, recorder) for a live run; tests replace this."""
+    from evalkit.cost import load_prices as evalkit_prices
+
+    from course_assistant.answer import responder
+    from course_assistant.answer.replay import Recorder
+    from course_assistant.eval import system
+    from course_assistant.eval.judges import build_panel
+    from course_assistant.eval.panel import JUDGES
+    from course_assistant.llm import JsonlSink, Ledger, load_prices
+
+    cfg: Any = config
+    ledger = Ledger(ledger_path, cfg.monthly_budget_usd)
+    live = responder(client=_openai_client(), prices=load_prices(), ledger=ledger,
+                     sink=JsonlSink(folder / "trace.jsonl"), run_id=folder.name)  # fmt: skip
+    recorder = Recorder(live)
+    runtime = system.Runtime(config=cfg, corpus=corpus, assessments=assessments,  # type: ignore[arg-type]
+                             source=recorder)  # fmt: skip
+    panel = build_panel(JUDGES, evalkit_prices(), cache=folder / "probe-verdicts.jsonl",
+                        budget=budget)  # fmt: skip
+    return runtime, panel, recorder
+
+
+def _verdict(folder: Path, args: argparse.Namespace, env: Mapping[str, str],
+             course_data: tuple[Any, Any, Any] | None = None) -> Any:  # fmt: skip
+    """The verdict on a finished run: the full release gate for a held-out run, the
+    thresholds alone (never an approval) for a tuning run. `course_data` is (config, store,
+    assessments), loaded from the arguments when not given."""
+    from course_assistant.eval import course
+
+    run_dir = course.evalkit_run_dir(folder)
+    thresholds = course.course_gate(run_dir)
+    if thresholds.split != "heldout":
+        thresholds.notes.append("only a held-out run can approve a course version")
+        return thresholds
+    cases_file = getattr(args, "heldout_file", None) or args.cases
+    if args.config is None or cases_file is None:
+        raise course.CourseEvalError("a held-out run needs --config and --cases (the held-out "
+                                     "file) for the release gate")  # fmt: skip
+    if course_data is None:
+        from course_assistant.ingest import CorpusStore
+        from course_assistant.schemas import load_app_config
+        from course_assistant.schemas.config import load_assessments
+
+        config = load_app_config(args.config)
+        store = CorpusStore(args.store or args.config.parent / "corpus_store", config.cohort)
+        assessments = load_assessments(args.assessments or args.config.parent / "assessments.yaml")
+        course_data = (config, store, assessments)
+    config, store, assessments = course_data
+    files = course.CourseFiles.beside(
+        args.config,
+        cases_file,
+        public=args.public,
+        tuning_log=args.tuning_log,
+        decisions=args.decisions,
+    )
+    calibration = course.evalkit_run_dir(args.calibration) if args.calibration else None
+    return course.course_check(run_dir, config=config, store=store, assessments=assessments,
+                               files=files, calibration_run=calibration,
+                               baseline_path=getattr(args, "baseline", None), env=env)  # fmt: skip
+
+
+def _gate_report(folder: Path, args: argparse.Namespace, env: Mapping[str, str] | None = None,
+                 course_data: tuple[Any, Any, Any] | None = None) -> tuple[int, Any]:  # fmt: skip
+    """(exit code, verdict or None). Writes gate.json next to the run; prints fixed lines."""
+    from course_assistant.eval import course, gate
+    from course_assistant.eval.dataset import DatasetError
+    from course_assistant.eval.release import ReleaseError
+    from course_assistant.schemas import ConfigError
+
+    env = os.environ if env is None else env
+    try:
+        verdict = _verdict(folder, args, env, course_data)
+    except (course.CourseEvalError, ReleaseError, DatasetError, ConfigError,
+            FileNotFoundError) as exc:  # fmt: skip
+        print(f"{args.command}: {exc}", file=sys.stderr)  # our errors name ids, never text
+        return EXIT_CONFIG, None
+    except Exception as exc:  # anything else may quote input: its class only
+        print(f"{args.command}: the gate could not run ({type(exc).__name__})", file=sys.stderr)
+        return EXIT_CONFIG, None
+    out = gate.live_folder(course.evalkit_run_dir(folder)) / "gate.json"
+    out.write_text(verdict.to_json(), encoding="utf-8")
+    as_json = getattr(args, "json", False)
+    print(verdict.to_json(), end="") if as_json else print(course.render(verdict))
+    return int(verdict.exit_code), verdict
+
+
+RANK = {2: 4, 3: 3, 4: 2, 1: 1, 0: 0}  # exit-code precedence, as the release gate: 2 > 3 > 4 > 1
+
+
+def _eval(args: argparse.Namespace, env: Mapping[str, str] | None = None) -> int:
+    import datetime as dt
+
+    try:
+        from course_assistant.eval import course, panel
+        from course_assistant.eval.dataset import DatasetError
+        from course_assistant.eval.judges import DirSolutionBook
+    except ImportError as exc:
+        print(f"eval: {exc.name} is not installed: pip install 'course-assistant[eval]'",
+              file=sys.stderr)  # fmt: skip
+        return EXIT_CONFIG
+    from course_assistant.ingest import CorpusStore, IngestError
+    from course_assistant.schemas import ConfigError, load_app_config, load_manifest
+    from course_assistant.schemas.config import load_assessments
+
+    env = os.environ if env is None else env
+    base = args.config.parent
+    assessments_path = args.assessments or base / "assessments.yaml"
+    try:
+        config = load_app_config(args.config)
+        assessments = load_assessments(assessments_path)
+        manifest = load_manifest(args.manifest or base / "manifest.yaml")
+        cases, split, held_path = course.load_case_files(args.cases)
+        args.heldout_file = held_path
+        store = CorpusStore(args.store or base / "corpus_store", config.cohort)
+        corpus = store.current()
+        if corpus is None:
+            raise ConfigError(f"no corpus; run course-assistant ingest --config {args.config} "
+                              "first")  # fmt: skip
+        if manifest.cohort != config.cohort:
+            raise ConfigError("the manifest cohort is not the config cohort")
+    except (ConfigError, IngestError, course.CourseEvalError) as exc:
+        print(f"eval: {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+    if split == "heldout" and not args.dry_run and not args.no_approve:
+        # as the repo's gate: a candidate that only removes units goes live at once (§2.3)
+        from course_assistant.eval import gate
+        from course_assistant.eval.release import apply_removals
+
+        settings = gate.gated_settings(config, assessments_path.read_bytes())
+        if apply_removals(store, now=dt.datetime.now(dt.UTC), settings=settings):
+            print("eval: the candidate only removes units: live at once, no gate (§2.3)")
+            return EXIT_OK
+    graded = any(c.rule == "B3" for c in cases)
+    if graded and args.solutions is not None and not args.solutions.is_dir():
+        print(f"eval: --solutions {args.solutions.name} is not a folder", file=sys.stderr)
+        return EXIT_CONFIG
+    stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
+    folder = args.out / f"course-ta-{split}-{stamp}"
+    try:
+        task = course.prepare(folder, cases, corpus, manifest, args.root or base)
+    except DatasetError as exc:
+        print(f"eval: {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+    cost = course.estimate(cases)
+    print(f"course-ta: {len(cases)} {split} cases ({course.probes(cases)} probes) -> {folder}")
+    print(f"estimate: ${cost:.2f} (cap ${args.max_cost:.2f})")
+    if args.dry_run:
+        return EXIT_OK
+    if not args.yes:
+        print("eval: this run makes paid API calls; pass --yes to confirm", file=sys.stderr)
+        return EXIT_CONFIG
+    missing = sorted(k for k in panel.needed_keys() if not env.get(k, "").strip())
+    if missing:
+        print(f"eval: {', '.join(missing)} not set", file=sys.stderr)
+        return EXIT_CONFIG
+    if graded and args.solutions is None:
+        print("eval: graded-work (B3) cases need --solutions DIR (the model solutions the "
+              "integrity judge reads; keep that folder private)", file=sys.stderr)  # fmt: skip
+        return EXIT_CONFIG
+    files = course.CourseFiles.beside(
+        args.config,
+        held_path or args.cases[0],
+        public=args.public,
+        tuning_log=args.tuning_log,
+        decisions=args.decisions,
+    )
+    heldout = split == "heldout"  # only a held-out run can approve
+    if held_path is not None:  # held-out cases are scored: the same refusals as eval_live
+        problem = course.heldout_problem(files, config.grounding_bar)
+        if problem is not None:
+            print(f"eval: {problem}", file=sys.stderr)
+            return EXIT_CONFIG
+    try:
+        budget = course.plan_budget(cases, args.max_cost)
+    except ValueError as exc:
+        print(f"eval: {exc}", file=sys.stderr)
+        return EXIT_COST_CAP
+    runtime, judges, recorder = _eval_runtime(config, corpus, assessments, folder, args.ledger,
+                                              budget)  # fmt: skip
+    solutions = DirSolutionBook(args.solutions) if args.solutions else course.NoSolutions()
+    try:
+        code = course.run(folder, task, n=course.live_cases(task), budget=budget,
+                          runtime=runtime, panel=judges, solutions=solutions,
+                          assessments=assessments, live_judges=args.live_judges)  # fmt: skip
+    finally:
+        rows = [r.model_dump_json() for r in getattr(recorder, "recordings", [])]
+        (folder / "recordings.jsonl").write_text("".join(x + "\n" for x in rows),
+                                                 encoding="utf-8")  # fmt: skip
+        if held_path is not None:  # every run that scores held-out cases is logged
+            from course_assistant.answer.ground import GroundStep
+            from course_assistant.eval.tuning import log_heldout_scored
+
+            log_heldout_scored(files.tuning_log, run=folder.name, bar=config.grounding_bar,
+                               ground_version=GroundStep.version())  # fmt: skip
+    print(f"evalkit exit {code}")
+    if not list((folder / "evalkit").glob("*/run.json")):
+        return code if code in (EXIT_CONFIG, EXIT_COST_CAP) else EXIT_CONFIG
+    result, verdict = _gate_report(folder, args, env, course_data=(config, store, assessments))
+    if code and RANK.get(code, 4) > RANK.get(result, 4):
+        print(f"eval: EvalKit exited {code}, which outranks the verdict", file=sys.stderr)
+        return code if code in RANK else EXIT_CONFIG
+    if heldout and result == EXIT_OK and code == EXIT_OK and not args.no_approve:
+        from course_assistant.eval import gate
+
+        state = gate.approve(store, verdict, config=config,
+                             assessments_bytes=assessments_path.read_bytes(),
+                             now=dt.datetime.now(dt.UTC))  # fmt: skip
+        print(f"approved: the live course version is now {state['corpus_version'][:12]}")
+    return result
+
+
+def _calibrate(args: argparse.Namespace) -> int:
+    """The calibration steps (`calibrate_steps`, the code scripts/calibrate.py runs too)."""
+    try:
+        from evalkit.run import RunError
+
+        from course_assistant.eval import calibrate_steps, course
+    except ImportError as exc:
+        print(f"calibrate: {exc.name} is not installed: pip install 'course-assistant[eval]'",
+              file=sys.stderr)  # fmt: skip
+        return EXIT_CONFIG
+    try:
+        run = course.evalkit_run_dir(args.run)
+        held: frozenset[str] = frozenset()
+        if args.step in ("export", "score"):
+            cases, split = course.load_cases(args.heldout)
+            if split != "heldout":
+                raise course.CourseEvalError(f"{args.heldout.name} is not a held-out file")
+            held = frozenset(c.id for c in cases)
+        if args.step == "export":
+            done = calibrate_steps.export(run, heldout_ids=held, force=args.force, n=args.n,
+                                          n_relabel=args.n_relabel)  # fmt: skip
+            print(
+                f"groundedness: {done.groundedness_rows} claims to label S or U in "
+                f"{done.groundedness_csv} (or label them in `evalkit calibrate label {run}`)"
+            )
+            print(f"integrity: {done.integrity_rows} conversations to label V or C in "
+                  f"{done.integrity_csv}; relabel.csv later, blind")  # fmt: skip
+        elif args.step == "import-groundedness":
+            n = calibrate_steps.import_groundedness(run, args.csv, relabel=args.relabel)
+            print(f"groundedness: imported {n} {'relabel' if args.relabel else 'first-round'} "
+                  "labels")  # fmt: skip
+        elif args.step == "import-integrity":
+            n = calibrate_steps.import_integrity(run, args.csv, relabel=args.relabel)
+            print(f"integrity: imported {n} {'relabel' if args.relabel else 'first-round'} labels")
+        else:
+            if args.tuning_log is None and args.config is None:
+                raise course.CourseEvalError("give --config (the log sits beside it) or "
+                                             "--tuning-log")  # fmt: skip
+            log = args.tuning_log or args.config.parent / "tuning-log.jsonl"
+            report, probe = calibrate_steps.score(
+                run, log=log, heldout_ids=held,
+                labeller=calibrate_steps.labeller_name(args.labeller))  # fmt: skip
+            for line in calibrate_steps.score_lines(report, probe):
+                print(line)
+            print(f"logged calibration_scored for {run.name} in {log.name}")
+    except (ValueError, FileNotFoundError, RunError) as exc:  # ids and counts, never text
+        print(f"calibrate: {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+    return EXIT_OK
+
+
+def _tuning_log(args: argparse.Namespace) -> int:
+    from course_assistant.answer.ground import GroundStep
+    from course_assistant.eval import tuning
+
+    if args.config is None and (args.tuning_log is None or args.decisions is None):
+        print("tuning-log: give --config, or both --tuning-log and --decisions", file=sys.stderr)
+        return EXIT_CONFIG
+    base = args.config.parent if args.config is not None else Path(".")
+    log = args.tuning_log or base / "tuning-log.jsonl"
+    decisions = args.decisions or base / "decisions.md"
+    if not decisions.is_file():
+        print(f"tuning-log: no decisions file {decisions.name}", file=sys.stderr)
+        return EXIT_CONFIG
+    bar, ground = tuning.current(tuning.read_log(log))
+    entry: dict[str, Any] = {"kind": args.kind, "decision": args.decision}
+    try:
+        if args.kind == "grounding_bar":
+            if args.to is None:
+                raise tuning.TuningError("a grounding_bar change needs --to (the new bar)")
+            entry.update({"from": bar, "to": float(args.to)})
+        elif args.kind == "support_rules":
+            entry.update({"from": ground, "to": args.to or GroundStep.version()})
+        row = tuning.log_change(log, entry, decisions.read_text(encoding="utf-8"))
+    except ValueError as exc:  # TuningError and a bar that is not a number
+        print(f"tuning-log: {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+    change = f" {row.get('from')} -> {row.get('to')}" if "to" in row else ""
+    print(f"logged {args.kind}{change} under {args.decision} in {log.name}")
+    return EXIT_OK
+
+
+def _date(text: str) -> object:
+    import datetime as dt
+
+    try:
+        return dt.date.fromisoformat(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError("a date as YYYY-MM-DD") from None
+
+
+def _purge(args: argparse.Namespace, now: Any = None) -> int:
+    """Retry open trace deletions on the app's JSONL trace file, then apply retention with
+    `Store.purge`. Exit 1 when a deletion request is still incomplete after 7 days."""
+    import datetime as dt
+
+    from course_assistant.llm import JsonlSink
+    from course_assistant.privacy import retry_trace_deletion
+    from course_assistant.store import RetentionPolicy, Store
+
+    path = args.app_dir / "app.sqlite"
+    if not path.is_file():
+        print(f"purge: no app store at {path} (nothing to purge; check --app-dir)",
+              file=sys.stderr)  # fmt: skip
+        return EXIT_CONFIG
+    if not args.yes:
+        print("purge: this deletes stored conversations, consent and access records past "
+              "their retention period; pass --yes to confirm", file=sys.stderr)  # fmt: skip
+        return EXIT_CONFIG
+    when = now or dt.datetime.now(dt.UTC)
+    store = Store(path)
+    try:
+        done = retry_trace_deletion(store, [JsonlSink(args.app_dir / "trace.jsonl")], at=when)
+        report = store.purge(when, RetentionPolicy(pilot_end=args.pilot_end))
+    finally:
+        store.close()
+    print(f"traces: completed {done} deletion request(s)")
+    print(f"purge: {report.text_rows_deleted} text rows deleted, {report.consent_rows_deleted} "
+          f"consent rows, {report.audit_rows_deleted} access-log rows")  # fmt: skip
+    if not report.wal_cleared:
+        print("purge: another reader kept deleted text in the write-ahead log; run it again "
+              "when the app is stopped", file=sys.stderr)  # fmt: skip
+    if report.overdue_deletions:
+        print(f"purge: {report.overdue_deletions} deletion request(s) overdue (incomplete "
+              "after 7 days): see docs/trust/incident-runbook.md", file=sys.stderr)  # fmt: skip
+        return EXIT_GATE
+    return EXIT_OK
 
 
 def _passkey_hash(read: Callable[[str], str] | None = None) -> int:
@@ -373,6 +959,18 @@ def main(argv: list[str] | None = None) -> int:
         return _init(args.dir)
     if args.command == "doctor":
         return _doctor(args)
+    if args.command == "ask":
+        return _ask(args)
+    if args.command == "eval":
+        return _eval(args)
+    if args.command == "eval-check":
+        return _gate_report(args.run, args)[0]
+    if args.command == "purge":
+        return _purge(args)
+    if args.command == "calibrate":
+        return _calibrate(args)
+    if args.command == "tuning-log":
+        return _tuning_log(args)
     return EXIT_OK
 
 

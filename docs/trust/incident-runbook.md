@@ -15,7 +15,7 @@
 | Any `_settle` exception | Audit and alert, no text | `tests/demo/test_demo.py::test_any_settle_exception_is_audited_and_alerted_without_text` |
 | Leak scan or injection flag | Answer flags, traces (no text) | `tests/answer/test_ask.py::test_a_leaking_answer_becomes_not_covered_and_is_flagged`, `::test_off_topic_and_injection_get_fixed_text_and_injection_is_flagged`; Tech Spec §5.7 |
 | Weekly release gate fails with no change on our side (provider drift) | CI | Tech Spec §6.5 |
-| Purge job: a deletion request older than 7 days | The purge flags it (`Store.purge`; scheduled run is a pilot step, P4.2) | `tests/store/test_store.py::test_purge_flags_deletion_requests_pending_over_7_days` |
+| Purge job: a deletion request older than 7 days | The purge flags it (`Store.purge`); `make purge` exits 1 and gives the overdue count | `tests/store/test_store.py::test_purge_flags_deletion_requests_pending_over_7_days`; `tests/release/test_purge_cli.py` |
 | Learner or teaching-team report | Escalation queue | `specs/B2.1-escalation/` |
 
 ## 1. Pause (kill switch)

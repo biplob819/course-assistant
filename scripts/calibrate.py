@@ -48,7 +48,7 @@ def heldout_ids() -> frozenset[str]:
 
 
 JUDGES = ("gpt-6.1-sol",)  # OWNER D-80 (dual, D-12, was claude-opus-5-5 + this)
-MODEL_PANEL = "model-panel:gpt-6.1-terra+gpt-6-luna;tiebreak=gpt-6.1-terra@high"  # D-76, D-79
+from course_assistant.eval.calibrate_steps import MODEL_PANEL  # noqa: E402  D-76, D-79
 
 
 class UsageError(Exception):
@@ -95,47 +95,38 @@ def _recordings(folder: Path) -> list[Any]:
 
 
 def cmd_export(args: argparse.Namespace) -> int:
-    from course_assistant.eval.calibrate import export_groundedness, export_probe
+    from course_assistant.eval import calibrate_steps
 
     run = evalkit_dir(args.run)
-    _, csv_path, n = export_groundedness(run, force=args.force, heldout_ids=heldout_ids())
-    rows = export_probe(run, force=args.force, heldout_ids=heldout_ids())
+    done = calibrate_steps.export(run, force=args.force, heldout_ids=heldout_ids())
     print(
-        f"groundedness: {n} claims to label: uv run evalkit calibrate label {run} "
-        f"(or fill {csv_path} and run evalkit calibrate import)"
+        f"groundedness: {done.groundedness_rows} claims to label: uv run evalkit calibrate label "
+        f"{run} (or fill {done.groundedness_csv} and run evalkit calibrate import)"
     )
     print(
-        f"integrity: {rows} conversations to label V or C in "
-        f"{run / 'calibration' / 'integrity' / 'sheet.csv'}; relabel.csv later, blind"
+        f"integrity: {done.integrity_rows} conversations to label V or C in "
+        f"{done.integrity_csv}; relabel.csv later, blind"
     )
     return 0
 
 
 def cmd_import(args: argparse.Namespace) -> int:
-    from course_assistant.eval.calibrate import import_probe
+    from course_assistant.eval import calibrate_steps
 
-    n = import_probe(evalkit_dir(args.run), args.csv, relabel=args.relabel)
+    n = calibrate_steps.import_integrity(evalkit_dir(args.run), args.csv, relabel=args.relabel)
     print(f"integrity: imported {n} {'relabel' if args.relabel else 'first-round'} labels")
     return 0
 
 
 def cmd_score(args: argparse.Namespace) -> int:
-    from course_assistant.eval.calibrate import score_groundedness, score_probe
+    from course_assistant.eval import calibrate_steps
 
     run = evalkit_dir(args.run)
     labeller = "owner" if args.labeller == "owner" else MODEL_PANEL
-    report = score_groundedness(run, log=TUNING_LOG, heldout_ids=heldout_ids(), labeller=labeller)
-    for a in report.agreements:
-        print(
-            f"groundedness {a.judge}: held-out kappa {a.kappa.point:.2f} "
-            f"[{a.kappa.lo:.2f}, {a.kappa.hi:.2f}] over {a.n_claims} claims"
-        )
-    probe = score_probe(run, log=TUNING_LOG, heldout_ids=heldout_ids(), labeller=labeller)
-    for b in probe.agreements:
-        print(
-            f"integrity {b.judge}: held-out kappa {b.kappa.point:.2f} "
-            f"[{b.kappa.lo:.2f}, {b.kappa.hi:.2f}] over {b.n} conversations"
-        )
+    report, probe = calibrate_steps.score(run, log=TUNING_LOG, heldout_ids=heldout_ids(),
+                                          labeller=labeller)  # fmt: skip
+    for line in calibrate_steps.score_lines(report, probe):
+        print(line)
     return 0
 
 

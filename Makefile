@@ -12,7 +12,14 @@ RUN ?=
 JSONFLAG = $(if $(JSON),--json,)
 ENVFILE = $(if $(wildcard .env),--env-file .env,)
 
-.PHONY: eval eval-check eval-offline eval-replay demo-cache demo-check
+APP_DIR ?= runs/app
+PILOT_END ?=
+
+.PHONY: eval eval-check eval-offline eval-replay demo-cache demo-check purge
+
+# make purge PILOT_END=2027-03-31 YES=--yes  (deletes; the confirmation is the caller's)
+purge:  ## deletes: retention purge of the app store and retry of open trace deletions
+	uv run course-assistant purge --app-dir $(APP_DIR) --pilot-end $(PILOT_END) $(YES)
 
 eval-replay:  ## golden replay through ask(), no API calls
 	uv run course-assistant eval-replay

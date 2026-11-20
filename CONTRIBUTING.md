@@ -55,6 +55,20 @@ A change to prompts, rules, models or the grounding bar changes the measured num
 in the pull request. The owner reruns the evaluation and the release gate
 (`scripts/release_gate.py`) before such a change goes live; tuning uses the public half only.
 
+## Versioning
+
+Releases follow [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`), tagged
+`vMAJOR.MINOR.PATCH` on `main`. While the version is 0.x:
+
+- a **minor** release (0.1 to 0.2) may change the CLI, the config schema or the Python API
+  in a way that breaks existing setups, and its changelog entry says how to upgrade;
+- a **patch** release (0.1.0 to 0.1.1) never breaks anything: fixes, docs and changes that
+  keep every config, command and exit code working as before.
+
+From 1.0, only a major release may break. A change to prompts, rules, models or the grounding
+bar is at least a minor release, because it changes the measured numbers. The release
+workflow publishes to PyPI only from a version tag on `main`, after the owner's approval.
+
 ## Larger changes
 
 Open an issue first to agree on the approach. Design decisions are recorded in
