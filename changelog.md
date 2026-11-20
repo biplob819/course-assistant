@@ -222,3 +222,4 @@ The first public release, published to PyPI by trusted publishing from the tag `
 - [GREEN] [R3.1] — course-assistant 0.1.0 on PyPI by trusted publishing from v0.1.0 (OWNER D-96); OSS-01..09
 - [DOCS] [P4.1] — pilot pack (docs/pilot/README.md): costs, build gaps, owner decisions, onboarding, operations, teardown, teaching-team guide; no model call
 - [FEAT] [P4.1] — pilot groundwork: learner ids from platform ids (D-13), persistent pilot store, course-assistant teardown / make teardown with a proof (P4.3); docs updated
+- [OWNER] [P4.1] — OWNER D-97: pilot on the owner's own course, teaching team only first; materials private, outside the repo; learners wait for the programme's approval and SSO
