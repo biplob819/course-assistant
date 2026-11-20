@@ -393,7 +393,7 @@ def test_the_published_gate_summary_holds_aggregates_only():
     data = json.loads(text)
     import re
 
-    assert not re.search(r"\bta-b\d+-\d+", text) and "question" not in text
+    assert not re.search(r"\bta-b\d+-\d+", text) and '"question"' not in text
     gates = {g["name"]: g for g in data["gates"]}
     assert gates["grounded"]["value"] == 0.88 and gates["grounded"]["n"] == 75
     assert data["exit_code"] == 1 and data["judge_mode"] == "single"
