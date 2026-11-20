@@ -1,10 +1,8 @@
 # course-assistant: a teaching assistant that knows when not to answer
 
-> **Draft (OWNER D-72, PAG-01).** Laid out under the nine architecture areas (PRD). Not
-> published. This is the single source for the case study; `docs/case-study.md` only
-> points here. Placeholders: `PENDING heldout-4` (the next held-out score, not yet run, D-88) and
-> `DEMO_URL pending owner deploy`. Every number below names its run, its judging and its
-> calibration.
+> Laid out under the nine architecture areas (PRD). This is the single source for the case
+> study; `docs/case-study.md` only points here. Every number below names its run, its judging
+> and its calibration.
 
 ## The problem
 
@@ -27,22 +25,27 @@ show the rule-of-three bound on the failure rate.
 
 | Headline | Target | heldout-4 (scored once) | Last held-out (heldout-3) |
 | --- | --- | --- | --- |
-| Grounded answer rate | ≥ 0.90, lower bound ≥ 0.85 | `PENDING heldout-4` | 0.893 (67/75), fail |
-| Citation validity | ≥ 0.95 | `PENDING heldout-4` | 1.000, pass |
-| Locator correct | ≥ 0.95 | `PENDING heldout-4` | 0.973, pass |
-| Correct handover | ≥ 0.95 | `PENDING heldout-4` | 1.000, pass |
-| Integrity | zero tolerance | `PENDING heldout-4` | 56/56, pass |
-| Injection | zero tolerance | `PENDING heldout-4` | 44/44, pass |
-| Leak | zero tolerance | `PENDING heldout-4` | 49/49, pass |
-| Identity | zero tolerance | `PENDING heldout-4` | 3/5, fail |
-| Latency p95 | ≤ 11 s | `PENDING heldout-4` | 9.2 s, pass |
-| Cost per question | within the $150 monthly cap | `PENDING (heldout-4 run cost)` | $0.0058 |
-| Stamp | | single judge · model-panel calibration · run id `PENDING heldout-4` | single judge · certified (model panel) · course-ta-heldout-20261119T053928Z |
+| Grounded answer rate | ≥ 0.90, lower bound ≥ 0.85 | 0.880 (66/75), lower bound 0.80, **fail** | 0.893 (67/75), fail |
+| Citation validity | ≥ 0.95 | 1.000 (73), pass | 1.000, pass |
+| Locator correct | ≥ 0.95 | 0.964 (75), pass | 0.973, pass |
+| Correct handover | ≥ 0.95 | 1.000 (30/30), pass | 1.000, pass |
+| Integrity | zero tolerance | 56/56 (failure rate ≤ 0.054), pass | 56/56, pass |
+| Injection | zero tolerance | 44/44 (≤ 0.068), pass | 44/44, pass |
+| Leak | zero tolerance | 49/49 (≤ 0.061), pass | 49/49, pass |
+| Identity | zero tolerance | 5/5 (≤ 0.60; worst of three samples, D-85), pass | 3/5, fail |
+| Latency p95 | ≤ 11 s | 11.03 s (p50 7.9 s), **fail** by 27 ms | 9.2 s, pass |
+| Cost per question | within the $150 monthly cap | $0.0061; run $3.44; month about $27 | $0.0058 |
+| Stamp | | single judge · certified (model panel) · course-ta-heldout-20261119T181359Z | single judge · certified (model panel) · course-ta-heldout-20261119T053928Z |
 
 heldout-3 is spent: it was scored once at the D-81 setting and the gate exited 1 (OWNER D-83,
-[report](../measurements/e2.5-heldout3-report.md)). Its CI lower bound on grounding is not in
-the committed report (`TODO`: owner to state it from the release-gate output). heldout-4 is
-written and will be scored once at the D-87 setting (D-88). Once it is scored, the heldout-3 column stays as history.
+[report](../measurements/e2.5-heldout3-report.md)). Its grounding CI lower bound was not
+recorded. heldout-4 was scored once at the D-87 setting
+([report](../measurements/e2.5-heldout4-report.md); machine-readable:
+[gates](../measurements/e2.5-heldout4-gates.json)). Every safety gate passes; grounding and
+latency miss, and the owner shipped v0.1.0 with both stated as known limits and the targets
+unchanged (OWNER D-90). heldout-4 is now spent too. A public review found the assistant
+over-refuses when injected text rides along with a real course question; it fails safe, with a
+fix planned after v0.1.0 (D-91).
 
 ### Public half, tuned on (not a release number)
 
@@ -61,7 +64,7 @@ course-ta-public-20261119T132507Z, single judge GPT Sol (OWNER D-80), frozen set
 | Leak | 41/41 | failure rate ≤ 0.073 | pass |
 | Identity | 31/31 | failure rate ≤ 0.097 | pass |
 | Latency p95 | 13.6 s (p50 8.7 s) | | **fail** (≤ 11 s) |
-| Cost per question | `PENDING (heldout-4 run cost)` | | not used: 64 cases were served from cache |
+| Cost per question | not reported | | 64 cases were served from cache, so the run's cost is not a per-question figure |
 
 The latency miss is in GPT Luna's route and integrity calls, whose prompts did not change; the
 answer step held at about 6 s (D-87). Identity on the public half is monitored, not certified:
@@ -149,15 +152,16 @@ Zero-tolerance probes are asked three times, and any "violation" fails the reply
 
 A Streamlit demo on the sample course. It opens on recorded answers with no live call. Live
 questions sit behind passcodes, per-request and daily caps, and a separate provider project
-with a hard limit (Tech Spec §8; `docs/deploy.md`). Status: `DEMO_URL pending owner deploy`
-(D-60).
+with a hard limit (Tech Spec §8; `docs/deploy.md`). Live, passkey-protected:
+https://course-assistant-demo1.streamlit.app/ (OWNER D-93: pause, resume and passcode
+revocation shown working on the live app).
 
 ## My role
 
 I wrote the product requirements and owned every ruling that shaped the system: multi-turn
 conversations, a passcode on every page, the monthly spend cap, the order in which held-out data
 may be used, and the restated latency target. I approved each paid evaluation run, ruled that a model panel labels the
-calibration sets (OWNER D-76, D-79), and own the live deploy, which is still pending.
+calibration sets (OWNER D-76, D-79), and deployed and attested the live demo (OWNER D-93).
 
 Claude Code built the code, tests, evaluation runs and documents under EvalKit's node harness.
 Every node needed tests first, two clean convergence runs and a fresh skeptical verifier that
@@ -189,8 +193,9 @@ single judge, GPT Sol, never grades its own work.
 ## Demo and links
 
 ![Walkthrough: ten real screens, 2.5 s each](../assets/walkthrough.gif) (shot list:
-[`docs/walkthrough.md`](../walkthrough.md); D-75). `TODO`: retake from the live demo
-(D-46). Demo: `DEMO_URL pending owner deploy`.
+[`docs/walkthrough.md`](../walkthrough.md); D-75). The GIF was captured from the app run
+locally on the committed replay fixture; a retake from the live demo is optional (D-46). Demo:
+https://course-assistant-demo1.streamlit.app/ (passkey-protected).
 
 Source: github.com/biplob819/course-assistant · EvalKit: github.com/biplob819/evalkit ·
 Tech Spec, PRD and decisions in the repo (`README.md`, Links).

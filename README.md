@@ -15,7 +15,7 @@ everything else to the teaching team. Every change is measured on a golden set w
 > held-out score passes every safety gate and **misses two quality bars**: grounding (0.880
 > against 0.90) and latency p95 (11.03 s against 11 s). The owner accepted both as known limits
 > for v0.1.0, with the bars left unchanged (D-90); see [Measured results](#measured-results).
-> Nothing is on PyPI yet. The hosted demo is deployed and waits for its replay cache.
+> Nothing is on PyPI yet. The hosted demo is live (passkey-protected); see [Demo](#demo).
 
 ## Who it is for
 
@@ -319,7 +319,7 @@ control: [`docs/trust/`](https://github.com/biplob819/course-assistant/tree/main
 
 ## Demo
 
-**`DEMO_URL pending owner deploy`.** The hosted demo runs on the sample course, behind two
+**[course-assistant-demo1.streamlit.app](https://course-assistant-demo1.streamlit.app/)** (OWNER D-93). The hosted demo runs on the sample course, behind two
 passcodes (learner and teaching team). It opens on recorded worked examples with no live
 call; live questions are capped per request and per day, on a separate OpenAI project with a
 hard spend limit. Demo data resets each night. Deploy guide: [`docs/deploy.md`](https://github.com/biplob819/course-assistant/blob/main/docs/deploy.md).
@@ -330,12 +330,13 @@ hard spend limit. Demo data resets each night. Deploy guide: [`docs/deploy.md`](
 | --- | --- |
 | Source and issues | [github.com/biplob819/course-assistant](https://github.com/biplob819/course-assistant) · [issues](https://github.com/biplob819/course-assistant/issues) |
 | PyPI | `course-assistant` (pending publish: [pypi.org/project/course-assistant](https://pypi.org/project/course-assistant/)) |
-| Live demo | `DEMO_URL pending owner deploy` |
+| Live demo | [course-assistant-demo1.streamlit.app](https://course-assistant-demo1.streamlit.app/) (passkey-protected) |
 | EvalKit | [repo](https://github.com/biplob819/evalkit) · [`evalkit-harness` on PyPI](https://pypi.org/project/evalkit-harness/) |
+| Case study | [docs/project/project-page.md](https://github.com/biplob819/course-assistant/blob/main/docs/project/project-page.md) (OWNER D-94) · [trust pack](https://github.com/biplob819/course-assistant/tree/main/docs/trust) |
 | Design | [Tech Spec](https://github.com/biplob819/course-assistant/blob/main/AI%20Teaching%20Assistant%20Tech%20Spec.md) · [PRD](https://github.com/biplob819/course-assistant/blob/main/AI%20Teaching%20Assistant%20PRD.md) |
 | Decisions and lessons | [docs/decisions.md](https://github.com/biplob819/course-assistant/blob/main/docs/decisions.md) · [docs/lessons.md](https://github.com/biplob819/course-assistant/blob/main/docs/lessons.md) |
 | Guides | [Deploying the demo](https://github.com/biplob819/course-assistant/blob/main/docs/deploy.md) · [Labelling the calibration sets](https://github.com/biplob819/course-assistant/blob/main/docs/labelling.md) |
-| Measurements | [E2.5 full-run report](https://github.com/biplob819/course-assistant/blob/main/docs/measurements/e2.5-report.md) · [tuning log](https://github.com/biplob819/course-assistant/blob/main/docs/measurements/tuning-log.jsonl) |
+| Measurements | [heldout-4 report](https://github.com/biplob819/course-assistant/blob/main/docs/measurements/e2.5-heldout4-report.md) · [gate summary (JSON)](https://github.com/biplob819/course-assistant/blob/main/docs/measurements/e2.5-heldout4-gates.json) · [E2.5 first full-run report](https://github.com/biplob819/course-assistant/blob/main/docs/measurements/e2.5-report.md) · [tuning log](https://github.com/biplob819/course-assistant/blob/main/docs/measurements/tuning-log.jsonl) |
 | Golden set | [golden/README.md](https://github.com/biplob819/course-assistant/blob/main/golden/README.md) · [DATA_CARD.md](https://github.com/biplob819/course-assistant/blob/main/DATA_CARD.md) |
 | Sample course licence | [CC BY 4.0](https://github.com/biplob819/course-assistant/blob/main/sample_course/LICENSE) |
 | Policies | [Contributing](https://github.com/biplob819/course-assistant/blob/main/CONTRIBUTING.md) · [Security](https://github.com/biplob819/course-assistant/blob/main/SECURITY.md) · [Privacy](https://github.com/biplob819/course-assistant/blob/main/PRIVACY.md) · [Code of conduct](https://github.com/biplob819/course-assistant/blob/main/CODE_OF_CONDUCT.md) |

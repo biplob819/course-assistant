@@ -2,9 +2,9 @@
 
 - [x] 1. Spec and criteria written
 - [x] 1a. Drafts (OWNER D-72): project page, demo script (superseded by `docs/walkthrough.md`, D-75)
-- [ ] 2. node_start GO (waits for T3.1, E2.5, D3.2 green)
-- [ ] 3. Tests first (links and stamps check)
-- [ ] 4. Fill `PENDING (D-71)`
+- [x] 2. node_start GO
+- [x] 3. Tests (links and stamps check): `tests/project/test_project_page.py`
+- [x] 4. Fill the placeholders from heldout-4 (D-90) and the live demo (D-93)
 - [ ] 5. Walkthrough GIF (D-75): draft `docs/assets/walkthrough.gif` exists; owner approves, retake from the live demo (D-46)
 - [ ] 6. Converge twice, verifier
-- [ ] 7. Publish to Cloudflare Pages (owner, after asking), proofs, green, commit
+- [ ] 7. Publication: the case study in the repo, linked from the README (OWNER D-94); proofs, green, commit

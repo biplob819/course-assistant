@@ -161,3 +161,4 @@ One line per change: `[TYPE] [NODE] — summary`. Types: FEAT, FIX, DOCS, HARNES
 - [GREEN] [D3.2] — DEM-04 live deploy attested (OWNER D-93); demo/replay.json committed; smoke check sends only the app host's cookies; learner page clock for consent and escalation times
 - [DOCS] [T3.1] — trust pack filled from heldout-4 (D-90), the live off-switch drill (D-93) and the D-91 limit; no PENDING marker remains; proof cells for TRU-01..04
 - [GREEN] [T3.1] — trust pack TRU-01..04 (verifier pass 1 plus fixes): purge wording matches the code, DATA_CARD holds the D-90 limits, heldout-4 named as spent
+- [DOCS] [T3.2] — project page filled from heldout-4 (D-90), D-91 and the live demo (D-93); links-and-stamps tests; OWNER D-94 (no Pages site; README links the case study); README links the demo, the case study and the gate summary
