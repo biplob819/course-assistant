@@ -108,6 +108,10 @@ def _pilot_problem(codes: str, env: Mapping[str, str] | None,
     missing = [n for n, v in values.items() if v is None]
     if missing:
         return "missing " + ", ".join(missing)
+    from course_assistant.privacy.pseudonym import MIN_SECRET
+
+    if len((values["PID_SECRET"] or "").strip()) < MIN_SECRET:
+        return f"PID_SECRET is shorter than {MIN_SECRET} characters"
     try:
         _parse(values["STAFF_PASSKEY_HASH"] or "")
     except PasskeyConfigError:

@@ -15,17 +15,21 @@ sessions at their next step with no restart.
 
 from __future__ import annotations
 
+import contextlib
+import datetime as dt
+import fcntl
 import json
 import os
 import re
 import secrets
-from collections.abc import Callable
+import tempfile
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
 from course_assistant.demo._errors import GuardRefused
 from course_assistant.demo.passkey import CLOSED, PasskeyGate
-from course_assistant.privacy.pseudonym import PseudonymError, learner_pid
+from course_assistant.privacy.pseudonym import MIN_SECRET, PseudonymError, learner_pid
 
 ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"  # no 0/O, 1/I/L, U: easy to read out
 CODE_RE = re.compile(rf"[{ALPHABET}]{{4}}-[{ALPHABET}]{{4}}-[{ALPHABET}]{{4}}")
@@ -46,24 +50,57 @@ def _new_code() -> str:
     return f"{raw[:4]}-{raw[4:8]}-{raw[8:]}"
 
 
+_LABEL = re.compile(r"^L[0-9]{3,}$")
+_PID = re.compile(r"^[0-9a-f]{16}$")
+
+
 def load(registry: Path) -> dict[str, dict[str, Any]]:
-    """The learners map {pid: {"label", "revoked"}}; AccessError when it cannot be read."""
+    """The learners map {pid: {"label", "revoked"}}; AccessError when it cannot be read or
+    any entry is malformed, so a damaged registry closes the page instead of crashing it."""
     try:
         data = json.loads(Path(registry).read_text(encoding="utf-8"))
         learners = data["learners"]
         if data.get("version") != 1 or not isinstance(learners, dict):
             raise ValueError
+        for pid, entry in learners.items():
+            if not (isinstance(pid, str) and _PID.match(pid) and isinstance(entry, dict)
+                    and isinstance(entry.get("label"), str) and _LABEL.match(entry["label"])
+                    and isinstance(entry.get("revoked"), bool)):  # fmt: skip
+                raise ValueError
         return learners
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         raise AccessError("the access-code registry cannot be read") from None
 
 
+@contextlib.contextmanager
+def _locked(path: Path) -> Iterator[None]:
+    """An advisory lock beside `path`, held for a whole read-modify-write."""
+    lock = Path(f"{path}.lock")
+    fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def _write_json(path: Path, data: Any) -> None:
+    """Write through a unique temp file created mode 600, then replace: never a partial file."""
+    path = Path(path)
+    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(data, indent=1) + "\n")
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
 def _save(registry: Path, learners: dict[str, dict[str, Any]]) -> None:
-    tmp = Path(registry).with_suffix(".tmp")
-    tmp.write_text(json.dumps({"version": 1, "learners": learners}, indent=1) + "\n",
-                   encoding="utf-8")  # fmt: skip
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, registry)
+    _write_json(registry, {"version": 1, "learners": learners})
 
 
 def new_codes(registry: Path, count: int, secret: str) -> list[tuple[str, str]]:
@@ -71,40 +108,71 @@ def new_codes(registry: Path, count: int, secret: str) -> list[tuple[str, str]]:
     pairs, the only place the codes appear."""
     if not 1 <= count <= MAX_CODES:
         raise AccessError(f"make between 1 and {MAX_CODES} codes at a time")
-    learners = load(registry) if Path(registry).exists() else {}
-    start = 1 + max((int(v["label"][1:]) for v in learners.values()), default=0)
-    rows: list[tuple[str, str]] = []
-    while len(rows) < count:
-        code = _new_code()
-        try:
+    if not isinstance(secret, str) or len(secret.strip()) < MIN_SECRET:
+        raise AccessError("PID_SECRET is missing or too short")
+    with _locked(registry):
+        learners = load(registry) if Path(registry).exists() else {}
+        start = 1 + max((int(v["label"][1:]) for v in learners.values()), default=0)
+        rows: list[tuple[str, str]] = []
+        while len(rows) < count:
+            code = _new_code()
             pid = learner_pid(normalize(code), secret)
-        except PseudonymError:
-            raise AccessError("PID_SECRET is missing or too short") from None
-        if pid in learners:
-            continue  # astronomically rare; never reuse an id
-        label = f"L{start + len(rows):03d}"
-        learners[pid] = {"label": label, "revoked": False}
-        rows.append((label, code))
-    _save(registry, learners)
+            if pid in learners:
+                continue  # astronomically rare; never reuse an id
+            label = f"L{start + len(rows):03d}"
+            learners[pid] = {"label": label, "revoked": False}
+            rows.append((label, code))
+        _save(registry, learners)
     return rows
 
 
 def revoke(registry: Path, label: str) -> bool:
     """Revoke the code with this label; False when no such label."""
-    learners = load(registry)
-    hit = [pid for pid, v in learners.items() if v.get("label") == label]
-    if not hit:
-        return False
-    for pid in hit:
-        learners[pid]["revoked"] = True
-    _save(registry, learners)
+    with _locked(registry):
+        learners = load(registry)
+        hit = [pid for pid, v in learners.items() if v.get("label") == label]
+        if not hit:
+            return False
+        for pid in hit:
+            learners[pid]["revoked"] = True
+        _save(registry, learners)
     return True
+
+
+class DailyCount:
+    """Questions per learner per UTC day, kept apart from the conversations so deleting
+    history cannot reset it. Holds pseudonymous ids and counts only, for today only."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = Path(path)
+
+    def __repr__(self) -> str:
+        return "DailyCount()"
+
+    def take(self, pid: str, day: dt.date, cap: int) -> bool:
+        """Count one question for `pid` on `day` if it is under `cap`; False when it is not."""
+        with _locked(self.path):
+            try:
+                data = json.loads(self.path.read_text(encoding="utf-8"))
+                counts = data["counts"] if data.get("day") == day.isoformat() else {}
+                if not isinstance(counts, dict):
+                    counts = {}
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                counts = {}
+            used = counts.get(pid, 0) if isinstance(counts.get(pid, 0), int) else cap
+            if used >= cap:
+                return False
+            counts[pid] = used + 1
+            _write_json(self.path, {"day": day.isoformat(), "counts": counts})
+            return True
 
 
 class AccessCodeGate(PasskeyGate):
     """The passkey gate over personal codes: the session's mark is the learner's id."""
 
     PROMPT = ("Access code", "The personal code the teaching team sent you, like ABCD-EFGH-JKMN.")
+    WRONG_TEXT = "Wrong access code."
+    NEEDED_TEXT = "Enter your access code to continue."
 
     def __init__(self, registry: Path, load_secret: Callable[[], str | None],
                  **limits: Any) -> None:  # fmt: skip
@@ -121,8 +189,8 @@ class AccessCodeGate(PasskeyGate):
             learners = load(self.registry)
         except Exception:
             raise GuardRefused(CLOSED) from None
-        if not secret:
-            raise GuardRefused(CLOSED)
+        if not secret or len(secret.strip()) < MIN_SECRET:
+            raise GuardRefused(CLOSED)  # a short secret could never match a code: closed
         return (secret, learners)
 
     def _accept(self, code: str, stored: Any) -> str | None:

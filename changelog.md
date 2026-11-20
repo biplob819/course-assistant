@@ -224,3 +224,4 @@ The first public release, published to PyPI by trusted publishing from the tag `
 - [FEAT] [P4.1] — pilot groundwork: learner ids from platform ids (D-13), persistent pilot store, course-assistant teardown / make teardown with a proof (P4.3); docs updated
 - [OWNER] [P4.1] — OWNER D-97: pilot on the owner's own course, teaching team only first; materials private, outside the repo; learners wait for the programme's approval and SSO
 - [FEAT] [P4.1] — OWNER D-98: personal access codes for pilot learners (keyed-hash registry as learner ids, daily cap, live revocation, access-codes CLI); OWNER D-97 teaching-team-first pilot
+- [FIX] [P4.1] — access-code security review: daily cap kept apart from history, short PID_SECRET closes the page, registry validated, locked unique-temp writes, codes file opened first, code-mode wording

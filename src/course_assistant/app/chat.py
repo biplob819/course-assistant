@@ -308,12 +308,13 @@ class LearnerChat:
                  assistant_for: Callable[[Source], Assistant], store: Callable[[], Store],
                  traces: Sequence[TraceSink], corpus: Corpus,
                  now: Callable[[], dt.datetime] | None = None,
-                 daily_questions: int | None = None) -> None:  # fmt: skip
+                 daily_questions: int | None = None, daily_count: Any = None) -> None:  # fmt: skip
         if demo.gate is not gate:
             raise ValueError("the live demo must use the same passkey gate")
-        if daily_questions is not None and daily_questions < 1:
-            raise ValueError("daily_questions must be at least 1")
+        if daily_questions is not None and (daily_questions < 1 or daily_count is None):
+            raise ValueError("daily_questions needs a count of at least 1 and a daily_count")
         self.daily_questions = daily_questions  # per learner per UTC day (pilot codes)
+        self.daily_count = daily_count  # kept apart from history: deleting cannot reset it
         self.gate = gate
         self.demo = demo
         self.assistant_for = assistant_for
@@ -427,9 +428,7 @@ class LearnerChat:
             raise GuardRefused(TOO_LONG)
         if self.daily_questions is not None:
             today = self.now().astimezone(dt.UTC).date()
-            asked = sum(1 for x in self.store().questions_for(state.pid)
-                        if x.asked_at.astimezone(dt.UTC).date() == today)  # fmt: skip
-            if asked >= self.daily_questions:
+            if not self.daily_count.take(state.pid, today, self.daily_questions):
                 raise GuardRefused(
                     f"You have asked today's {self.daily_questions} questions. "
                     "You can ask more tomorrow (the count resets at midnight UTC)."

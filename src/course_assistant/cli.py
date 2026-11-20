@@ -898,16 +898,20 @@ def _access_codes(args: argparse.Namespace) -> int:
             return EXIT_CONFIG
         print(f"access-codes: {args.label} revoked; its sessions close at their next step")
         return EXIT_OK
-    if args.out.exists():
-        print(f"access-codes: {args.out} exists; choose a new file", file=sys.stderr)
+    try:  # the codes file first: no code is made that could not be written down
+        fd = os.open(args.out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except OSError:
+        print(f"access-codes: cannot create {args.out} (it exists, or its folder does not)",
+              file=sys.stderr)  # fmt: skip
         return EXIT_CONFIG
     secret = os.environ.get("PID_SECRET", "")
     try:
         rows = access.new_codes(args.registry, args.count, secret)
     except access.AccessError as exc:
+        os.close(fd)
+        args.out.unlink()
         print(f"access-codes: {exc}", file=sys.stderr)
         return EXIT_CONFIG
-    fd = os.open(args.out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         fh.write("label,code\n" + "".join(f"{lab},{code}\n" for lab, code in rows))
     print(f"access-codes: {len(rows)} code(s) {rows[0][0]}..{rows[-1][0]} written to "

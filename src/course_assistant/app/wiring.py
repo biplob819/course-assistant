@@ -312,6 +312,9 @@ def from_env(env: Mapping[str, str] | None = None,
     else:
         gate = PasskeyGate(env_hash(env, secrets_store))
     daily = daily_questions(env) if codes else None
+    from course_assistant.pilot.access import DailyCount
+
+    count = DailyCount(app_dir / "daily-questions.json") if codes else None
     url, token = secret(KV_URL), secret(KV_TOKEN)
     counter: SpendCounter = (KVSpendCounter(RestKV(url, token)) if url and token
                              else FileSpendCounter(app_dir / "spend.json"))  # fmt: skip
@@ -341,4 +344,4 @@ def from_env(env: Mapping[str, str] | None = None,
                     responder_for_key=for_key, prices=prices, cache=cache)  # fmt: skip
     return ServedChat(gate, demo, assistant_for=assistant_for, store=stores,
                       traces=[raw_sink], corpus=corpus, serving=serving,
-                      daily_questions=daily)  # fmt: skip
+                      daily_questions=daily, daily_count=count)  # fmt: skip

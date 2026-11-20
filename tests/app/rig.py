@@ -61,6 +61,9 @@ class ChatRig:
         self.clock = Tick()
         self.gate = gate if gate is not None else passkey.PasskeyGate(self.secret, clock=self.clock)
         self.daily_questions = daily_questions
+        from course_assistant.pilot.access import DailyCount
+
+        self.daily_count = DailyCount(tmp / "daily.json") if daily_questions else None
         self.counter = spend.FileSpendCounter(tmp / "spend.json")
         self.alerts: list[tuple[str, str]] = []
         self.guard = guard_with(self.counter, self.gate, None, self.clock, self.alerts)
@@ -79,7 +82,8 @@ class ChatRig:
                              responder_for_key=self.for_key, prices=PRICES)  # fmt: skip
         self.chat = LearnerChat(self.gate, self.demo, assistant_for=self.assistant_for,
                                 store=self.stores, traces=[self.sink], corpus=CORPUS,
-                                now=Clock(), daily_questions=daily_questions)  # fmt: skip
+                                now=Clock(), daily_questions=daily_questions,
+                                daily_count=self.daily_count)  # fmt: skip
         self.state = ChatState.new()
 
     def assistant_for(self, source: Any) -> Assistant:

@@ -141,6 +141,8 @@ def env_hash(
 
 class PasskeyGate:
     PROMPT = ("Passkey", "The numeric passkey the course team gave you.")  # the page's field
+    WRONG_TEXT = WRONG
+    NEEDED_TEXT = NEEDED
 
     def __init__(self, load_hash: Callable[[], str | None], *, max_failures: int = 5,
                  window_s: float = 900.0, clock: Callable[[], float] = time.monotonic,
@@ -203,7 +205,7 @@ class PasskeyGate:
         all slip in before the lockout (verifier D3.1 pass 1); a right code then takes its own
         count back. A global count also caps guesses from rotating sessions with no trusted IP."""
         if not isinstance(session, str) or not session:
-            raise GuardRefused(NEEDED)
+            raise GuardRefused(self.NEEDED_TEXT)
         stored = self._stored()
         keys = self._all_keys(session, ip)
         with self._lock:
@@ -226,7 +228,7 @@ class PasskeyGate:
                 self._unlocked[session] = mark
                 self._bound(self._unlocked)
             return
-        raise GuardRefused(WRONG)
+        raise GuardRefused(self.WRONG_TEXT)
 
     def _accept(self, code: str, stored: Any) -> str | None:
         """The session's mark when `code` is right, else None (the slow check)."""
@@ -257,7 +259,7 @@ class PasskeyGate:
             mark = self._unlocked.get(session) if isinstance(session, str) else None
             ok = mark is not None and self._valid(mark, stored)
         if not ok:
-            raise GuardRefused(NEEDED)
+            raise GuardRefused(self.NEEDED_TEXT)
 
     def lock_session(self, session: str) -> None:
         """Forget an unlocked session (sign out)."""

@@ -46,8 +46,12 @@ Still to build, after your choices in section 3:
 ## 3. Decisions and documents from you (P4.1)
 
 1. **Pilot host.** Where the pages run for the cohort. It needs: Python 3.12, a persistent disk
-   for the SQLite app store, secrets set as environment variables, HTTPS, and sign-in in front
-   of the pages. Options: a private deploy under the programme provider's account; a small
+   (the app store, the access-code registry, the daily question counts and the local spend
+   counter all live there; on a disk that resets, the counts would reset too), secrets set as
+   environment variables, and HTTPS. Set `DEMO_TRUSTED_PROXY_HOPS` to the host's proxy count,
+   so wrong-code limits apply per address; with it unset, 50 wrong guesses in 15 minutes from
+   anyone pause new unlocks for everyone. The hard monthly limit on the pilot's OpenAI project
+   is the last backstop for spend. Options: a private deploy under the programme provider's account; a small
    container host with a persistent volume behind the provider's sign-in. The public Streamlit
    Community Cloud app is not suitable (public, no persistent disk).
 2. **Sign-in.** No single sign-on is offered (OWNER D-98). Learners use personal access codes,
